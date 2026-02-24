@@ -42,19 +42,17 @@ func ativacao(soma float64) int {
 	return -1
 }
 
-// Porta agrupa o nome e descrição da porta lógica,
 // separando inputs (entradas) e targets (saídas desejadas)
-// — mesma estrutura do código em C do professor.
 type Porta struct {
 	nome      string
 	descricao string
-	inputs    [4][2]int // cada linha é uma amostra: {x1, x2}
-	targets   [4]int    // saída desejada para cada amostra
+	inputs    [4][2]int
+	targets   [4]int
 }
 
-// todasAsPortas define as tabelas verdade de cada porta no formato bipolar.
+// todasAsPortas == tabelas verdade de cada porta
 // AND, OR, NAND e NOR são linearmente separáveis → a rede aprende.
-// XOR não é linearmente separável → a rede não converge (limitação de Hebb).
+// XOR não é linearmente separável → a rede não converge
 func todasAsPortas() []Porta {
 	return []Porta{
 		{
@@ -90,8 +88,7 @@ func todasAsPortas() []Porta {
 	}
 }
 
-// executarPorta realiza o treinamento e o teste de uma porta lógica,
-// imprimindo cada passo na tela para acompanhamento.
+// Treinamento + teste da porta lógica,
 func executarPorta(p Porta) {
 	limpar()
 	cabecalho()
@@ -142,6 +139,7 @@ func executarPorta(p Porta) {
 	fmt.Println(strings.Repeat("-", 50))
 
 	acertos := 0
+	// for i := range 4 {
 	for i := 0; i < 4; i++ {
 		x1 := p.inputs[i][0]
 		x2 := p.inputs[i][1]
@@ -167,8 +165,6 @@ func executarPorta(p Porta) {
 	aguardar()
 }
 
-// executarTodas roda todas as portas em sequência.
-// Útil para demonstrar de uma vez quais convergem e quais não convergem.
 func executarTodas() {
 	for _, p := range todasAsPortas() {
 		executarPorta(p)
