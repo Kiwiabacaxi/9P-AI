@@ -8,6 +8,7 @@ Repositório com os trabalhos práticos da disciplina de **Redes Neurais Artific
 |-------|-----------|
 | [`Trab 01`](./Trab%2001/) | Regra de Hebb — Portas Lógicas (AND, OR, NAND, NOR, XOR) |
 | [`Trab 02 - PT 1`](./Trab%2002%20-%20PT%201/) | Perceptron — Reconhecimento de Letras A e B (7×7) |
+| [`Trab 02 - PT 2`](./Trab%2002%20-%20PT%202/) | Perceptron — Portas Lógicas (AND, OR, NAND, NOR, XOR) |
 | `slides/` | Slides das aulas em PDF |
 
 ## 🚀 Como rodar
