@@ -36,14 +36,13 @@ const (
 	MAX_CICLOS = 1000 // limite pra não travar no XOR
 )
 
-// Porta agrupa nome, entradas e saídas esperadas de uma porta lógica.
+// separando inputs (entradas) e targets (saídas desejadas)
 type Porta struct {
 	nome    string
-	inputs  [4][2]int // 4 amostras com 2 entradas cada
-	targets [4]int    // saída esperada pra cada amostra
+	inputs  [4][2]int
+	targets [4]int
 }
 
-// todasAsPortas retorna as 5 portas lógicas em formato bipolar.
 func todasAsPortas() []Porta {
 	return []Porta{
 		{
@@ -74,7 +73,7 @@ func todasAsPortas() []Porta {
 	}
 }
 
-// ativacao aplica o degrau bipolar.
+// ativacao aplica o degrau.
 //
 //	soma >= 0 → 1
 //	soma <  0 → -1
@@ -88,7 +87,7 @@ func ativacao(soma float64) int {
 // stepLog guarda dados de um passo do treinamento pra TUI exibir.
 type stepLog struct {
 	ciclo    int
-	amostra  int // índice 0-3
+	amostra  int // 0-3
 	x1, x2   int
 	target   int
 	yLiq     float64
@@ -96,7 +95,7 @@ type stepLog struct {
 	teveErro bool
 }
 
-// resultadoTreino guarda o resultado final do treinamento de uma porta.
+// resultadoTreino resultado final p/ porta.
 type resultadoTreino struct {
 	porta     Porta
 	w1, w2    float64
@@ -107,7 +106,7 @@ type resultadoTreino struct {
 	testes    []testResult
 }
 
-// testResult guarda o teste de uma amostra com os pesos finais.
+// testResult guarda o teste final
 type testResult struct {
 	x1, x2   int
 	target   int
@@ -116,10 +115,9 @@ type testResult struct {
 	acertou  bool
 }
 
-// treinarPorta executa o Perceptron numa porta lógica.
-// Retorna todos os detalhes pra TUI renderizar.
+// executa o Perceptron numa porta lógica.
 func treinarPorta(p Porta) resultadoTreino {
-	// Pesos iniciais aleatórios em [-0.5, 0.5] (convenção do professor)
+	// Pesos iniciais aleatórios em [-0.5, 0.5] -> slide
 	w1 := rand.Float64() - 0.5
 	w2 := rand.Float64() - 0.5
 	bias := rand.Float64() - 0.5
@@ -184,6 +182,7 @@ func treinarPorta(p Porta) resultadoTreino {
 		})
 	}
 
+	// Retorna p/ TUI renderizar.
 	return resultadoTreino{
 		porta: p, w1: w1, w2: w2, bias: bias,
 		ciclos: ciclo, convergiu: convergiu,
