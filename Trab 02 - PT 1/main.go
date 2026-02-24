@@ -53,13 +53,12 @@ const (
 	LINHAS     = 7
 	COLUNAS    = 7
 	N_ENTRADAS = LINHAS * COLUNAS // 49 pixels por letra
-	ALFA       = 0.01             // taxa de aprendizagem (igual ao professor)
+	ALFA       = 0.01             // taxa de aprendizagem
 )
 
 // ativacao aplica o degrau bipolar: retorna 1 ou -1.
-//
-//	yLiq >= 0 → saída =  1  (reconheceu como B)
-//	yLiq <  0 → saída = -1  (reconheceu como A)
+// yLiq >= 0 → saída =  1  (reconheceu como B)
+// yLiq <  0 → saída = -1  (reconheceu como A)
 func ativacao(yLiq float64) int {
 	if yLiq >= 0 {
 		return 1
@@ -67,9 +66,9 @@ func ativacao(yLiq float64) int {
 	return -1
 }
 
-// letraA define a letra A em uma grade 7x7.
-// 1  = pixel ativo (parte da letra)
-// -1 = pixel inativo (fundo)
+// letraA
+// 1  = pixel ativo
+// -1 = pixel inativo
 //
 //	. # # # # # .
 //	# . . . . . #
@@ -99,7 +98,7 @@ func letraA() [N_ENTRADAS]float64 {
 	return entrada
 }
 
-// letraB define a letra B em uma grade 7x7.
+// letraB
 //
 //	# # # # # . .
 //	# . . . . # .
@@ -129,8 +128,7 @@ func letraB() [N_ENTRADAS]float64 {
 	return entrada
 }
 
-// formataLetra retorna uma string renderizada colorida da grade 7x7.
-// Usa Lipgloss para pintar os pixels ativos (#) e inativos (.) com cores diferentes.
+// formataLetra retorna uma string colorida da grade 7x7.
 func formataLetra(entrada [N_ENTRADAS]float64) string {
 	var sb strings.Builder
 	for i := 0; i < LINHAS; i++ {
@@ -146,10 +144,10 @@ func formataLetra(entrada [N_ENTRADAS]float64) string {
 	return sb.String()
 }
 
-// preparaTreinamento executa o loop completo de treinamento do Perceptron
-// e salva cada passo (época/amostra) dentro do model do Bubble Tea.
+// preparaTreinamento -> loop completo de treinamento do Perceptron
+// salva cada passo/época dentro do model do Bubble Tea (visual).
 //
-// DIFERENÇA CHAVE em relação ao Hebb:
+// DIFERENÇA CHAVE para o Hebb:
 //   - O loop continua até que NENHUM erro ocorra em um ciclo completo
 //     (condErro == false), garantindo convergência se os padrões forem
 //     linearmente separáveis.
@@ -159,8 +157,7 @@ func (m *model) preparaTreinamento() {
 	targets := []int{-1, 1} // A = -1, B = 1
 	nomes := []string{"A", "B"}
 
-	// Inicialização dos pesos aleatoriamente entre [-0.5, 0.5]
-	// (mesma convenção do código C do professor)
+	// Inicialização dos pesos aleatoriamente entre [-0.5, 0.5], slide
 	for i := range m.pesos {
 		m.pesos[i] = rand.Float64() - 0.5
 	}
@@ -172,7 +169,6 @@ func (m *model) preparaTreinamento() {
 		ciclo++
 		condErro := false
 
-		// Para cada amostra apresentada no ciclo
 		for s, entrada := range amostras {
 
 			// 1. Calcula o Potencial de Ativação
@@ -182,12 +178,12 @@ func (m *model) preparaTreinamento() {
 				yLiq += entrada[i] * m.pesos[i]
 			}
 
-			// 2. Aplica a Função de Ativação Bipolar (Degrau)
+			// 2. Aplica a função degrau
 			y := ativacao(yLiq)
 			teveErro := false
 			var delta float64
 
-			// 3. Regra de Aprendizagem do Perceptron:
+			// 3. Regra de Aprendizagem:
 			//    Só atualiza os pesos se a saída (y) for diferente do target
 			if y != targets[s] {
 				condErro = true
@@ -196,15 +192,14 @@ func (m *model) preparaTreinamento() {
 				// Calcula o delta: alfa * (target - y)
 				delta = ALFA * float64(targets[s]-y)
 
-				// Atualiza todos os pesos: w[i] = w[i] + delta * x[i]
+				// Atualiza todos os pesos e o bias: w[i] = w[i] + delta * x[i]
 				for i := 0; i < N_ENTRADAS; i++ {
 					m.pesos[i] += delta * entrada[i]
 				}
-				// Atualiza o bias: bias = bias + delta
 				m.bias += delta
 			}
 
-			// Salva o log desse passo para a TUI exibir com animação
+			// Salva o log para o Bubble Tea (TUI)
 			m.trainingSteps = append(m.trainingSteps, trainingStep{
 				ciclo:    ciclo,
 				amostra:  nomes[s],
@@ -217,7 +212,7 @@ func (m *model) preparaTreinamento() {
 			})
 		}
 
-		// Se a rede acertou todas as amostras neste ciclo, convergiu!
+		// Acertou tudo -> convergiu
 		if !condErro {
 			break
 		}
@@ -228,8 +223,8 @@ func (m *model) preparaTreinamento() {
 	m.ciclosTreino = ciclo
 }
 
-// operar aplica a rede já treinada nas letras A e B e calcula a acurácia.
-// Usa os pesos e bias aprendidos durante o treinamento.
+// aplica a rede já treinada nas letras A e B
+// Usa os pesos e bias do treino
 func (m *model) operar() string {
 	amostras := [][N_ENTRADAS]float64{letraA(), letraB()}
 	targets := []int{-1, 1}
