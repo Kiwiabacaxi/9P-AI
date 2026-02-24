@@ -10,52 +10,58 @@ import (
 )
 
 // =============================================================================
-// TRABALHO 02 - Parte 01: Perceptron para Reconhecimento de Letras A e B
+// TRABALHO 02 - PARTE 01: Perceptron para Reconhecimento de Letras (A e B)
 // Disciplina: Redes Neurais Artificiais
 // =============================================================================
 //
-// Adaptação do Trabalho 01 (Regra de Hebb) para usar o Perceptron.
+// Diferença entre Hebb e Perceptron:
 //
-// DIFERENÇA PRINCIPAL: Hebb vs Perceptron
+//   HEBB: Os pesos são atualizados usando a SAÍDA DESEJADA (target).
+//         w = w + (x * target)
+//         Isso significa que o aprendizado acontece sempre, acertando ou não.
 //
-//   HEBB (Trabalho 01):
-//     Atualiza os pesos para TODA amostra, sempre:
-//       w_i = w_i + (x_i * target)
+//   PERCEPTRON: Os pesos só são atualizados quando a SAÍDA CALCULADA
+//               for DIFERENTE da saída desejada (condErro).
+//               w[col] = w[col] + alfa * (target - y) * entrada[col]
+//               b      = b      + alfa * (target - y)
 //
-//   PERCEPTRON (Trabalho 02):
-//     Atualiza os pesos APENAS quando a predição está errada:
-//       y_in  = soma(x_i * w_i) + bias
-//       y     = ativacao(y_in)
-//       SE y != target:
-//         w_i  = w_i  + alfa * (target - y) * x_i
-//         bias = bias + alfa * (target - y)
+// Isso torna o Perceptron mais robusto: ele só corrige quando erra!
 //
-//     O treinamento repete por CICLOS até que nenhum erro ocorra.
+// ARQUITETURA:
+//   - 49 entradas (matriz 7x7 "achatada" em vetor)
+//   - 49 pesos (um por pixel)
+//   - 1 bias
+//   - 2 padrões: Letra A (target = -1) e Letra B (target = 1)
 //
-// ENTRADAS: Letras A e B representadas em matrizes 7x7 (49 pixels).
-//   Pixel "ligado"  =  1  (parte da letra)
-//   Pixel "apagado" = -1  (fundo)
+// CÁLCULO DO POTENCIAL DE ATIVAÇÃO:
+//   yLiq = (x[0]*w[0]) + (x[1]*w[1]) + ... + (x[48]*w[48]) + bias
 //
-// SAÍDAS (bipolar):
-//   A → target = -1
-//   B → target =  1
+// REGRA DE ATUALIZAÇÃO (Perceptron - só quando erra):
+//   w[i] = w[i] + alfa * (target - y) * x[i]
+//   bias = bias + alfa * (target - y)
+//
+// FUNÇÃO DE ATIVAÇÃO - Degrau Bipolar:
+//   yLiq >= 0  →  saída =  1  (reconheceu como B)
+//   yLiq <  0  →  saída = -1  (reconheceu como A)
 //
 // PARÂMETROS (seguindo o código C do Prof. Jefferson):
 //   Pesos iniciais: aleatórios no intervalo [-0.5, +0.5]
 //   Bias inicial:    aleatório em [-0.5, +0.5]
 // =============================================================================
 
-const ALFA = 0.01
-const LINHAS = 7
-const COLUNAS = 7
-const N_ENTRADAS = LINHAS * COLUNAS // 49 pixels
+const (
+	LINHAS     = 7
+	COLUNAS    = 7
+	N_ENTRADAS = LINHAS * COLUNAS // 49 pixels por letra
+	ALFA       = 0.01             // taxa de aprendizagem (igual ao professor)
+)
 
-// ativacao aplica o degrau bipolar.
+// ativacao aplica o degrau bipolar: retorna 1 ou -1.
 //
-//	y_in >= 0 → saída =  1  (reconheceu como B)
-//	y_in <  0 → saída = -1  (reconheceu como A)
-func ativacao(soma float64) int {
-	if soma >= 0 {
+//	yLiq >= 0 → saída =  1  (reconheceu como B)
+//	yLiq <  0 → saída = -1  (reconheceu como A)
+func ativacao(yLiq float64) int {
+	if yLiq >= 0 {
 		return 1
 	}
 	return -1
@@ -123,15 +129,16 @@ func letraB() [N_ENTRADAS]float64 {
 	return entrada
 }
 
-// formataLetra retorna uma string renderizada colorida da grade de pixels
+// formataLetra retorna uma string renderizada colorida da grade 7x7.
+// Usa Lipgloss para pintar os pixels ativos (#) e inativos (.) com cores diferentes.
 func formataLetra(entrada [N_ENTRADAS]float64) string {
 	var sb strings.Builder
 	for i := 0; i < LINHAS; i++ {
 		for j := 0; j < COLUNAS; j++ {
 			if entrada[i*COLUNAS+j] == 1 {
-				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render("# "))
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render("█ "))
 			} else {
-				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(". "))
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("· "))
 			}
 		}
 		sb.WriteString("\n")
@@ -139,14 +146,21 @@ func formataLetra(entrada [N_ENTRADAS]float64) string {
 	return sb.String()
 }
 
-// preparaTreinamento executa o treinamento completo da Rede Neural e salva os logs
-// passo-a-passo (épocas) dentro do Bubble Tea Model (`m`).
+// preparaTreinamento executa o loop completo de treinamento do Perceptron
+// e salva cada passo (época/amostra) dentro do model do Bubble Tea.
+//
+// DIFERENÇA CHAVE em relação ao Hebb:
+//   - O loop continua até que NENHUM erro ocorra em um ciclo completo
+//     (condErro == false), garantindo convergência se os padrões forem
+//     linearmente separáveis.
+//   - Os pesos só mudam quando a predição está ERRADA.
 func (m *model) preparaTreinamento() {
 	amostras := [][N_ENTRADAS]float64{letraA(), letraB()}
-	targets := []int{-1, 1}
+	targets := []int{-1, 1} // A = -1, B = 1
 	nomes := []string{"A", "B"}
 
 	// Inicialização dos pesos aleatoriamente entre [-0.5, 0.5]
+	// (mesma convenção do código C do professor)
 	for i := range m.pesos {
 		m.pesos[i] = rand.Float64() - 0.5
 	}
@@ -158,42 +172,44 @@ func (m *model) preparaTreinamento() {
 		ciclo++
 		condErro := false
 
-		// Para cada amostra apresentada na época
+		// Para cada amostra apresentada no ciclo
 		for s, entrada := range amostras {
 
-			// 1. Calcula o Potencial de Ativação (soma: y_in = bias + somatório(w_i * x_i))
-			yIn := m.bias
+			// 1. Calcula o Potencial de Ativação
+			//    yLiq = bias + somatório(w[i] * x[i])
+			yLiq := m.bias
 			for i := 0; i < N_ENTRADAS; i++ {
-				yIn += entrada[i] * m.pesos[i]
+				yLiq += entrada[i] * m.pesos[i]
 			}
 
-			// 2. Chama Função de Ativação Bipolar (Degrau)
-			y := ativacao(yIn)
+			// 2. Aplica a Função de Ativação Bipolar (Degrau)
+			y := ativacao(yLiq)
 			teveErro := false
 			var delta float64
 
-			// 3. Regra de Aprendizagem (Perceptron só atualiza caso y seja GABARITO (target) falho)
+			// 3. Regra de Aprendizagem do Perceptron:
+			//    Só atualiza os pesos se a saída (y) for diferente do target
 			if y != targets[s] {
 				condErro = true
 				teveErro = true
 
-				// Calcula o delta de Erro: Alfa * (T - Y)
+				// Calcula o delta: alfa * (target - y)
 				delta = ALFA * float64(targets[s]-y)
 
-				// Atualiza todos os pesos com o delta iterativo
+				// Atualiza todos os pesos: w[i] = w[i] + delta * x[i]
 				for i := 0; i < N_ENTRADAS; i++ {
 					m.pesos[i] += delta * entrada[i]
 				}
-				// Atualiza o Base de Viés com o delta
+				// Atualiza o bias: bias = bias + delta
 				m.bias += delta
 			}
 
-			// Salva o log desse passo para a interface gráfica Bubble Tea exibir bonitinho
+			// Salva o log desse passo para a TUI exibir com animação
 			m.trainingSteps = append(m.trainingSteps, trainingStep{
 				ciclo:    ciclo,
 				amostra:  nomes[s],
 				target:   targets[s],
-				yIn:      yIn,
+				yLiq:     yLiq,
 				y:        y,
 				delta:    delta,
 				novoBias: m.bias,
@@ -201,18 +217,19 @@ func (m *model) preparaTreinamento() {
 			})
 		}
 
-		// Se a rede acertou todas as amostras dessa época, encerra
+		// Se a rede acertou todas as amostras neste ciclo, convergiu!
 		if !condErro {
 			break
 		}
 		if ciclo >= 10000 {
-			break // Redundância para não ficar em um loop infinito
+			break // Proteção contra loop infinito
 		}
 	}
 	m.ciclosTreino = ciclo
 }
 
-// operar aplica a rede já treinada com as matrizes fixadas e tira a acurácia.
+// operar aplica a rede já treinada nas letras A e B e calcula a acurácia.
+// Usa os pesos e bias aprendidos durante o treinamento.
 func (m *model) operar() string {
 	amostras := [][N_ENTRADAS]float64{letraA(), letraB()}
 	targets := []int{-1, 1}
@@ -222,12 +239,13 @@ func (m *model) operar() string {
 	acertos := 0
 
 	for s, entrada := range amostras {
-		yIn := m.bias
+		// Recalcula o potencial com os pesos finais
+		yLiq := m.bias
 		for i := 0; i < N_ENTRADAS; i++ {
-			yIn += entrada[i] * m.pesos[i]
+			yLiq += entrada[i] * m.pesos[i]
 		}
 
-		predicao := ativacao(yIn)
+		predicao := ativacao(yLiq)
 		status := successStyle.Render("✓ OK")
 		if predicao == targets[s] {
 			acertos++
@@ -240,7 +258,7 @@ func (m *model) operar() string {
 			nomePredicao = "A"
 		}
 
-		sb.WriteString(fmt.Sprintf("Letra: %s | Alvo: %2d | Predição: %2d (%s) %s\n",
+		sb.WriteString(fmt.Sprintf("Letra: %s │ Alvo: %2d │ Predição: %2d (%s) %s\n",
 			nomes[s], targets[s], predicao, nomePredicao, status))
 	}
 
@@ -250,10 +268,12 @@ func (m *model) operar() string {
 	return sb.String()
 }
 
+// --- PROGRAMA PRINCIPAL ---
+
 func main() {
-	// Seed para inicialização dos pesos aleatórios para que variem a cada execução
+	// Seed para inicialização dos pesos aleatórios
 	rand.Seed(time.Now().UnixNano())
 
-	// Invoca a Interface Gráfica interativa de UI TUI (do arquivo tui.go)
+	// Invoca a Interface TUI interativa (definida em tui.go)
 	iniciarTUI()
 }

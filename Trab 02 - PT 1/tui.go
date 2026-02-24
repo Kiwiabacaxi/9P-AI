@@ -12,10 +12,11 @@ import (
 )
 
 // =============================================================================
-// Estilos (Lipgloss)
+// Estilos Lipgloss — paleta visual da TUI
 // =============================================================================
 
 var (
+	// Título principal no topo da tela
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#FAFAFA")).
@@ -23,54 +24,72 @@ var (
 			Padding(0, 2).
 			MarginBottom(1)
 
+	// Subtítulo com nome da disciplina
 	subtitleStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#A3A3A3")).
 			MarginBottom(1)
 
+	// Item do menu (não selecionado)
 	menuItemStyle = lipgloss.NewStyle().
 			PaddingLeft(2).
 			Foreground(lipgloss.Color("#CCCCCC"))
 
+	// Item do menu (selecionado)
 	selectedItemStyle = lipgloss.NewStyle().
 				PaddingLeft(2).
 				Foreground(lipgloss.Color("#00E676")).
 				Bold(true)
 
+	// Caixa com borda arredondada para exibir as letras
 	boxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#7D56F4")).
 			Padding(1, 2).
 			MarginRight(2)
 
+	// Estilo para mensagens de sucesso
 	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00E676")).Bold(true)
-	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5252")).Bold(true)
-	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#64B5F6"))
+
+	// Estilo para mensagens de erro
+	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5252")).Bold(true)
+
+	// Estilo para informações numéricas destacadas
+	infoStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#64B5F6"))
+
+	// Estilo para separadores
+	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Estilo para hints de navegação
+	hintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Italic(true)
 )
 
 // =============================================================================
-// Bubble Tea Model e Lógica Visual
+// Estados e estruturas do Bubble Tea
 // =============================================================================
 
+// sessionState controla em qual tela a TUI está
 type sessionState int
 
 const (
-	stateMenu sessionState = iota
-	stateTraining
-	stateTrainingDone
-	stateOperating
+	stateMenu         sessionState = iota // menu principal
+	stateTraining                         // treinando passo a passo
+	stateTrainingDone                     // treino concluído
+	stateOperating                        // exibindo resultado da operação
 )
 
+// trainingStep guarda os dados de um passo do treinamento para a TUI animar
 type trainingStep struct {
 	ciclo    int
 	amostra  string
 	target   int
-	yIn      float64
+	yLiq     float64
 	y        int
 	delta    float64
 	novoBias float64
 	teveErro bool
 }
 
+// model é o estado central do Bubble Tea
 type model struct {
 	state   sessionState
 	cursor  int
@@ -83,13 +102,19 @@ type model struct {
 	redeTreinada bool
 	ciclosTreino int
 
-	// Para animação passo a passo
-	trainingSteps   []trainingStep
-	currentStepIdx  int
-	isAutoOperating bool // Flag para saber se viemos do "Treinar e Mostrar rede"
+	// Animação passo a passo do treinamento
+	trainingSteps  []trainingStep
+	currentStepIdx int
+
+	// Flag: se viemos de "Treinar e Operar", já opera automaticamente
+	isAutoOperating bool
 
 	resultadoOperacao string
 }
+
+// =============================================================================
+// Inicialização do Bubble Tea
+// =============================================================================
 
 func initialModel() model {
 	s := spinner.New()
@@ -97,8 +122,13 @@ func initialModel() model {
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	return model{
-		state:   stateMenu,
-		choices: []string{"Treinar a rede passo a passo", "Operar a rede", "Treinar e Mostrar rede", "Sair"},
+		state: stateMenu,
+		choices: []string{
+			"⚡ Treinar a rede passo a passo",
+			"🔍 Operar a rede",
+			"🚀 Treinar e Mostrar rede",
+			"🚪 Sair",
+		},
 		spinner: s,
 	}
 }
@@ -107,15 +137,22 @@ func (m model) Init() tea.Cmd {
 	return m.spinner.Tick
 }
 
+// =============================================================================
+// Mensagem de tick para animação do treinamento
+// =============================================================================
+
 type trainingTickMsg time.Time
 
 func tickTraining() tea.Cmd {
-	return tea.Tick(time.Millisecond*600, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Millisecond*500, func(t time.Time) tea.Msg {
 		return trainingTickMsg(t)
 	})
 }
 
-// Update recebe todas as mensagens (botões apertados, ticks de tempo, etc).
+// =============================================================================
+// Update — trata todas as mensagens (teclas, ticks, etc.)
+// =============================================================================
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
@@ -129,50 +166,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "up", "k":
-			if m.state == stateMenu {
-				if m.cursor > 0 {
-					m.cursor--
-				}
+			if m.state == stateMenu && m.cursor > 0 {
+				m.cursor--
 			}
 		case "down", "j":
-			if m.state == stateMenu {
-				if m.cursor < len(m.choices)-1 {
-					m.cursor++
-				}
+			if m.state == stateMenu && m.cursor < len(m.choices)-1 {
+				m.cursor++
 			}
 		case "enter", " ":
 			if m.state == stateMenu {
 				switch m.cursor {
-				case 0: // Treinar
+				case 0: // Treinar passo a passo
 					m.isAutoOperating = false
 					m.state = stateTraining
 					m.currentStepIdx = 0
-
-					// Prepara/Processa os cálculos matemáticos da rede
 					m.preparaTreinamento()
-
 					return m, tea.Batch(m.spinner.Tick, tickTraining())
+
 				case 1: // Operar
 					if !m.redeTreinada {
-						m.resultadoOperacao = errorStyle.Render("ERRO:") + " A rede ainda não foi treinada!\nTreine-a primeiro (Opção 1)."
+						m.resultadoOperacao = errorStyle.Render("⚠ ERRO:") +
+							" A rede ainda não foi treinada!\n  Treine-a primeiro (Opção 1)."
 					} else {
-						// Operando com os pesos gravados no 'model' internamente
 						m.resultadoOperacao = m.operar()
 					}
 					m.state = stateOperating
 					return m, nil
+
 				case 2: // Treinar e Operar
 					m.isAutoOperating = true
 					m.state = stateTraining
 					m.currentStepIdx = 0
-
 					m.preparaTreinamento()
-
 					return m, tea.Batch(m.spinner.Tick, tickTraining())
+
 				case 3: // Sair
 					return m, tea.Quit
 				}
 			} else if m.state == stateTraining {
+				// Se a animação já terminou, avança
 				if m.currentStepIdx >= len(m.trainingSteps) {
 					m.redeTreinada = true
 					m.state = stateTrainingDone
@@ -194,7 +226,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentStepIdx++
 				return m, tickTraining()
 			}
-			// Aguarda o usuário pressionar Enter (tratado no KeyMsg)
 			return m, nil
 		}
 
@@ -207,100 +238,126 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View é responsável por 'printar' (escrever os pixels da TUI) baseando-se no estado.
+// =============================================================================
+// View — renderiza a interface baseando-se no estado atual
+// =============================================================================
+
 func (m model) View() string {
 	var sb strings.Builder
 
-	// Header
-	sb.WriteString(titleStyle.Render(" PERCEPTRON - RECONHECIMENTO DE LETRAS "))
+	// ─── Header ───
+	sb.WriteString(titleStyle.Render(" 🧠 PERCEPTRON — RECONHECIMENTO DE LETRAS "))
 	sb.WriteString("\n")
-	sb.WriteString(subtitleStyle.Render("Redes Neurais Artificiais - Trabalho 02"))
+	sb.WriteString(subtitleStyle.Render("Redes Neurais Artificiais • Trabalho 02"))
 	sb.WriteString("\n\n")
 
 	switch m.state {
+
+	// ─── MENU PRINCIPAL ───
 	case stateMenu:
 		sb.WriteString("O que você deseja fazer?\n\n")
 
 		for i, choice := range m.choices {
-			cursor := " "
+			cursor := "  "
 			var style lipgloss.Style
 			if m.cursor == i {
-				cursor = ">"
+				cursor = "▸ "
 				style = selectedItemStyle
 			} else {
 				style = menuItemStyle
 			}
-			sb.WriteString(style.Render(fmt.Sprintf("%s %s", cursor, choice)) + "\n")
+			sb.WriteString(style.Render(cursor+choice) + "\n")
 		}
 
-		sb.WriteString("\n(Use setas para mover, Enter para selecionar, q para sair)")
+		sb.WriteString("\n")
+		sb.WriteString(hintStyle.Render("  ↑↓ mover • Enter selecionar • q sair"))
 
+	// ─── TREINAMENTO PASSO A PASSO ───
 	case stateTraining:
 		if m.currentStepIdx < len(m.trainingSteps) {
 			sb.WriteString(fmt.Sprintf("%s Treinando a rede...\n\n", m.spinner.View()))
 		} else {
-			sb.WriteString(successStyle.Render("✓ Treinamento finalizado.") + "\n\n")
+			sb.WriteString(successStyle.Render("✓ Treinamento finalizado!") + "\n\n")
 		}
 
-		// Chama as funções do main.go pra montar a matriz fixada na tela superior
-		strA := "Letra A (target = -1):\n\n" + formataLetra(letraA())
-		strB := "Letra B (target = 1):\n\n" + formataLetra(letraB())
+		// Letras A e B lado a lado em caixas
+		strA := infoStyle.Render("Letra A") + " (target = -1)\n\n" + formataLetra(letraA())
+		strB := infoStyle.Render("Letra B") + " (target =  1)\n\n" + formataLetra(letraB())
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxStyle.Render(strA), boxStyle.Render(strB)))
 		sb.WriteString("\n\n")
 
-		// Evita encher o buffer do terminal, renderiza apenas as últimas 5 execuções (logs de epochs)
+		// Mostra apenas os últimos 6 passos para não encher a tela
 		startIdx := 0
-		if m.currentStepIdx > 5 {
-			startIdx = m.currentStepIdx - 5
+		if m.currentStepIdx > 6 {
+			startIdx = m.currentStepIdx - 6
 		}
 
-		// Mostra histórico com as cores do Lipgloss
 		for i := startIdx; i < m.currentStepIdx; i++ {
 			step := m.trainingSteps[i]
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(strings.Repeat("-", 50)) + "\n")
-			sb.WriteString(fmt.Sprintf("Ciclo %d | Amostra: Letra %s\n", step.ciclo, step.amostra))
-			sb.WriteString(fmt.Sprintf("y_in (potencial) = %s\n", infoStyle.Render(fmt.Sprintf("%.4f", step.yIn))))
-			sb.WriteString(fmt.Sprintf("y    (ativacao)  = %d\n", step.y))
-			sb.WriteString(fmt.Sprintf("target           = %d\n", step.target))
+			sb.WriteString(dimStyle.Render(strings.Repeat("─", 52)) + "\n")
+			sb.WriteString(fmt.Sprintf("  Ciclo %s │ Amostra: Letra %s\n",
+				infoStyle.Render(fmt.Sprintf("%d", step.ciclo)),
+				infoStyle.Render(step.amostra)))
+			sb.WriteString(fmt.Sprintf("  y_in (potencial) = %s\n",
+				infoStyle.Render(fmt.Sprintf("%.4f", step.yLiq))))
+			sb.WriteString(fmt.Sprintf("  y    (ativação)  = %d\n", step.y))
+			sb.WriteString(fmt.Sprintf("  target           = %d\n", step.target))
 
 			if step.teveErro {
-				sb.WriteString(errorStyle.Render("Resultado: ERRO  → atualizando pesos") + "\n")
-				sb.WriteString(fmt.Sprintf("delta = %.4f | novo bias = %.4f\n", step.delta, step.novoBias))
+				sb.WriteString("  " + errorStyle.Render("✗ ERRO → atualizando pesos") + "\n")
+				sb.WriteString(fmt.Sprintf("  delta = %.4f │ novo bias = %.4f\n", step.delta, step.novoBias))
 			} else {
-				sb.WriteString(successStyle.Render("Resultado: OK    → pesos mantidos") + "\n")
+				sb.WriteString("  " + successStyle.Render("✓ OK   → pesos mantidos") + "\n")
 			}
 		}
 
 		if m.currentStepIdx == len(m.trainingSteps) {
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(strings.Repeat("=", 50)) + "\n")
-			sb.WriteString(successStyle.Render(fmt.Sprintf("Ciclo %d completo — nenhum erro. Convergência!", m.ciclosTreino)) + "\n\n")
-			sb.WriteString("Pressione Enter para prosseguir.")
+			sb.WriteString(dimStyle.Render(strings.Repeat("═", 52)) + "\n")
+			sb.WriteString(successStyle.Render(
+				fmt.Sprintf("  Ciclo %d completo — nenhum erro. Convergência!", m.ciclosTreino)) + "\n\n")
+			sb.WriteString(hintStyle.Render("  Pressione Enter para prosseguir"))
 		}
 
+	// ─── TREINO CONCLUÍDO ───
 	case stateTrainingDone:
 		sb.WriteString(successStyle.Render("✓ Rede Treinada com Sucesso!"))
-		sb.WriteString(fmt.Sprintf("\n\nConvergência alcançada em %s ciclos.", infoStyle.Render(fmt.Sprintf("%d", m.ciclosTreino))))
-		sb.WriteString(fmt.Sprintf("\nBias final ajustado: %s\n\n", infoStyle.Render(fmt.Sprintf("%.4f", m.bias))))
+		sb.WriteString(fmt.Sprintf("\n\n  Convergência alcançada em %s ciclos.",
+			infoStyle.Render(fmt.Sprintf("%d", m.ciclosTreino))))
+		sb.WriteString(fmt.Sprintf("\n  Bias final ajustado: %s\n\n",
+			infoStyle.Render(fmt.Sprintf("%.4f", m.bias))))
 
 		if m.isAutoOperating {
-			sb.WriteString("Pressione Enter para ver os testes de operação da rede.")
+			sb.WriteString(hintStyle.Render("  Pressione Enter para ver os testes de operação da rede"))
 		} else {
-			sb.WriteString("Pressione Enter para voltar ao menu.")
+			sb.WriteString(hintStyle.Render("  Pressione Enter para voltar ao menu"))
 		}
 
+	// ─── OPERAÇÃO / TESTE ───
 	case stateOperating:
-		sb.WriteString("--- Teste Final ---\n\n")
+		sb.WriteString(infoStyle.Render("── Teste Final ──") + "\n\n")
 		if m.redeTreinada {
-			sb.WriteString(fmt.Sprintf("Bias utilizado: %.4f\n\n", m.bias))
+			sb.WriteString(fmt.Sprintf("  Bias utilizado: %s\n\n",
+				infoStyle.Render(fmt.Sprintf("%.4f", m.bias))))
 		}
+
+		// Letras exibidas junto ao resultado
+		strA := infoStyle.Render("Letra A") + "\n\n" + formataLetra(letraA())
+		strB := infoStyle.Render("Letra B") + "\n\n" + formataLetra(letraB())
+		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxStyle.Render(strA), boxStyle.Render(strB)))
+		sb.WriteString("\n\n")
+
 		sb.WriteString(m.resultadoOperacao)
-		sb.WriteString("\n\nPressione Enter para voltar ao menu.")
+		sb.WriteString("\n\n")
+		sb.WriteString(hintStyle.Render("  Pressione Enter para voltar ao menu"))
 	}
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(sb.String())
 }
 
-// iniciarTUI é chamada pelo main()
+// =============================================================================
+// iniciarTUI — ponto de entrada da interface, chamada pelo main()
+// =============================================================================
+
 func iniciarTUI() {
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

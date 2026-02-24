@@ -1,0 +1,30 @@
+# Binários compilados de Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Binários sem extensão (Go build output)
+/Trab*/trab*
+/Trab*/main
+appemrust
+
+# Diretórios de teste e debug
+*.test
+*.out
+*.prof
+
+# Dependências (baixadas via go mod)
+vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
