@@ -1,4 +1,4 @@
-module trab03PT1
+module trab03
 
 go 1.24.3
 
