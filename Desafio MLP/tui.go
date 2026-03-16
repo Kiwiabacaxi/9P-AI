@@ -93,6 +93,7 @@ const (
 	stateTrainingDone              // resumo + curva de erro ASCII
 	stateSlide                     // 6 slides explicativos
 	stateResult                    // teste dos 3 padrões
+	stateWalkthrough               // passo a passo manual conta a conta
 )
 
 // =============================================================================
@@ -118,6 +119,12 @@ type model struct {
 
 	// animação de fase (forward vs backprop)
 	animPhase int // 0=forward, 1=backprop
+
+	// walkthrough — passo a passo manual
+	wtStep    int // sub-passo dentro do padrão atual (avança com →)
+	wtPadrao  int // padrão atual (0, 1, 2)
+	wtCiclo   int // ciclo atual sendo mostrado
+	wtMLP     MLP // estado dos pesos no início do ciclo atual
 }
 
 func initialModel() model {
@@ -133,6 +140,7 @@ func initialModel() model {
 
 	choices := []string{
 		"Treinar MLP            — diagrama animado",
+		"Passo a passo          — conta a conta ciclo 1",
 		"Ver slides explicativos — 6 slides",
 		"Testar rede            — 3 padrões",
 		"Sair",
@@ -249,6 +257,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateMenu
 				return m, nil
 			}
+
+		case stateWalkthrough:
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.state = stateMenu
+				return m, nil
+			case "right", "l", " ", "enter":
+				// avança um sub-passo; se acabou o padrão, vai para o próximo
+				m.wtStep++
+				if m.wtStep >= wtMaxSteps() {
+					m.wtStep = 0
+					// aplica o update dos pesos antes de avançar o padrão
+					fwd := forward(m.wtMLP, wtPadroes[m.wtPadrao])
+					bwd := backward(m.wtMLP, fwd, wtTargets[m.wtPadrao], wtPadroes[m.wtPadrao])
+					m.wtMLP = atualizarPesos(m.wtMLP, bwd)
+					m.wtPadrao++
+					if m.wtPadrao >= 3 {
+						m.wtPadrao = 0
+						m.wtCiclo++
+					}
+				}
+				return m, nil
+			case "left", "h":
+				if m.wtStep > 0 {
+					m.wtStep--
+				}
+				return m, nil
+			}
 		}
 
 	case trainingTickMsg:
@@ -292,13 +330,21 @@ func (m model) handleMenuEnter() (tea.Model, tea.Cmd) {
 		m.state = stateTraining
 		return m, tickTraining()
 
-	case 1: // Ver slides
+	case 1: // Passo a passo
+		m.state = stateWalkthrough
+		m.wtStep = 0
+		m.wtPadrao = 0
+		m.wtCiclo = 1
+		m.wtMLP = inicializarPesosSlide()
+		return m, nil
+
+	case 2: // Ver slides
 		m.state = stateSlide
 		m.slideIdx = 0
 		m.slideTotalStep = 0
 		return m, tickSlideReveal()
 
-	case 2: // Testar rede
+	case 3: // Testar rede
 		if m.resultado == nil {
 			res := treinarMLP()
 			m.resultado = &res
@@ -306,7 +352,7 @@ func (m model) handleMenuEnter() (tea.Model, tea.Cmd) {
 		m.state = stateResult
 		return m, nil
 
-	case 3: // Sair
+	case 4: // Sair
 		return m, tea.Quit
 	}
 	return m, nil
@@ -328,6 +374,8 @@ func (m model) View() string {
 		return m.viewSlide()
 	case stateResult:
 		return m.viewResult()
+	case stateWalkthrough:
+		return m.viewWalkthrough()
 	}
 	return ""
 }
@@ -1068,6 +1116,254 @@ func (m model) viewResult() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(hintStyle.Render("  enter/esc — voltar ao menu") + "\n")
+	return sb.String()
+}
+
+// =============================================================================
+// Walkthrough — passo a passo manual, conta a conta
+// =============================================================================
+
+// Padrões globais para o walkthrough (mesmo do treinarMLP)
+var wtPadroes = [3][N_IN]float64{
+	{1, 0.5, -1},
+	{1, 0.5, 1},
+	{1, -0.5, -1},
+}
+var wtTargets = [3][N_OUT]float64{
+	{1, -1, -1},
+	{-1, 1, -1},
+	{-1, -1, 1},
+}
+
+// Sub-passos por padrão — cada passo mostra uma linha extra da conta:
+//  0  cabeçalho / entradas
+//  1  zin₁ = ...
+//  2  z₁   = tanh(zin₁)
+//  3  zin₂ = ...
+//  4  z₂   = tanh(zin₂)
+//  5  yin₁ = ...
+//  6  y₁   = tanh(yin₁)
+//  7  yin₂ = ...
+//  8  y₂   = tanh(yin₂)
+//  9  yin₃ = ...
+// 10  y₃   = tanh(yin₃)
+// 11  E    = ½Σ(t-y)²
+// 12  δ₁   = (t₁-y₁)·f'(y₁)
+// 13  δ₂   = ...
+// 14  δ₃   = ...
+// 15  δin₁ = Σδₖ·w[0][k]
+// 16  δin₂ = Σδₖ·w[1][k]
+// 17  δ₁_oculta = δin₁·f'(z₁)
+// 18  δ₂_oculta = δin₂·f'(z₂)
+// 19  Δw (oculta→saída)
+// 20  Δv (entrada→oculta)
+// 21  pesos novos
+
+func wtMaxSteps() int { return 22 }
+
+func (m model) viewWalkthrough() string {
+	var sb strings.Builder
+
+	p := m.wtPadrao
+	s := m.wtStep
+
+	// Calcula forward/backward com os pesos atuais
+	fwd := forward(m.wtMLP, wtPadroes[p])
+	bwd := backward(m.wtMLP, fwd, wtTargets[p], wtPadroes[p])
+	x := wtPadroes[p]
+	t := wtTargets[p]
+
+	// Cabeçalho
+	header := titleStyle.Render(" Passo a Passo — MLP Backpropagation ")
+	sb.WriteString("\n  " + header + "\n\n")
+
+	// Indicador de ciclo/padrão
+	cicloStr := boldWhite.Render(fmt.Sprintf("Ciclo %d", m.wtCiclo))
+	padStr := labelStyle.Render(fmt.Sprintf("Padrão %d / 3", p+1))
+	stepStr := dimStyle.Render(fmt.Sprintf("(sub-passo %d/%d)", s+1, wtMaxSteps()))
+	sb.WriteString(fmt.Sprintf("  %s  │  %s  %s\n\n", cicloStr, padStr, stepStr))
+
+	// Entradas e targets sempre visíveis
+	sb.WriteString(boldWhite.Render("  Entradas:") + "\n")
+	for i := 0; i < N_IN; i++ {
+		sb.WriteString(infoStyle.Render(fmt.Sprintf("    x%d = %+.1f", i+1, x[i])) + "\n")
+	}
+	sb.WriteString(boldWhite.Render("  Targets:") + "\n")
+	for k := 0; k < N_OUT; k++ {
+		sb.WriteString(labelStyle.Render(fmt.Sprintf("    t%d = %+.1f", k+1, t[k])) + "\n")
+	}
+	sb.WriteString("\n")
+
+	// ── FORWARD PASS ──────────────────────────────────────────────────────────
+	sb.WriteString(infoStyle.Render("  ── FORWARD PASS ──") + "\n\n")
+
+	// Neurônio oculto 1
+	if s >= 1 {
+		zinExpr := fmt.Sprintf("  zin₁ = v0₁ + x₁·v₁₁ + x₂·v₂₁ + x₃·v₃₁")
+		zinVal := fmt.Sprintf("       = %.4f + (%.1f·%.4f) + (%.1f·%.4f) + (%.1f·%.4f)",
+			m.wtMLP.v0[0], x[0], m.wtMLP.v[0][0], x[1], m.wtMLP.v[1][0], x[2], m.wtMLP.v[2][0])
+		zinRes := fmt.Sprintf("       = %.6f", fwd.zin[0])
+		sb.WriteString(dimStyle.Render(zinExpr) + "\n")
+		sb.WriteString(dimStyle.Render(zinVal) + "\n")
+		sb.WriteString(infoStyle.Render(zinRes) + "\n")
+	}
+	if s >= 2 {
+		sb.WriteString(successStyle.Render(fmt.Sprintf("  z₁ = tanh(%.6f) = %.6f", fwd.zin[0], fwd.z[0])) + "\n")
+	}
+	sb.WriteString("\n")
+
+	// Neurônio oculto 2
+	if s >= 3 {
+		zinExpr := fmt.Sprintf("  zin₂ = v0₂ + x₁·v₁₂ + x₂·v₂₂ + x₃·v₃₂")
+		zinVal := fmt.Sprintf("       = %.4f + (%.1f·%.4f) + (%.1f·%.4f) + (%.1f·%.4f)",
+			m.wtMLP.v0[1], x[0], m.wtMLP.v[0][1], x[1], m.wtMLP.v[1][1], x[2], m.wtMLP.v[2][1])
+		zinRes := fmt.Sprintf("       = %.6f", fwd.zin[1])
+		sb.WriteString(dimStyle.Render(zinExpr) + "\n")
+		sb.WriteString(dimStyle.Render(zinVal) + "\n")
+		sb.WriteString(infoStyle.Render(zinRes) + "\n")
+	}
+	if s >= 4 {
+		sb.WriteString(successStyle.Render(fmt.Sprintf("  z₂ = tanh(%.6f) = %.6f", fwd.zin[1], fwd.z[1])) + "\n")
+	}
+	sb.WriteString("\n")
+
+	// Saídas (yin / y)
+	for k := 0; k < N_OUT; k++ {
+		baseStep := 5 + k*2 // passos 5,7,9
+		if s >= baseStep {
+			expr := fmt.Sprintf("  yin%d = w0%d + z₁·w₁%d + z₂·w₂%d", k+1, k+1, k+1, k+1)
+			val := fmt.Sprintf("       = %.4f + (%.6f·%.4f) + (%.6f·%.4f)",
+				m.wtMLP.w0[k], fwd.z[0], m.wtMLP.w[0][k], fwd.z[1], m.wtMLP.w[1][k])
+			res := fmt.Sprintf("       = %.6f", fwd.yin[k])
+			sb.WriteString(dimStyle.Render(expr) + "\n")
+			sb.WriteString(dimStyle.Render(val) + "\n")
+			sb.WriteString(infoStyle.Render(res) + "\n")
+		}
+		if s >= baseStep+1 {
+			correct := (fwd.y[k] > 0) == (t[k] > 0)
+			st := successStyle
+			if !correct {
+				st = errorStyle
+			}
+			sb.WriteString(st.Render(fmt.Sprintf("  y%d = tanh(%.6f) = %.6f  (t%d=%+.0f)", k+1, fwd.yin[k], fwd.y[k], k+1, t[k])) + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// Erro
+	if s >= 11 {
+		e := calcularErro(fwd.y, t)
+		expr := "  E = ½·[(t₁-y₁)² + (t₂-y₂)² + (t₃-y₃)²]"
+		val := fmt.Sprintf("    = ½·[(%.1f-%.4f)² + (%.1f-%.4f)² + (%.1f-%.4f)²]",
+			t[0], fwd.y[0], t[1], fwd.y[1], t[2], fwd.y[2])
+		res := fmt.Sprintf("    = %.6f", e)
+		sb.WriteString(warnStyle.Render(expr) + "\n")
+		sb.WriteString(dimStyle.Render(val) + "\n")
+		sb.WriteString(warnStyle.Render(res) + "\n\n")
+	}
+
+	// ── BACKPROP ──────────────────────────────────────────────────────────────
+	if s >= 12 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(neonYellow).Bold(true).Render("  ── BACKPROP ──") + "\n\n")
+	}
+
+	// δ saída
+	for k := 0; k < N_OUT; k++ {
+		if s >= 12+k {
+			expr := fmt.Sprintf("  δ%d = (t%d - y%d)·(1+y%d)(1-y%d)", k+1, k+1, k+1, k+1, k+1)
+			val := fmt.Sprintf("     = (%.1f - %.6f)·(1+%.6f)(1-%.6f)", t[k], fwd.y[k], fwd.y[k], fwd.y[k])
+			res := fmt.Sprintf("     = %.8f", bwd.deltaK[k])
+			sb.WriteString(dimStyle.Render(expr) + "\n")
+			sb.WriteString(dimStyle.Render(val) + "\n")
+			sb.WriteString(warnStyle.Render(res) + "\n\n")
+		}
+	}
+
+	// δin oculta
+	for j := 0; j < N_HID; j++ {
+		if s >= 15+j {
+			expr := fmt.Sprintf("  δin%d = δ₁·w[%d][0] + δ₂·w[%d][1] + δ₃·w[%d][2]", j+1, j, j, j)
+			val := fmt.Sprintf("       = %.6f·%.4f + %.6f·%.4f + %.6f·%.4f",
+				bwd.deltaK[0], m.wtMLP.w[j][0], bwd.deltaK[1], m.wtMLP.w[j][1], bwd.deltaK[2], m.wtMLP.w[j][2])
+			res := fmt.Sprintf("       = %.8f", bwd.deltaInJ[j])
+			sb.WriteString(dimStyle.Render(expr) + "\n")
+			sb.WriteString(dimStyle.Render(val) + "\n")
+			sb.WriteString(warnStyle.Render(res) + "\n\n")
+		}
+	}
+
+	// δ oculta
+	for j := 0; j < N_HID; j++ {
+		if s >= 17+j {
+			expr := fmt.Sprintf("  δ%d_oc = δin%d·(1+z%d)(1-z%d)", j+1, j+1, j+1, j+1)
+			val := fmt.Sprintf("        = %.8f·(1+%.6f)(1-%.6f)", bwd.deltaInJ[j], fwd.z[j], fwd.z[j])
+			res := fmt.Sprintf("        = %.8f", bwd.deltaJ[j])
+			sb.WriteString(dimStyle.Render(expr) + "\n")
+			sb.WriteString(dimStyle.Render(val) + "\n")
+			sb.WriteString(warnStyle.Render(res) + "\n\n")
+		}
+	}
+
+	// Δw
+	if s >= 19 {
+		sb.WriteString(labelStyle.Render("  Δw (oculta→saída):  Δwⱼₖ = α·δₖ·zⱼ") + "\n")
+		for j := 0; j < N_HID; j++ {
+			for k := 0; k < N_OUT; k++ {
+				sb.WriteString(dimStyle.Render(fmt.Sprintf(
+					"    Δw[%d][%d] = %.2f·%.8f·%.6f = %.8f",
+					j, k, ALFA, bwd.deltaK[k], fwd.z[j], bwd.deltaW[j][k])) + "\n")
+			}
+		}
+		for k := 0; k < N_OUT; k++ {
+			sb.WriteString(dimStyle.Render(fmt.Sprintf(
+				"    Δw0[%d]  = %.2f·%.8f = %.8f", k, ALFA, bwd.deltaK[k], bwd.deltaW0[k])) + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// Δv
+	if s >= 20 {
+		sb.WriteString(labelStyle.Render("  Δv (entrada→oculta): Δvᵢⱼ = α·δⱼ·xᵢ") + "\n")
+		for i := 0; i < N_IN; i++ {
+			for j := 0; j < N_HID; j++ {
+				sb.WriteString(dimStyle.Render(fmt.Sprintf(
+					"    Δv[%d][%d] = %.2f·%.8f·%.1f = %.8f",
+					i, j, ALFA, bwd.deltaJ[j], x[i], bwd.deltaV[i][j])) + "\n")
+			}
+		}
+		for j := 0; j < N_HID; j++ {
+			sb.WriteString(dimStyle.Render(fmt.Sprintf(
+				"    Δv0[%d]   = %.2f·%.8f = %.8f", j, ALFA, bwd.deltaJ[j], bwd.deltaV0[j])) + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// Pesos novos
+	if s >= 21 {
+		novoMLP := atualizarPesos(m.wtMLP, bwd)
+		sb.WriteString(successStyle.Render("  Pesos APÓS update:") + "\n")
+		sb.WriteString(dimStyle.Render("  v (entrada→oculta):") + "\n")
+		for i := 0; i < N_IN; i++ {
+			sb.WriteString(dimStyle.Render(fmt.Sprintf(
+				"    v[%d][0]=%+.6f  v[%d][1]=%+.6f", i, novoMLP.v[i][0], i, novoMLP.v[i][1])) + "\n")
+		}
+		sb.WriteString(dimStyle.Render(fmt.Sprintf(
+			"    v0=[%+.6f  %+.6f]", novoMLP.v0[0], novoMLP.v0[1])) + "\n\n")
+		sb.WriteString(dimStyle.Render("  w (oculta→saída):") + "\n")
+		for j := 0; j < N_HID; j++ {
+			sb.WriteString(dimStyle.Render(fmt.Sprintf(
+				"    w[%d]=[%+.6f  %+.6f  %+.6f]", j, novoMLP.w[j][0], novoMLP.w[j][1], novoMLP.w[j][2])) + "\n")
+		}
+		sb.WriteString(dimStyle.Render(fmt.Sprintf(
+			"    w0=[%+.6f  %+.6f  %+.6f]", novoMLP.w0[0], novoMLP.w0[1], novoMLP.w0[2])) + "\n\n")
+		sb.WriteString(warnStyle.Render("  → pressione → para avançar para o próximo padrão") + "\n")
+	}
+
+	// Rodapé
+	sb.WriteString("\n")
+	hint := fmt.Sprintf("  → próximo passo  ·  ← voltar  ·  esc menu  │  passo %d/%d", s+1, wtMaxSteps())
+	sb.WriteString(hintStyle.Render(hint) + "\n")
+
 	return sb.String()
 }
 
