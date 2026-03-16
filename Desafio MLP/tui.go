@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,6 +95,7 @@ const (
 	stateSlide                     // 6 slides explicativos
 	stateResult                    // teste dos 3 padrões
 	stateWalkthrough               // passo a passo manual conta a conta
+	stateTest                      // teste manual com entrada digitada pelo usuário
 )
 
 // =============================================================================
@@ -125,6 +127,11 @@ type model struct {
 	wtPadrao  int // padrão atual (0, 1, 2)
 	wtCiclo   int // ciclo atual sendo mostrado
 	wtMLP     MLP // estado dos pesos no início do ciclo atual
+
+	// teste manual
+	testInputs [N_IN]string    // strings digitadas pelo usuário
+	testCursor int              // qual campo está editando (0,1,2)
+	testResult *ForwardResult  // resultado do forward após confirmar
 }
 
 func initialModel() model {
@@ -143,6 +150,7 @@ func initialModel() model {
 		"Passo a passo          — conta a conta ciclo 1",
 		"Ver slides explicativos — 6 slides",
 		"Testar rede            — 3 padrões",
+		"Testar com entrada manual — digitar x1 x2 x3",
 		"Sair",
 	}
 
@@ -258,6 +266,58 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
+		case stateTest:
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.state = stateMenu
+				return m, nil
+			case "tab", "down", "j":
+				m.testCursor = (m.testCursor + 1) % N_IN
+				m.testResult = nil
+				return m, nil
+			case "shift+tab", "up", "k":
+				m.testCursor = (m.testCursor - 1 + N_IN) % N_IN
+				m.testResult = nil
+				return m, nil
+			case "enter":
+				// parse and run forward
+				var x [N_IN]float64
+				ok := true
+				for i := 0; i < N_IN; i++ {
+					v, err := strconv.ParseFloat(strings.TrimSpace(m.testInputs[i]), 64)
+					if err != nil {
+						ok = false
+						break
+					}
+					x[i] = v
+				}
+				if ok && m.resultado != nil {
+					res := forward(m.resultado.rede, x)
+					m.testResult = &res
+				}
+				return m, nil
+			case "backspace":
+				s := m.testInputs[m.testCursor]
+				if len(s) > 0 {
+					m.testInputs[m.testCursor] = s[:len(s)-1]
+					m.testResult = nil
+				}
+				return m, nil
+			default:
+				// accept digits, dot, minus, plus
+				ch := msg.String()
+				if len(ch) == 1 {
+					c := ch[0]
+					if c >= '0' && c <= '9' || c == '.' || c == '-' || c == '+' {
+						m.testInputs[m.testCursor] += ch
+						m.testResult = nil
+					}
+				}
+				return m, nil
+			}
+
 		case stateWalkthrough:
 			switch msg.String() {
 			case "ctrl+c":
@@ -352,7 +412,18 @@ func (m model) handleMenuEnter() (tea.Model, tea.Cmd) {
 		m.state = stateResult
 		return m, nil
 
-	case 4: // Sair
+	case 4: // Testar manual
+		if m.resultado == nil {
+			res := treinarMLP()
+			m.resultado = &res
+		}
+		m.state = stateTest
+		m.testInputs = [N_IN]string{"0.0", "0.0", "0.0"}
+		m.testCursor = 0
+		m.testResult = nil
+		return m, nil
+
+	case 5: // Sair
 		return m, tea.Quit
 	}
 	return m, nil
@@ -376,6 +447,8 @@ func (m model) View() string {
 		return m.viewResult()
 	case stateWalkthrough:
 		return m.viewWalkthrough()
+	case stateTest:
+		return m.viewTest()
 	}
 	return ""
 }
@@ -1364,6 +1437,85 @@ func (m model) viewWalkthrough() string {
 	hint := fmt.Sprintf("  → próximo passo  ·  ← voltar  ·  esc menu  │  passo %d/%d", s+1, wtMaxSteps())
 	sb.WriteString(hintStyle.Render(hint) + "\n")
 
+	return sb.String()
+}
+
+// =============================================================================
+// Teste Manual
+// =============================================================================
+
+func (m model) viewTest() string {
+	var sb strings.Builder
+
+	header := titleStyle.Render(" Teste Manual — Inserir Entrada ")
+	sb.WriteString("\n  " + header + "\n\n")
+
+	if m.resultado == nil {
+		sb.WriteString(warnStyle.Render("  Rede não treinada — treine primeiro.") + "\n")
+		return sb.String()
+	}
+
+	sb.WriteString(boldWhite.Render("  Digite os 3 valores de entrada (use ←→ tab para mover, enter para classificar):") + "\n\n")
+
+	labels := []string{"x₁", "x₂", "x₃"}
+	hints  := []string{"(ex: 1.0)", "(ex: 0.5 ou -0.5)", "(ex: -1.0 ou 1.0)"}
+	for i := 0; i < N_IN; i++ {
+		label := labelStyle.Render(fmt.Sprintf("  %s = ", labels[i]))
+		val := m.testInputs[i]
+		cursor := ""
+		if i == m.testCursor {
+			cursor = lipgloss.NewStyle().Foreground(neonCyan).Render("█")
+		}
+		box := ""
+		if i == m.testCursor {
+			box = thinBox.Render(val + cursor)
+		} else {
+			box = dimStyle.Render("[" + val + "]")
+		}
+		hint := hintStyle.Render("  " + hints[i])
+		sb.WriteString(label + box + hint + "\n")
+	}
+
+	sb.WriteString("\n")
+
+	if m.testResult != nil {
+		fwd := m.testResult
+		sb.WriteString(infoStyle.Render("  ── Resultado Forward Pass ──") + "\n\n")
+
+		// camada oculta
+		sb.WriteString(dimStyle.Render(fmt.Sprintf("  zin₁ = %+.6f  →  z₁ = %+.6f", fwd.zin[0], fwd.z[0])) + "\n")
+		sb.WriteString(dimStyle.Render(fmt.Sprintf("  zin₂ = %+.6f  →  z₂ = %+.6f", fwd.zin[1], fwd.z[1])) + "\n\n")
+
+		// saídas
+		sb.WriteString(boldWhite.Render("  Saídas:") + "\n")
+		best := 0
+		for k := 1; k < N_OUT; k++ {
+			if fwd.y[k] > fwd.y[best] {
+				best = k
+			}
+		}
+		for k := 0; k < N_OUT; k++ {
+			sign := "+"
+			if fwd.y[k] < 0 { sign = "-" }
+			_ = sign
+			st := dimStyle
+			marker := "  "
+			if k == best {
+				st = successStyle
+				marker = "▸ "
+			}
+			sb.WriteString(st.Render(fmt.Sprintf("  %sy%d = %+.6f", marker, k+1, fwd.y[k])) + "\n")
+		}
+
+		sb.WriteString("\n")
+		sb.WriteString(boldWhite.Render(fmt.Sprintf("  Classe detectada: y%d (maior ativação)", best+1)) + "\n")
+		sb.WriteString(dimStyle.Render("  (targets do treino: t1=classe1=[+1,-1,-1], t2=[-1,+1,-1], t3=[-1,-1,+1])") + "\n")
+	} else {
+		sb.WriteString(hintStyle.Render("  [pressione enter para classificar]") + "\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(hintStyle.Render("  tab/↑↓ — mover campo  ·  enter — classificar  ·  esc — voltar") + "\n")
 	return sb.String()
 }
 
