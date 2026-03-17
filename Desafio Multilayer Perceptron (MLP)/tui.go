@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -734,44 +735,58 @@ func (m model) viewTrainingDone() string {
 }
 
 // renderErroCurve — gráfico ASCII da curva de erro
+// renderErroCurve — gráfico ASCII com escala logarítmica no eixo Y.
+// Escala log é essencial para curvas de erro de redes neurais, que caem
+// exponencialmente — escala linear comprime toda a variação no fundo.
 func renderErroCurve(hist []float64, width, height int) string {
 	if len(hist) == 0 {
 		return ""
 	}
+	n := len(hist)
 
-	maxVal := hist[0]
-	minVal := hist[len(hist)-1]
-	if minVal < 0 {
-		minVal = 0
+	// 1 ponto por coluna, distribuído uniformemente pelo histórico
+	pts := make([]float64, width)
+	for col := 0; col < width; col++ {
+		idx := col * (n - 1) / (width - 1)
+		if idx >= n {
+			idx = n - 1
+		}
+		pts[col] = hist[idx]
 	}
 
-	// Amostra pontos para caber na largura
-	step := 1
-	if len(hist) > width {
-		step = len(hist) / width
+	// Escala logarítmica — transforma cada ponto em log(v)
+	logPts := make([]float64, width)
+	for i, v := range pts {
+		if v < 1e-10 {
+			v = 1e-10
+		}
+		logPts[i] = math.Log(v)
 	}
-	var pts []float64
-	for i := 0; i < len(hist); i += step {
-		pts = append(pts, hist[i])
+	logMax := logPts[0]
+	logMin := logPts[0]
+	for _, v := range logPts {
+		if v > logMax {
+			logMax = v
+		}
+		if v < logMin {
+			logMin = v
+		}
 	}
-	if len(pts) > width {
-		pts = pts[:width]
+	logRange := logMax - logMin
+	if logRange < 0.001 {
+		logRange = 0.001
 	}
 
 	// Monta grid
 	grid := make([][]rune, height)
 	for i := range grid {
-		grid[i] = make([]rune, len(pts))
+		grid[i] = make([]rune, width)
 		for j := range grid[i] {
 			grid[i][j] = ' '
 		}
 	}
-
-	for col, val := range pts {
-		norm := 0.0
-		if maxVal > minVal {
-			norm = (val - minVal) / (maxVal - minVal)
-		}
+	for col, lv := range logPts {
+		norm := (lv - logMin) / logRange
 		row := height - 1 - int(norm*float64(height-1))
 		if row < 0 {
 			row = 0
@@ -782,28 +797,33 @@ func renderErroCurve(hist []float64, width, height int) string {
 		grid[row][col] = '•'
 	}
 
+	dotStyle := lipgloss.NewStyle().Foreground(neonMagenta)
 	var sb strings.Builder
 	for row := 0; row < height; row++ {
-		label := "    "
+		label := "       "
 		if row == 0 {
-			label = fmt.Sprintf("%5.3f", maxVal)
+			label = fmt.Sprintf("%7.3f", pts[0])
 		} else if row == height-1 {
-			label = fmt.Sprintf("%5.3f", minVal)
+			label = fmt.Sprintf("%7.3f", pts[width-1])
 		}
 		sb.WriteString(dimStyle.Render(label))
 		sb.WriteString(dimStyle.Render("│"))
 		for _, ch := range grid[row] {
 			if ch == '•' {
-				sb.WriteString(lipgloss.NewStyle().Foreground(neonMagenta).Render("•"))
+				sb.WriteString(dotStyle.Render("•"))
 			} else {
 				sb.WriteString(" ")
 			}
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString(dimStyle.Render("      └" + strings.Repeat("─", len(pts)) + "\n"))
-	sb.WriteString(dimStyle.Render(fmt.Sprintf("       1%s%d ciclos\n",
-		strings.Repeat(" ", len(pts)-10), len(hist))))
+	sb.WriteString(dimStyle.Render("       └" + strings.Repeat("─", width) + "\n"))
+	padding := width - 12
+	if padding < 0 {
+		padding = 0
+	}
+	sb.WriteString(dimStyle.Render(fmt.Sprintf("        1%s%d ciclos  (escala log)\n",
+		strings.Repeat(" ", padding), n)))
 	return sb.String()
 }
 

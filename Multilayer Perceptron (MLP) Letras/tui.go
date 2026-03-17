@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -124,6 +125,7 @@ type model struct {
 	testGrade [N_IN]float64
 	testRow   int
 	testCol   int
+	mouseDown bool // arrastar com botão esquerdo pressionado
 }
 
 func initialModel() model {
@@ -167,6 +169,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.winW = msg.Width
 		m.winH = msg.Height
+
+	case tea.MouseMsg:
+		if m.state == stateTest {
+			isLeft := msg.Button == tea.MouseButtonLeft
+			switch {
+			case isLeft && msg.Action == tea.MouseActionPress:
+				m.mouseDown = true
+				m = m.paintAtMouse(msg.X, msg.Y, true)
+			case msg.Action == tea.MouseActionRelease:
+				m.mouseDown = false
+			case isLeft && msg.Action == tea.MouseActionMotion && m.mouseDown:
+				m = m.paintAtMouse(msg.X, msg.Y, false)
+			}
+		}
 
 	case tea.KeyMsg:
 		switch m.state {
@@ -302,17 +318,20 @@ func (m model) handleMenuEnter() (tea.Model, tea.Cmd) {
 // =============================================================================
 
 func (m model) View() string {
+	var inner string
 	switch m.state {
 	case stateMenu:
-		return m.viewMenu()
+		inner = m.viewMenu()
 	case stateTrainingDone:
-		return m.viewTrainingDone()
+		inner = m.viewTrainingDone()
 	case stateResult:
-		return m.viewResult()
+		inner = m.viewResult()
 	case stateTest:
-		return m.viewTest()
+		inner = m.viewTest()
 	}
-	return ""
+	// Mesmo padrão do Trab 03: container Padding(1,2) em todos os estados.
+	// Isso garante que os offsets de mouse sejam previsíveis e consistentes.
+	return lipgloss.NewStyle().Padding(1, 2).Render(inner)
 }
 
 // =============================================================================
@@ -393,42 +412,59 @@ func (m model) viewTrainingDone() string {
 }
 
 // renderErroCurve — gráfico ASCII da curva de erro
+// renderErroCurve — gráfico ASCII com escala logarítmica no eixo Y.
+// Escala log é essencial para curvas de erro de redes neurais, que caem
+// exponencialmente — escala linear comprime toda a variação no fundo.
 func renderErroCurve(hist []float64, width, height int) string {
 	if len(hist) == 0 {
 		return ""
 	}
 
-	maxVal := hist[0]
-	minVal := hist[len(hist)-1]
-	if minVal < 0 {
-		minVal = 0
+	// Amostra 1 ponto por coluna (distribui uniformemente)
+	pts := make([]float64, width)
+	n := len(hist)
+	for col := 0; col < width; col++ {
+		srcIdx := col * (n - 1) / (width - 1)
+		if srcIdx >= n {
+			srcIdx = n - 1
+		}
+		pts[col] = hist[srcIdx]
 	}
 
-	sampStep := 1
-	if len(hist) > width {
-		sampStep = len(hist) / width
-	}
-	var pts []float64
-	for i := 0; i < len(hist); i += sampStep {
-		pts = append(pts, hist[i])
-	}
-	if len(pts) > width {
-		pts = pts[:width]
+	// Converte para log — garante que valores > 0
+	logPts := make([]float64, width)
+	for i, v := range pts {
+		if v < 1e-10 {
+			v = 1e-10
+		}
+		logPts[i] = math.Log(v)
 	}
 
+	logMax := logPts[0]
+	logMin := logPts[0]
+	for _, v := range logPts {
+		if v > logMax {
+			logMax = v
+		}
+		if v < logMin {
+			logMin = v
+		}
+	}
+	logRange := logMax - logMin
+	if logRange < 0.001 {
+		logRange = 0.001
+	}
+
+	// Monta grid
 	grid := make([][]rune, height)
 	for i := range grid {
-		grid[i] = make([]rune, len(pts))
+		grid[i] = make([]rune, width)
 		for j := range grid[i] {
 			grid[i][j] = ' '
 		}
 	}
-
-	for col, val := range pts {
-		norm := 0.0
-		if maxVal > minVal {
-			norm = (val - minVal) / (maxVal - minVal)
-		}
+	for col, lv := range logPts {
+		norm := (lv - logMin) / logRange
 		row := height - 1 - int(norm*float64(height-1))
 		if row < 0 {
 			row = 0
@@ -440,31 +476,33 @@ func renderErroCurve(hist []float64, width, height int) string {
 	}
 
 	var sb strings.Builder
+	dotStyle := lipgloss.NewStyle().Foreground(neonMagenta)
 	for row := 0; row < height; row++ {
-		label := "    "
+		// label: valor real (não log) nas linhas de topo e fundo
+		label := "       "
 		if row == 0 {
-			label = fmt.Sprintf("%5.1f", maxVal)
+			label = fmt.Sprintf("%7.2f", pts[0]) // valor inicial (maior)
 		} else if row == height-1 {
-			label = fmt.Sprintf("%5.1f", minVal)
+			label = fmt.Sprintf("%7.3f", pts[width-1]) // valor final (menor)
 		}
 		sb.WriteString(dimStyle.Render(label))
 		sb.WriteString(dimStyle.Render("│"))
 		for _, ch := range grid[row] {
 			if ch == '•' {
-				sb.WriteString(lipgloss.NewStyle().Foreground(neonMagenta).Render("•"))
+				sb.WriteString(dotStyle.Render("•"))
 			} else {
 				sb.WriteString(" ")
 			}
 		}
 		sb.WriteString("\n")
 	}
-	padding := len(pts) - 10
+	sb.WriteString(dimStyle.Render("       └" + strings.Repeat("─", width) + "\n"))
+	padding := width - 12
 	if padding < 0 {
 		padding = 0
 	}
-	sb.WriteString(dimStyle.Render("      └" + strings.Repeat("─", len(pts)) + "\n"))
-	sb.WriteString(dimStyle.Render(fmt.Sprintf("       1%s%d ciclos\n",
-		strings.Repeat(" ", padding), len(hist))))
+	sb.WriteString(dimStyle.Render(fmt.Sprintf("        1%s%d ciclos  (escala log)\n",
+		strings.Repeat(" ", padding), n)))
 	return sb.String()
 }
 
@@ -551,6 +589,49 @@ func (m model) viewResult() string {
 // Teste interativo — grade 5×7 editável com cursor
 // =============================================================================
 
+// paintAtMouse — mapeia coordenadas do mouse para a célula da grade.
+// O layout do viewTest coloca a grade em:
+//   col = 2 + j*2   (2 chars de indent, depois cada célula ocupa 2 chars)
+//   row = gradeStartRow + i
+// gradeStartRow é calculado a partir do número de linhas antes da grade:
+//   linha 0: \n inicial
+//   linha 1: header
+//   linha 2: \n após header
+//   linha 3: label "Grade (cursor destacado):"
+//   linha 4+: pixels da grade
+// toggle=true alterna o pixel; toggle=false (drag) só acende.
+func (m model) paintAtMouse(mx, my int, toggle bool) model {
+	// Padding(1,2) do container + layout interno do viewTest:
+	//   row: 1(pad_top) + 1(\n) + 1(header) + 2(\n\n) + 1(label) = 6
+	//   col: 2(pad_left) + 2("  " indent) = 4, cada célula ocupa 2 chars
+	// Idêntico ao Trab 03 (gradeScreenRow=6, gradeScreenCol=4).
+	const gradeStartRow = 5
+	const gradeStartCol = 4
+
+	row := my - gradeStartRow
+	col := (mx - gradeStartCol) / 2
+
+	if row < 0 || row >= N_LINHAS || col < 0 || col >= N_COLUNAS {
+		return m
+	}
+
+	// move cursor de teclado para a posição clicada (feedback visual)
+	m.testRow = row
+	m.testCol = col
+
+	idx := row*N_COLUNAS + col
+	if toggle {
+		if m.testGrade[idx] > 0 {
+			m.testGrade[idx] = -1.0
+		} else {
+			m.testGrade[idx] = 1.0
+		}
+	} else {
+		m.testGrade[idx] = 1.0
+	}
+	return m
+}
+
 func (m model) viewTest() string {
 	var sb strings.Builder
 
@@ -597,7 +678,7 @@ func (m model) viewTest() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(hintStyle.Render("  ↑↓←→ mover cursor  ·  espaço/enter toggle  ·  r resetar  ·  q voltar") + "\n")
+	sb.WriteString(hintStyle.Render("  ↑↓←→ mover cursor  ·  espaço/enter toggle  ·  click/drag pintar  ·  r resetar  ·  q voltar") + "\n")
 	return sb.String()
 }
 
@@ -657,7 +738,7 @@ func renderConfBar(val float64, width int) string {
 // =============================================================================
 
 func runTUI() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Erro: %v\n", err)
 		os.Exit(1)
