@@ -462,7 +462,7 @@ func (m model) viewMenu() string {
 	var sb strings.Builder
 
 	title := titleStyle.Render(" MLP — Multilayer Perceptron ")
-	sub := subtitleStyle.Render("Backpropagation · Aula 05 · Prof. Jefferson")
+	sub := subtitleStyle.Render("Backpropagation · Aula 05 · Kiwi")
 	sb.WriteString("\n  " + title + "\n")
 	sb.WriteString("  " + sub + "\n\n")
 
@@ -1292,7 +1292,7 @@ func (m model) viewWalkthrough() string {
 
 	// Neurônio oculto 1
 	if s >= 1 {
-		zinExpr := fmt.Sprintf("  zin₁ = v0₁ + x₁·v₁₁ + x₂·v₂₁ + x₃·v₃₁")
+		zinExpr := "  zin₁ = v0₁ + x₁·v₁₁ + x₂·v₂₁ + x₃·v₃₁"
 		zinVal := fmt.Sprintf("       = %.4f + (%.1f·%.4f) + (%.1f·%.4f) + (%.1f·%.4f)",
 			m.wtMLP.v0[0], x[0], m.wtMLP.v[0][0], x[1], m.wtMLP.v[1][0], x[2], m.wtMLP.v[2][0])
 		zinRes := fmt.Sprintf("       = %.6f", fwd.zin[0])
@@ -1307,7 +1307,7 @@ func (m model) viewWalkthrough() string {
 
 	// Neurônio oculto 2
 	if s >= 3 {
-		zinExpr := fmt.Sprintf("  zin₂ = v0₂ + x₁·v₁₂ + x₂·v₂₂ + x₃·v₃₂")
+		zinExpr := "  zin₂ = v0₂ + x₁·v₁₂ + x₂·v₂₂ + x₃·v₃₂"
 		zinVal := fmt.Sprintf("       = %.4f + (%.1f·%.4f) + (%.1f·%.4f) + (%.1f·%.4f)",
 			m.wtMLP.v0[1], x[0], m.wtMLP.v[0][1], x[1], m.wtMLP.v[1][1], x[2], m.wtMLP.v[2][1])
 		zinRes := fmt.Sprintf("       = %.6f", fwd.zin[1])
