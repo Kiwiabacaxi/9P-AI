@@ -10,6 +10,8 @@ Repositório com os trabalhos práticos da disciplina de **Redes Neurais Artific
 | [`Trab 02 - PT 1`](./Trab%2002%20-%20PT%201/) | Perceptron | Reconhecimento de Letras A e B (grade 7×7) |
 | [`Trab 02 - PT 2`](./Trab%2002%20-%20PT%202/) | Perceptron | Portas Lógicas (AND, OR, NAND, NOR, XOR) |
 | [`Trab 03`](./Trab%2003/) | MADALINE | Reconhecimento de Letras A–M (grade 5×7) |
+| [`Desafios MLP/Desafio Multilayer Perceptron (MLP)`](./Desafios%20MLP/Desafio%20Multilayer%20Perceptron%20(MLP)/) | MLP | Treinamento e visualização passo a passo do MLP com TUI |
+| [`Desafios MLP/Multilayer Perceptron (MLP) Letras`](./Desafios%20MLP/Multilayer%20Perceptron%20(MLP)%20Letras/) | MLP | Reconhecimento de letras com MLP e entrada manual via TUI |
 | `slides/` | — | Slides das aulas em PDF |
 
 ## Como rodar
