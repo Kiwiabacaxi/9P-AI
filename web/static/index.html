@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RNA MISSION CONTROL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:           #10141a;
+  --surface-low:  #181c22;
+  --surface:      #1c2026;
+  --surface-high: #262a31;
+  --surface-top:  #31353c;
+  --primary:      #eaffde;
+  --primary-glow: #00ff00;
+  --primary-dim:  #77ff61;
+  --secondary:    #ffffff;
+  --cyan:         #00fbfb;
+  --pink:         #ff6ec7;
+  --on-surface:   #b9ccaf;
+  --font-mono:    'JetBrains Mono', monospace;
+  --font-head:    'Space Grotesk', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body { background: var(--bg); color: var(--primary); font-family: var(--font-head); min-height: 100vh; overflow-x: hidden; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--surface-top); }
+
+/* ── LAYOUT ── */
+.shell { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 48px 1fr; min-height: 100vh; }
+
+/* ── TOPBAR ── */
+.topbar { grid-column: 1 / -1; background: var(--surface-low); display: flex; align-items: center; padding: 0 24px; gap: 16px; }
+.topbar-logo { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--primary-glow); letter-spacing: 0.15em; text-transform: uppercase; }
+.topbar-sep { flex: 1; }
+.topbar-status { font-family: var(--font-mono); font-size: 10px; color: var(--on-surface); display: flex; align-items: center; gap: 20px; }
+.status-dot { display: inline-block; width: 6px; height: 6px; background: var(--surface-top); margin-right: 6px; }
+.status-dot.active { background: var(--primary-glow); box-shadow: 0 0 6px var(--primary-glow); }
+.status-dot.warn { background: var(--pink); }
+.pulse { width: 6px; height: 6px; background: var(--primary-dim); animation: blink 1.1s step-end infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── SIDEBAR ── */
+.sidebar { background: var(--surface-low); padding: 24px 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.sidebar-label { font-family: var(--font-mono); font-size: 9px; font-weight: 700; color: var(--on-surface); letter-spacing: 0.2em; text-transform: uppercase; padding: 0 20px 8px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); transition: color 100ms linear, background 100ms linear; position: relative; user-select: none; }
+.nav-item:hover { color: var(--primary); background: var(--surface); }
+.nav-item.active { color: var(--primary-glow); background: var(--surface); }
+.nav-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--pink); }
+.nav-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6; }
+.nav-item.active .nav-icon { opacity: 1; }
+.sidebar-divider { margin: 12px 20px; height: 1px; background: rgba(255,255,255,0.04); }
+.nav-badge { margin-left: auto; font-size: 9px; background: var(--surface-top); color: var(--on-surface); padding: 1px 5px; letter-spacing: 0.05em; }
+.nav-item.active .nav-badge { background: var(--primary-glow); color: #013a00; }
+
+/* ── MAIN ── */
+.main { background: var(--bg); overflow-y: auto; padding: 32px 40px; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* ── PAGE HEADER ── */
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 32px; }
+.page-title { font-size: 22px; font-weight: 600; color: var(--secondary); letter-spacing: -0.02em; line-height: 1.2; }
+.page-title span { color: var(--primary-glow); }
+.page-sub { font-family: var(--font-mono); font-size: 10px; color: var(--cyan); margin-top: 4px; letter-spacing: 0.05em; }
+
+/* ── GRID ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+/* ── CARD ── */
+.card { background: var(--surface); padding: 20px 24px; position: relative; }
+.card-title { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--cyan); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 16px; }
+.card-pulse { position: absolute; top: 12px; right: 12px; width: 6px; height: 6px; background: var(--primary-dim); animation: blink 1.1s step-end infinite; }
+
+/* ── METRIC ── */
+.metric-val { font-size: 32px; font-weight: 700; color: var(--secondary); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.metric-val.green { color: var(--primary-glow); text-shadow: 0 0 16px rgba(0,255,0,0.3); }
+.metric-val.pink { color: var(--pink); }
+.metric-val.cyan { color: var(--cyan); }
+.metric-label { font-family: var(--font-mono); font-size: 10px; color: var(--on-surface); margin-top: 4px; letter-spacing: 0.05em; }
+
+/* ── BUTTON ── */
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none; transition: box-shadow 100ms linear, opacity 100ms linear; user-select: none; }
+.btn-primary { background: linear-gradient(90deg, var(--primary-glow), var(--primary-dim)); color: #013a00; }
+.btn-primary:hover { box-shadow: 0 0 12px rgba(0,255,0,0.4); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.btn-ghost { background: transparent; color: var(--primary); outline: 1px solid rgba(234,255,222,0.2); }
+.btn-ghost:hover { outline-color: var(--primary-glow); box-shadow: 0 0 8px rgba(0,255,0,0.2); }
+.btn-ghost.active-chip { background: var(--surface-top); color: var(--primary-glow); outline-color: var(--primary-glow); }
+
+/* ── PORTA CHIPS ── */
+.porta-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.porta-chip { padding: 6px 14px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; cursor: pointer; background: var(--surface-high); color: var(--on-surface); border: none; transition: all 100ms linear; }
+.porta-chip:hover { background: var(--surface-top); color: var(--secondary); }
+.porta-chip.selected { background: var(--surface-top); color: var(--primary-glow); box-shadow: 0 0 8px rgba(0,255,0,0.2); }
+.porta-chip.trained::after { content: '✓'; margin-left: 5px; color: var(--primary-glow); }
+.porta-chip.xor-chip.trained::after { content: '✗'; color: var(--pink); }
+
+/* ── CHART ── */
+.chart-wrap { background: var(--surface-low); padding: 12px; margin-top: 12px; }
+canvas { width: 100%; height: 160px; display: block; }
+
+/* ── STEP EXPLORER ── */
+.step-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.step-counter { font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); }
+.step-info { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.step-block { background: var(--surface-low); padding: 12px 16px; }
+.step-block-title { font-family: var(--font-mono); font-size: 9px; color: var(--pink); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px; }
+.step-row { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); padding: 2px 0; }
+.step-row .val { color: var(--cyan); font-variant-numeric: tabular-nums; }
+.step-row .val.pos { color: var(--primary-glow); }
+.step-row .val.neg { color: var(--pink); }
+
+/* ── PIXEL GRID ── */
+.pixel-grid { display: grid; gap: 3px; user-select: none; }
+.pixel { background: var(--surface-high); cursor: pointer; transition: background 80ms linear; }
+.pixel.on { background: var(--pink); box-shadow: 0 0 6px rgba(255,110,199,0.5); }
+.pixel:hover { background: var(--surface-top); }
+.pixel.on:hover { background: #ff90d4; }
+
+/* ── PREVIEW GRID ── */
+.preview-grid { display: grid; gap: 1px; }
+.preview-pixel { background: var(--surface-high); }
+.preview-pixel.on { background: var(--pink); }
+
+/* ── LETTER BROWSER ── */
+.letter-browser { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+.letter-chip { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; background: var(--surface); color: var(--on-surface); cursor: pointer; transition: all 100ms linear; position: relative; }
+.letter-chip:hover { background: var(--surface-high); color: var(--secondary); }
+.letter-chip.active { background: var(--surface-high); color: var(--primary-glow); }
+.letter-chip.correct::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 4px; height: 4px; background: var(--primary-glow); }
+.letter-chip.wrong::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 4px; height: 4px; background: var(--pink); }
+
+/* ── LETTER SECTION ── */
+.letter-section { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: start; }
+.result-big { font-size: 72px; font-weight: 700; color: var(--primary-glow); line-height: 1; text-shadow: 0 0 24px rgba(0,255,0,0.4); min-height: 80px; }
+.result-label { font-family: var(--font-mono); font-size: 10px; color: var(--on-surface); margin-top: 4px; }
+
+/* ── CONF BARS ── */
+.conf-list { display: flex; flex-direction: column; gap: 6px; }
+.conf-row { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 11px; }
+.conf-letter { width: 16px; color: var(--secondary); font-weight: 700; }
+.conf-bar-wrap { flex: 1; height: 6px; background: var(--surface-low); overflow: hidden; }
+.conf-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary-glow), var(--primary-dim)); transition: width 200ms linear; }
+.conf-score { width: 60px; text-align: right; color: var(--cyan); font-variant-numeric: tabular-nums; }
+
+/* ── LOG ── */
+.log-panel { background: var(--surface-low); padding: 12px 16px; font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); height: 140px; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+.log-line { padding: 1px 0; }
+.log-line.ok  { color: var(--primary-glow); }
+.log-line.err { color: var(--pink); }
+.log-line.dim { color: var(--surface-top); }
+
+/* ── PROGRESS ── */
+.progress-wrap { margin-top: 12px; height: 3px; background: var(--surface-low); overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary-glow), var(--primary-dim)); width: 0%; transition: width 300ms linear; }
+
+/* ── TABLE ── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th { font-family: var(--font-mono); font-size: 9px; font-weight: 700; color: var(--on-surface); letter-spacing: 0.15em; text-transform: uppercase; text-align: left; padding: 8px 12px; background: var(--surface-low); }
+.data-table td { font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); padding: 7px 12px; border-top: 1px solid rgba(255,255,255,0.03); }
+.data-table tr:hover td { background: var(--surface-high); }
+.td-green { color: var(--primary-glow) !important; }
+.td-pink  { color: var(--pink) !important; }
+.td-cyan  { color: var(--cyan) !important; }
+.td-white { color: var(--secondary) !important; }
+
+/* ── TABS ── */
+.tabs { display: flex; gap: 2px; margin-bottom: 24px; }
+.tab { padding: 8px 20px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; cursor: pointer; background: var(--surface-low); color: var(--on-surface); border: none; text-transform: uppercase; transition: all 100ms linear; }
+.tab:hover { color: var(--secondary); background: var(--surface); }
+.tab.active { background: var(--surface); color: var(--primary-glow); position: relative; }
+.tab.active::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--pink); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── EMPTY / SPIN ── */
+.empty { padding: 48px 0; text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--surface-top); }
+.empty-icon { font-size: 28px; margin-bottom: 12px; opacity: 0.3; }
+.spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--surface-top); border-top-color: var(--primary-glow); animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── HEBB WEIGHTS DISPLAY ── */
+.weights-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.weight-box { background: var(--surface-low); padding: 12px 20px; text-align: center; }
+.weight-val { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--cyan); font-variant-numeric: tabular-nums; }
+.weight-lbl { font-family: var(--font-mono); font-size: 9px; color: var(--on-surface); margin-top: 2px; letter-spacing: 0.1em; }
+
+/* ── 7×7 preview ── */
+.preview-7x7 { display: grid; grid-template-columns: repeat(7, 10px); grid-template-rows: repeat(7, 10px); gap: 1px; }
+.preview-7x7 .preview-pixel { width: 10px; height: 10px; }
+
+/* ── TOAST ── */
+#toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface-top); color: var(--primary); font-family: var(--font-mono); font-size: 11px; padding: 10px 18px; opacity: 0; transition: opacity 200ms linear; pointer-events: none; z-index: 9999; }
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-logo">RNA_MISSION_CONTROL<span style="color:var(--on-surface)">_v2.0</span></div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-status">
+      <span><span class="status-dot" id="dot-hebb"></span>HEBB</span>
+      <span><span class="status-dot" id="dot-perc"></span>PERCEPTRON</span>
+      <span><span class="status-dot" id="dot-mad"></span>MADALINE</span>
+      <span><span class="status-dot" id="dot-mlp"></span>MLP</span>
+      <span><span class="status-dot" id="dot-ltr"></span>LETRAS</span>
+      <div class="pulse"></div>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-label">Algoritmos</div>
+    <div class="nav-item active" data-view="hebb">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="2"/><circle cx="3" cy="13" r="2"/><circle cx="13" cy="13" r="2"/><line x1="8" y1="5" x2="3" y2="11" stroke="currentColor" stroke-width="1.2"/><line x1="8" y1="5" x2="13" y2="11" stroke="currentColor" stroke-width="1.2"/></svg>
+      Hebb
+      <span class="nav-badge" id="badge-hebb">0/5</span>
+    </div>
+    <div class="nav-item" data-view="perceptron">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="3" cy="8" r="2"/><circle cx="13" cy="5" r="2"/><circle cx="13" cy="11" r="2"/><line x1="5" y1="8" x2="11" y2="5"/><line x1="5" y1="8" x2="11" y2="11"/></svg>
+      Perceptron
+    </div>
+    <div class="nav-item" data-view="madaline">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="4" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="14" cy="8" r="1.5"/><line x1="3.5" y1="8" x2="6.5" y2="4"/><line x1="3.5" y1="8" x2="6.5" y2="8"/><line x1="3.5" y1="8" x2="6.5" y2="12"/><line x1="9.5" y1="6" x2="12.5" y2="8"/><line x1="9.5" y1="8" x2="12.5" y2="8"/><line x1="9.5" y1="10" x2="12.5" y2="8"/></svg>
+      MADALINE
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-label">Desafios MLP</div>
+    <div class="nav-item" data-view="mlp">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="4" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="14" cy="6" r="1.5"/><circle cx="14" cy="10" r="1.5"/><line x1="3.5" y1="8" x2="6.5" y2="4" stroke="currentColor"/><line x1="3.5" y1="8" x2="6.5" y2="12" stroke="currentColor"/><line x1="9.5" y1="4" x2="12.5" y2="6" stroke="currentColor"/><line x1="9.5" y1="4" x2="12.5" y2="10" stroke="currentColor"/><line x1="9.5" y1="12" x2="12.5" y2="6" stroke="currentColor"/><line x1="9.5" y1="12" x2="12.5" y2="10" stroke="currentColor"/></svg>
+      MLP Desafio
+    </div>
+    <div class="nav-item" data-view="letras">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>
+      MLP Letras
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="nav-item" data-view="about">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 8 3zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-1 3h2v4H7V10z"/></svg>
+      Arquitetura
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ══════════════════════ VIEW: HEBB ══════════════════════ -->
+    <div class="view active" id="view-hebb">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Regra de <span>Hebb</span></div>
+          <div class="page-sub">2 entradas + bias · degrau bipolar · atualiza sempre · Trab 01</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="btn-hebb-all">TREINAR TODAS</button>
+        </div>
+      </div>
+
+      <div class="porta-chips" id="hebb-chips"></div>
+
+      <div id="hebb-empty" class="empty"><div class="empty-icon">◈</div><div>Selecione uma porta para treinar</div></div>
+      <div id="hebb-content" style="display:none">
+        <div class="grid-3" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-title">Pesos Finais</div>
+            <div class="weights-row">
+              <div class="weight-box"><div class="weight-val" id="hebb-w1">—</div><div class="weight-lbl">W1</div></div>
+              <div class="weight-box"><div class="weight-val" id="hebb-w2">—</div><div class="weight-lbl">W2</div></div>
+              <div class="weight-box"><div class="weight-val" id="hebb-bias">—</div><div class="weight-lbl">BIAS</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Acurácia</div>
+            <div class="metric-val green" id="hebb-acc">—</div>
+            <div class="metric-label">nos dados de treino</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Porta</div>
+            <div class="metric-val" id="hebb-porta-nome" style="color:var(--on-surface);font-size:28px">—</div>
+            <div class="metric-label" id="hebb-porta-desc"></div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Passos de Treinamento</div>
+            <table class="data-table">
+              <thead><tr><th>Amostra</th><th>X1</th><th>X2</th><th>Target</th><th>W1</th><th>W2</th><th>Bias</th></tr></thead>
+              <tbody id="hebb-steps-table"></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="card-title">Tabela Verdade — Resultado</div>
+            <table class="data-table">
+              <thead><tr><th>X1</th><th>X2</th><th>Target</th><th>y_in</th><th>Pred</th><th>OK</th></tr></thead>
+              <tbody id="hebb-testes-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ VIEW: PERCEPTRON ══════════════════════ -->
+    <div class="view" id="view-perceptron">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Perceptron <span>Delta</span></div>
+          <div class="page-sub">atualiza só no erro · convergência garantida (sep. linear) · Trab 02</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="perc-portas">PT2 — Portas Lógicas</button>
+        <button class="tab" data-tab="perc-letras">PT1 — Letras A/B</button>
+      </div>
+
+      <!-- PT2: Portas -->
+      <div class="tab-content active" id="tab-perc-portas">
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <div class="porta-chips" id="perc-chips" style="margin-bottom:0;flex:1"></div>
+          <button class="btn btn-ghost" id="btn-perc-all">TREINAR TODAS</button>
+        </div>
+
+        <div id="perc-empty" class="empty"><div class="empty-icon">◈</div><div>Selecione uma porta para treinar</div></div>
+        <div id="perc-content" style="display:none">
+          <div class="grid-3" style="margin-bottom:16px">
+            <div class="card">
+              <div class="card-title">Convergência</div>
+              <div class="metric-val" id="perc-conv" style="font-size:18px;color:var(--on-surface)">—</div>
+              <div class="metric-label"><span id="perc-ciclos">—</span> ciclos</div>
+            </div>
+            <div class="card">
+              <div class="card-title">Pesos Finais</div>
+              <div class="weights-row" style="margin-bottom:0">
+                <div class="weight-box"><div class="weight-val" id="perc-w1">—</div><div class="weight-lbl">W1</div></div>
+                <div class="weight-box"><div class="weight-val" id="perc-w2">—</div><div class="weight-lbl">W2</div></div>
+                <div class="weight-box"><div class="weight-val" id="perc-bias">—</div><div class="weight-lbl">BIAS</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Acurácia</div>
+              <div class="metric-val green" id="perc-acc">—</div>
+              <div class="metric-label">nos dados de treino</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-title">Explorador de Passos</div>
+            <div class="step-nav">
+              <button class="btn btn-ghost" id="btn-perc-prev" style="padding:6px 12px">◀</button>
+              <span class="step-counter" id="perc-step-counter">—</span>
+              <button class="btn btn-ghost" id="btn-perc-next" style="padding:6px 12px">▶</button>
+            </div>
+            <div id="perc-step-detail"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Tabela Verdade — Resultado</div>
+            <table class="data-table">
+              <thead><tr><th>X1</th><th>X2</th><th>Target</th><th>y_liq</th><th>Pred</th><th>OK</th></tr></thead>
+              <tbody id="perc-testes-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- PT1: Letras -->
+      <div class="tab-content" id="tab-perc-letras">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+          <button class="btn btn-primary" id="btn-perc-letras-train">
+            <span class="spin" id="spin-perc-letras" style="display:none"></span>
+            TREINAR REDE
+          </button>
+        </div>
+
+        <div id="perc-letras-empty" class="empty"><div class="empty-icon">◈</div><div>Treine a rede para ver resultados</div></div>
+        <div id="perc-letras-content" style="display:none">
+          <div class="grid-3" style="margin-bottom:16px">
+            <div class="card">
+              <div class="card-title">Convergência</div>
+              <div class="metric-val" id="pl-conv" style="font-size:18px;color:var(--on-surface)">—</div>
+              <div class="metric-label"><span id="pl-ciclos">—</span> ciclos</div>
+            </div>
+            <div class="card">
+              <div class="card-title">Acurácia</div>
+              <div class="metric-val green" id="pl-acc">—</div>
+              <div class="metric-label">A vs B</div>
+            </div>
+            <div class="card">
+              <div class="card-title">Bias Final</div>
+              <div class="metric-val cyan" id="pl-bias">—</div>
+              <div class="metric-label">viés ajustado</div>
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-bottom:16px">
+            <div class="card">
+              <div class="card-title">Letra A — Padrão 7×7</div>
+              <div style="display:flex;align-items:flex-start;gap:16px">
+                <div class="preview-7x7" id="pl-grid-a"></div>
+                <div id="pl-result-a" style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface)"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Letra B — Padrão 7×7</div>
+              <div style="display:flex;align-items:flex-start;gap:16px">
+                <div class="preview-7x7" id="pl-grid-b"></div>
+                <div id="pl-result-b" style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface)"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Últimos Passos de Treinamento</div>
+            <div class="step-nav">
+              <button class="btn btn-ghost" id="btn-pl-prev" style="padding:6px 12px">◀</button>
+              <span class="step-counter" id="pl-step-counter">—</span>
+              <button class="btn btn-ghost" id="btn-pl-next" style="padding:6px 12px">▶</button>
+            </div>
+            <div id="pl-step-detail"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ VIEW: MADALINE ══════════════════════ -->
+    <div class="view" id="view-madaline">
+      <div class="page-header">
+        <div>
+          <div class="page-title">MADALINE <span>A–M</span></div>
+          <div class="page-sub">35 entradas · 13 ADALINE · argmax · regra delta · Trab 03</div>
+        </div>
+        <button class="btn btn-primary" id="btn-mad-train">
+          <span class="spin" id="spin-mad" style="display:none"></span>
+          TREINAR REDE
+        </button>
+      </div>
+
+      <div class="grid-3" style="margin-bottom:16px">
+        <div class="card"><div class="card-pulse"></div><div class="card-title">Acurácia</div><div class="metric-val green" id="mad-acc">—</div><div class="metric-label">nos dados de treino</div></div>
+        <div class="card"><div class="card-title">Ciclos</div><div class="metric-val cyan" id="mad-ciclos">—</div><div class="metric-label">até convergência</div></div>
+        <div class="card"><div class="card-title">Status</div><div class="metric-val" id="mad-status" style="font-size:18px;color:var(--on-surface)">aguardando</div><div class="metric-label">estado da rede</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Log de Treinamento</div>
+        <div class="progress-wrap"><div class="progress-fill" id="mad-progress"></div></div>
+        <div class="log-panel" id="mad-log"><div class="log-line dim">// aguardando início do treinamento...</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Resultados por Letra</div>
+          <div class="letter-browser" id="mad-browser"><div class="empty" style="padding:12px 0;font-size:10px">Treine para ver resultados</div></div>
+          <div id="mad-preview" style="display:none">
+            <div style="display:flex;gap:16px;align-items:flex-start">
+              <div class="preview-grid" id="mad-preview-grid" style="grid-template-columns:repeat(5,10px);grid-template-rows:repeat(7,10px);gap:1px"></div>
+              <div>
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);margin-bottom:6px">
+                  Letra: <span id="mad-prev-letra" style="color:var(--secondary);font-weight:700"></span>
+                  &nbsp;→&nbsp; Pred: <span id="mad-prev-pred"></span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:11px">
+                  Score: <span id="mad-prev-score" style="color:var(--cyan)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Teste Manual — Grade 5×7</div>
+          <div class="letter-section">
+            <div>
+              <div class="pixel-grid" id="mad-pixel-grid" style="grid-template-columns:repeat(5,28px);grid-template-rows:repeat(7,28px)"></div>
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <button class="btn btn-ghost" id="btn-mad-clear" style="padding:6px 12px;font-size:10px">LIMPAR</button>
+                <button class="btn btn-primary" id="btn-mad-classify" style="padding:6px 12px;font-size:10px">CLASSIFICAR</button>
+              </div>
+            </div>
+            <div class="letter-controls">
+              <div><div class="result-big" id="mad-classify-result">?</div><div class="result-label" id="mad-classify-conf"></div></div>
+              <div class="conf-list" id="mad-conf-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ VIEW: MLP DESAFIO ══════════════════════ -->
+    <div class="view" id="view-mlp">
+      <div class="page-header">
+        <div>
+          <div class="page-title">MLP <span>Desafio</span></div>
+          <div class="page-sub">3 entradas · 2 ocultos · 3 saídas · tanh · backpropagation</div>
+        </div>
+        <button class="btn btn-primary" id="btn-mlp-train">
+          <span class="spin" id="spin-mlp" style="display:none"></span>
+          TREINAR REDE
+        </button>
+      </div>
+
+      <div class="grid-3" style="margin-bottom:16px">
+        <div class="card"><div class="card-pulse"></div><div class="card-title">Ciclos</div><div class="metric-val green" id="mlp-ciclos">—</div><div class="metric-label">convergência</div></div>
+        <div class="card"><div class="card-title">Erro Final</div><div class="metric-val cyan" id="mlp-erro">—</div><div class="metric-label">quadrático total</div></div>
+        <div class="card"><div class="card-title">Status</div><div class="metric-val" id="mlp-status" style="font-size:18px;color:var(--on-surface)">aguardando</div><div class="metric-label">estado da rede</div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">Curva de Erro — escala log</div>
+          <div class="chart-wrap"><canvas id="mlp-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Explorador de Backprop</div>
+          <div id="mlp-steps-empty" class="empty" style="padding:24px 0"><div class="empty-icon">◈</div><div>Treine a rede para explorar os passos</div></div>
+          <div id="mlp-steps-content" style="display:none">
+            <div class="step-nav">
+              <button class="btn btn-ghost" id="btn-step-prev" style="padding:6px 12px">◀</button>
+              <span class="step-counter" id="step-counter">—</span>
+              <button class="btn btn-ghost" id="btn-step-next" style="padding:6px 12px">▶</button>
+            </div>
+            <div class="step-info" id="step-info"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Padrões de Treinamento</div>
+        <table class="data-table">
+          <thead><tr><th>Padrão</th><th>x₁</th><th>x₂</th><th>x₃</th><th>t₁</th><th>t₂</th><th>t₃</th><th>y₁</th><th>y₂</th><th>y₃</th><th>Classe</th></tr></thead>
+          <tbody id="mlp-table"><tr><td colspan="11" style="text-align:center;color:var(--surface-top);padding:20px">— treine para ver resultados —</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ VIEW: MLP LETRAS ══════════════════════ -->
+    <div class="view" id="view-letras">
+      <div class="page-header">
+        <div>
+          <div class="page-title">MLP <span>Letras</span></div>
+          <div class="page-sub">35 entradas · 15 ocultos · 26 saídas · reconhecimento A–Z</div>
+        </div>
+        <button class="btn btn-primary" id="btn-ltr-train">
+          <span class="spin" id="spin-ltr" style="display:none"></span>
+          TREINAR REDE
+        </button>
+      </div>
+
+      <div class="grid-3" style="margin-bottom:16px">
+        <div class="card"><div class="card-pulse"></div><div class="card-title">Acurácia</div><div class="metric-val green" id="ltr-acc">—</div><div class="metric-label">nos dados de treino</div></div>
+        <div class="card"><div class="card-title">Ciclos</div><div class="metric-val cyan" id="ltr-ciclos">—</div><div class="metric-label">até convergência</div></div>
+        <div class="card"><div class="card-title">Erro Final</div><div class="metric-val" id="ltr-erro" style="font-size:24px;color:var(--on-surface)">—</div><div class="metric-label">quadrático total</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Log de Treinamento</div>
+        <div class="progress-wrap"><div class="progress-fill" id="ltr-progress"></div></div>
+        <div class="log-panel" id="ltr-log"><div class="log-line dim">// aguardando início do treinamento...</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Curva de Erro — escala log</div>
+        <div class="chart-wrap"><canvas id="ltr-chart"></canvas></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Resultados por Letra</div>
+          <div class="letter-browser" id="ltr-browser"><div class="empty" style="padding:12px 0;font-size:10px">Treine a rede para ver resultados</div></div>
+          <div id="ltr-preview" style="display:none">
+            <div style="display:flex;gap:16px;align-items:flex-start">
+              <div class="preview-grid" id="ltr-preview-grid" style="grid-template-columns:repeat(5,8px);grid-template-rows:repeat(7,8px);gap:1px"></div>
+              <div>
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);margin-bottom:6px">Letra: <span id="ltr-prev-letra" style="color:var(--secondary);font-weight:700"></span> &nbsp;→&nbsp; Pred: <span id="ltr-prev-pred"></span></div>
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface)">Conf: <span id="ltr-prev-conf" style="color:var(--cyan)"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Teste Manual — Grade 5×7</div>
+          <div class="letter-section">
+            <div>
+              <div class="pixel-grid" id="pixel-grid" style="grid-template-columns:repeat(5,28px);grid-template-rows:repeat(7,28px)"></div>
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <button class="btn btn-ghost" id="btn-grid-clear" style="padding:6px 12px;font-size:10px">LIMPAR</button>
+                <button class="btn btn-primary" id="btn-grid-classify" style="padding:6px 12px;font-size:10px">CLASSIFICAR</button>
+              </div>
+            </div>
+            <div class="letter-controls">
+              <div><div class="result-big" id="classify-result">?</div><div class="result-label" id="classify-conf"></div></div>
+              <div class="conf-list" id="conf-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ VIEW: ABOUT ══════════════════════ -->
+    <div class="view" id="view-about">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Arquitetura <span>RNA</span></div>
+          <div class="page-sub">Visão comparativa de todos os algoritmos da disciplina</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Comparativo Geral</div>
+        <table class="data-table">
+          <thead><tr><th>Algoritmo</th><th>Trab</th><th>Entradas</th><th>Camadas</th><th>Ativação</th><th>Aprende quando</th><th>Convergência</th></tr></thead>
+          <tbody>
+            <tr><td class="td-cyan">Hebb</td><td>01</td><td>2 + bias</td><td>1</td><td>Degrau bipolar</td><td class="td-white">Sempre</td><td class="td-pink">Não garantida</td></tr>
+            <tr><td class="td-cyan">Perceptron Portas</td><td>02 PT2</td><td>2 + bias</td><td>1</td><td>Degrau bipolar</td><td class="td-white">Só no erro</td><td class="td-green">Garantida (sep. linear)</td></tr>
+            <tr><td class="td-cyan">Perceptron Letras</td><td>02 PT1</td><td>49 + bias</td><td>1</td><td>Degrau bipolar</td><td class="td-white">Só no erro</td><td class="td-green">Garantida (sep. linear)</td></tr>
+            <tr><td class="td-cyan">MADALINE</td><td>03</td><td>35</td><td>2 (13 ADALINE)</td><td>Degrau bipolar</td><td class="td-white">Argmin erro</td><td class="td-green">Garantida (sep. linear)</td></tr>
+            <tr><td class="td-cyan">MLP Desafio</td><td>D1</td><td>3</td><td>3 (2 ocultos)</td><td>tanh</td><td class="td-white">Backpropagation</td><td class="td-green">Geralmente sim</td></tr>
+            <tr><td class="td-cyan">MLP Letras</td><td>D2</td><td>35</td><td>3 (15 ocultos)</td><td>tanh</td><td class="td-white">Backpropagation</td><td class="td-green">Geralmente sim</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">Hebb vs Perceptron</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:2">
+            <div><span style="color:var(--pink)">Hebb:</span> &nbsp;&nbsp;&nbsp;&nbsp;w = w + (x · target)</div>
+            <div style="color:var(--surface-top)">// atualiza sempre, use target direto</div>
+            <br/>
+            <div><span style="color:var(--pink)">Perceptron:</span> w = w + α·(t−y)·x</div>
+            <div style="color:var(--surface-top)">// atualiza só se y ≠ target</div>
+            <div style="color:var(--surface-top)">// repete ciclos até convergir</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">MLP — Backpropagation</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:1.8">
+            <div><span style="color:var(--pink)">Forward:</span> &nbsp;y = tanh(w·x + b)</div>
+            <div><span style="color:var(--pink)">δ saída:</span> &nbsp;(t−y) · f'(y)</div>
+            <div><span style="color:var(--pink)">δ oculta:</span> Σδ·w · f'(z)</div>
+            <div><span style="color:var(--pink)">Update:</span> &nbsp; Δw = α · δ · entrada</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:8080/api';
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('view-' + item.dataset.view).classList.add('active');
+  });
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const parent = tab.closest('.view, .tab-content')?.parentElement || tab.parentElement;
+    parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Toast ───────────────────────────────────────────────────────────────────
+function toast(msg, dur = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Status polling ──────────────────────────────────────────────────────────
+async function refreshStatus() {
+  try {
+    const s = await fetch(API + '/status').then(r => r.json());
+    setDot('dot-hebb',  s.hebbCount >= 5);
+    setDot('dot-perc',  s.percPortaCount >= 5 || s.percLetrasDone, s.percPortaCount > 0 || s.percLetrasDone);
+    setDot('dot-mad',   s.madTrained, s.madTraining);
+    setDot('dot-mlp',   s.mlpTrained);
+    setDot('dot-ltr',   s.letrasTrained, s.ltrTraining);
+    document.getElementById('badge-hebb').textContent = s.hebbCount + '/5';
+  } catch(_) {}
+}
+function setDot(id, active, warn = false) {
+  const el = document.getElementById(id);
+  el.className = 'status-dot' + (active ? ' active' : (warn ? ' warn' : ''));
+}
+refreshStatus();
+setInterval(refreshStatus, 3000);
+
+// ── Chart ────────────────────────────────────────────────────────────────────
+function drawLogChart(canvasId, data, color = '#00ff00') {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data?.length) return;
+  const W = canvas.offsetWidth || 400, H = canvas.offsetHeight || 160;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const logData = data.map(v => Math.log(Math.max(v, 1e-10)));
+  const logMin = Math.min(...logData), logMax = Math.max(...logData);
+  const range = logMax - logMin || 0.001;
+  const pad = {t:8,r:8,b:8,l:8};
+  const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#181c22'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++){const y=pad.t+(i/4)*h;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+w,y);ctx.stroke();}
+  ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.shadowColor = color; ctx.shadowBlur = 4;
+  for (let i=0;i<data.length;i++){
+    const x=pad.l+(i/(data.length-1))*w;
+    const norm=(logData[i]-logMin)/range;
+    const y=pad.t+(1-norm)*h;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.lineTo(pad.l+w,pad.t+h); ctx.lineTo(pad.l,pad.t+h); ctx.closePath();
+  const grad=ctx.createLinearGradient(0,pad.t,0,pad.t+h);
+  grad.addColorStop(0,color+'33'); grad.addColorStop(1,color+'00');
+  ctx.fillStyle=grad; ctx.fill();
+}
+
+// ── Pixel grid factory ───────────────────────────────────────────────────────
+function makePixelGrid(containerId, cols, rows, size = 28) {
+  const container = document.getElementById(containerId);
+  container.style.gridTemplateColumns = `repeat(${cols}, ${size}px)`;
+  container.style.gridTemplateRows = `repeat(${rows}, ${size}px)`;
+  const pixels = [];
+  let drawing = false;
+  for (let i = 0; i < cols * rows; i++) {
+    const px = document.createElement('div');
+    px.className = 'pixel';
+    px.style.width = size + 'px'; px.style.height = size + 'px';
+    pixels.push(px);
+    container.appendChild(px);
+  }
+  container.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('pixel')) { drawing = true; e.target.classList.toggle('on'); e.preventDefault(); }
+  });
+  container.addEventListener('mousemove', e => {
+    if (drawing && e.target.classList.contains('pixel')) e.target.classList.add('on');
+  });
+  document.addEventListener('mouseup', () => { drawing = false; });
+  return pixels;
+}
+
+function getGrade(pixels) { return pixels.map(p => p.classList.contains('on') ? 1.0 : -1.0); }
+function clearPixels(pixels) { pixels.forEach(p => p.classList.remove('on')); }
+
+function makePreviewGrid(containerId, cols, rows, size = 8) {
+  const container = document.getElementById(containerId);
+  container.style.gridTemplateColumns = `repeat(${cols}, ${size}px)`;
+  container.style.gridTemplateRows = `repeat(${rows}, ${size}px)`;
+  container.innerHTML = '';
+  const pixels = [];
+  for (let i = 0; i < cols * rows; i++) {
+    const px = document.createElement('div');
+    px.className = 'preview-pixel';
+    px.style.width = size + 'px'; px.style.height = size + 'px';
+    pixels.push(px);
+    container.appendChild(px);
+  }
+  return pixels;
+}
+
+function fillPreview(pixels, grade) {
+  grade.forEach((v, i) => { pixels[i].classList.toggle('on', v > 0); });
+}
+
+function renderConfBars(containerId, top5, normFn = v => (v + 1) / 2) {
+  const list = document.getElementById(containerId);
+  list.innerHTML = '';
+  top5.forEach(c => {
+    const norm = Math.max(0, Math.min(1, normFn(c.score ?? c.Score)));
+    const letra = c.letra ?? c.Letra;
+    const div = document.createElement('div');
+    div.className = 'conf-row';
+    div.innerHTML = `<span class="conf-letter">${letra}</span>
+      <div class="conf-bar-wrap"><div class="conf-bar-fill" style="width:${(norm*100).toFixed(1)}%"></div></div>
+      <span class="conf-score">${(c.score ?? c.Score).toFixed(4)}</span>`;
+    list.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HEBB
+// ═══════════════════════════════════════════════════════════════════════════
+const PORTAS = ['AND','OR','NAND','NOR','XOR'];
+let hebbCurrentPorta = null;
+const hebbResults = {};
+
+function buildHebbChips() {
+  const container = document.getElementById('hebb-chips');
+  container.innerHTML = '';
+  PORTAS.forEach(nome => {
+    const chip = document.createElement('button');
+    chip.className = 'porta-chip' + (nome === 'XOR' ? ' xor-chip' : '');
+    chip.textContent = nome;
+    chip.dataset.porta = nome;
+    chip.addEventListener('click', () => trainHebb(nome));
+    container.appendChild(chip);
+  });
+}
+buildHebbChips();
+
+async function trainHebb(porta) {
+  try {
+    const res = await fetch(`${API}/hebb/train?porta=${porta}`, { method: 'POST' }).then(r => r.json());
+    hebbResults[porta] = res;
+    updateHebbChips();
+    showHebbResult(porta, res);
+    refreshStatus();
+    toast('Hebb ' + porta + ' treinado');
+  } catch(e) { toast('Erro: ' + e.message); }
+}
+
+document.getElementById('btn-hebb-all').addEventListener('click', async () => {
+  for (const p of PORTAS) await trainHebb(p);
+});
+
+function updateHebbChips() {
+  document.querySelectorAll('#hebb-chips .porta-chip').forEach(chip => {
+    const nome = chip.dataset.porta;
+    chip.classList.toggle('trained', !!hebbResults[nome]);
+    chip.classList.toggle('selected', nome === hebbCurrentPorta);
+  });
+}
+
+function showHebbResult(porta, res) {
+  hebbCurrentPorta = porta;
+  updateHebbChips();
+  document.getElementById('hebb-empty').style.display = 'none';
+  document.getElementById('hebb-content').style.display = 'block';
+
+  document.getElementById('hebb-w1').textContent = res.w1.toFixed(1);
+  document.getElementById('hebb-w2').textContent = res.w2.toFixed(1);
+  document.getElementById('hebb-bias').textContent = res.bias.toFixed(1);
+  document.getElementById('hebb-acc').textContent = res.acuracia.toFixed(0) + '%';
+  document.getElementById('hebb-porta-nome').textContent = res.porta;
+  document.getElementById('hebb-acc').className = 'metric-val ' + (res.acuracia === 100 ? 'green' : 'pink');
+
+  const stBody = document.getElementById('hebb-steps-table');
+  stBody.innerHTML = '';
+  res.steps.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="td-cyan">A${s.amostra}</td>
+      <td>${s.x1}</td><td>${s.x2}</td><td class="td-white">${s.target}</td>
+      <td class="td-cyan">${s.w1.toFixed(1)}</td>
+      <td class="td-cyan">${s.w2.toFixed(1)}</td>
+      <td class="td-cyan">${s.bias.toFixed(1)}</td>`;
+    stBody.appendChild(tr);
+  });
+
+  const tBody = document.getElementById('hebb-testes-table');
+  tBody.innerHTML = '';
+  res.testes.forEach(t => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.x1}</td><td>${t.x2}</td>
+      <td class="td-white">${t.target}</td>
+      <td class="td-cyan">${t.yIn.toFixed(2)}</td>
+      <td class="${t.predicao >= 0 ? 'td-green' : 'td-pink'}">${t.predicao}</td>
+      <td class="${t.acertou ? 'td-green' : 'td-pink'}">${t.acertou ? '✓' : '✗'}</td>`;
+    tBody.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PERCEPTRON PORTAS
+// ═══════════════════════════════════════════════════════════════════════════
+let percCurrentPorta = null;
+const percResults = {};
+let percStepIdx = 0;
+
+function buildPercChips() {
+  const container = document.getElementById('perc-chips');
+  container.innerHTML = '';
+  PORTAS.forEach(nome => {
+    const chip = document.createElement('button');
+    chip.className = 'porta-chip' + (nome === 'XOR' ? ' xor-chip' : '');
+    chip.textContent = nome;
+    chip.dataset.porta = nome;
+    chip.addEventListener('click', () => trainPercPorta(nome));
+    container.appendChild(chip);
+  });
+}
+buildPercChips();
+
+async function trainPercPorta(porta) {
+  try {
+    const res = await fetch(`${API}/perceptron-portas/train?porta=${porta}`, { method: 'POST' }).then(r => r.json());
+    percResults[porta] = res;
+    updatePercChips();
+    showPercResult(porta, res);
+    refreshStatus();
+    toast('Perceptron ' + porta + ' treinado');
+  } catch(e) { toast('Erro: ' + e.message); }
+}
+
+document.getElementById('btn-perc-all').addEventListener('click', async () => {
+  for (const p of PORTAS) await trainPercPorta(p);
+});
+
+function updatePercChips() {
+  document.querySelectorAll('#perc-chips .porta-chip').forEach(chip => {
+    const nome = chip.dataset.porta;
+    chip.classList.toggle('trained', !!percResults[nome]);
+    chip.classList.toggle('selected', nome === percCurrentPorta);
+  });
+}
+
+function showPercResult(porta, res) {
+  percCurrentPorta = porta;
+  percStepIdx = res.steps.length - 1;
+  updatePercChips();
+
+  document.getElementById('perc-empty').style.display = 'none';
+  document.getElementById('perc-content').style.display = 'block';
+
+  const convEl = document.getElementById('perc-conv');
+  convEl.textContent = res.convergiu ? '✓ convergiu' : '✗ não convergiu';
+  convEl.style.color = res.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
+  document.getElementById('perc-ciclos').textContent = res.ciclos;
+  document.getElementById('perc-w1').textContent = res.w1.toFixed(4);
+  document.getElementById('perc-w2').textContent = res.w2.toFixed(4);
+  document.getElementById('perc-bias').textContent = res.bias.toFixed(4);
+  document.getElementById('perc-acc').textContent = res.acuracia.toFixed(0) + '%';
+  document.getElementById('perc-acc').className = 'metric-val ' + (res.acuracia === 100 ? 'green' : 'pink');
+
+  renderPercStep();
+
+  const tBody = document.getElementById('perc-testes-table');
+  tBody.innerHTML = '';
+  res.testes.forEach(t => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.x1}</td><td>${t.x2}</td>
+      <td class="td-white">${t.target}</td>
+      <td class="td-cyan">${t.yLiq.toFixed(4)}</td>
+      <td class="${t.predicao >= 0 ? 'td-green' : 'td-pink'}">${t.predicao}</td>
+      <td class="${t.acertou ? 'td-green' : 'td-pink'}">${t.acertou ? '✓' : '✗'}</td>`;
+    tBody.appendChild(tr);
+  });
+}
+
+function renderPercStep() {
+  const res = percResults[percCurrentPorta];
+  if (!res) return;
+  const s = res.steps[percStepIdx];
+  document.getElementById('perc-step-counter').textContent =
+    `ciclo ${s.ciclo} · amostra ${s.amostra} · passo ${percStepIdx+1}/${res.steps.length}`;
+  const fmtV = v => `<span class="val ${v>=0?'pos':'neg'}">${v.toFixed(4)}</span>`;
+  document.getElementById('perc-step-detail').innerHTML = `
+    <div class="step-info">
+      <div class="step-block">
+        <div class="step-block-title">Entrada</div>
+        <div class="step-row"><span>x1, x2</span><span class="val">${s.x1}, ${s.x2}</span></div>
+        <div class="step-row"><span>target</span><span class="val">${s.target}</span></div>
+        <div class="step-row"><span>y_liq</span>${fmtV(s.yLiq)}</div>
+        <div class="step-row"><span>y</span><span class="val ${s.y>=0?'pos':'neg'}">${s.y}</span></div>
+        <div class="step-row"><span>erro</span><span class="val ${s.teveErro?'neg':'pos'}">${s.teveErro?'✗ sim':'✓ não'}</span></div>
+      </div>
+      <div class="step-block">
+        <div class="step-block-title">Pesos Atuais</div>
+        <div class="step-row"><span>W1</span>${fmtV(s.w1)}</div>
+        <div class="step-row"><span>W2</span>${fmtV(s.w2)}</div>
+        <div class="step-row"><span>Bias</span>${fmtV(s.bias)}</div>
+      </div>
+    </div>`;
+}
+
+document.getElementById('btn-perc-prev').addEventListener('click', () => {
+  if (percStepIdx > 0) { percStepIdx--; renderPercStep(); }
+});
+document.getElementById('btn-perc-next').addEventListener('click', () => {
+  const res = percResults[percCurrentPorta];
+  if (res && percStepIdx < res.steps.length - 1) { percStepIdx++; renderPercStep(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PERCEPTRON LETRAS
+// ═══════════════════════════════════════════════════════════════════════════
+let plResult = null;
+let plStepIdx = 0;
+let plDataset = null;
+
+const plGridA = makePreviewGrid('pl-grid-a', 7, 7, 10);
+const plGridB = makePreviewGrid('pl-grid-b', 7, 7, 10);
+
+async function loadPercLetrasDataset() {
+  try {
+    plDataset = await fetch(API + '/perceptron-letras/dataset').then(r => r.json());
+    fillPreview(plGridA, plDataset.find(e => e.letra === 'A').grade);
+    fillPreview(plGridB, plDataset.find(e => e.letra === 'B').grade);
+  } catch(_) {}
+}
+loadPercLetrasDataset();
+
+document.getElementById('btn-perc-letras-train').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-perc-letras-train');
+  const spin = document.getElementById('spin-perc-letras');
+  btn.disabled = true; spin.style.display = 'inline-block';
+  try {
+    const res = await fetch(API + '/perceptron-letras/train', { method: 'POST' }).then(r => r.json());
+    plResult = res;
+    plStepIdx = res.steps.length - 1;
+
+    document.getElementById('perc-letras-empty').style.display = 'none';
+    document.getElementById('perc-letras-content').style.display = 'block';
+
+    const convEl = document.getElementById('pl-conv');
+    convEl.textContent = res.convergiu ? '✓ convergiu' : '✗ não convergiu';
+    convEl.style.color = res.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
+    document.getElementById('pl-ciclos').textContent = res.ciclos;
+    document.getElementById('pl-acc').textContent = res.acuracia.toFixed(0) + '%';
+    document.getElementById('pl-bias').textContent = res.bias.toFixed(6);
+
+    res.testes.forEach(t => {
+      const resultEl = document.getElementById('pl-result-' + t.letra.toLowerCase());
+      if (!resultEl) return;
+      const ok = t.acertou;
+      resultEl.innerHTML = `<div style="color:${ok?'var(--primary-glow)':'var(--pink)'}">
+        ${ok?'✓':'✗'} ${t.acertou ? 'Correto' : 'Erro'}</div>
+        <div>Target: <span style="color:var(--secondary)">${t.target}</span></div>
+        <div>Pred: <span style="color:var(--cyan)">${t.predicao}</span></div>
+        <div>y_liq: <span style="color:var(--cyan)">${t.yLiq.toFixed(4)}</span></div>`;
+    });
+
+    renderPlStep();
+    refreshStatus();
+    toast('Perceptron Letras treinado');
+  } catch(e) { toast('Erro: ' + e.message); }
+  finally { btn.disabled = false; spin.style.display = 'none'; }
+});
+
+function renderPlStep() {
+  if (!plResult) return;
+  const s = plResult.steps[plStepIdx];
+  document.getElementById('pl-step-counter').textContent =
+    `ciclo ${s.ciclo} · letra ${s.amostra} · passo ${plStepIdx+1}/${plResult.steps.length}`;
+  const fmtV = v => `<span class="val ${v>=0?'pos':'neg'}">${v.toFixed(6)}</span>`;
+  document.getElementById('pl-step-detail').innerHTML = `
+    <div class="step-info">
+      <div class="step-block">
+        <div class="step-block-title">Passo</div>
+        <div class="step-row"><span>Amostra</span><span class="val">${s.amostra}</span></div>
+        <div class="step-row"><span>Target</span><span class="val">${s.target}</span></div>
+        <div class="step-row"><span>y_liq</span>${fmtV(s.yLiq)}</div>
+        <div class="step-row"><span>y</span><span class="val ${s.y>=0?'pos':'neg'}">${s.y}</span></div>
+      </div>
+      <div class="step-block">
+        <div class="step-block-title">Atualização</div>
+        <div class="step-row"><span>Erro</span><span class="val ${s.teveErro?'neg':'pos'}">${s.teveErro?'✗ sim':'✓ não'}</span></div>
+        <div class="step-row"><span>Delta</span>${fmtV(s.delta)}</div>
+        <div class="step-row"><span>Novo Bias</span>${fmtV(s.novoBias)}</div>
+      </div>
+    </div>`;
+}
+
+document.getElementById('btn-pl-prev').addEventListener('click', () => {
+  if (plStepIdx > 0) { plStepIdx--; renderPlStep(); }
+});
+document.getElementById('btn-pl-next').addEventListener('click', () => {
+  if (plResult && plStepIdx < plResult.steps.length - 1) { plStepIdx++; renderPlStep(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MADALINE
+// ═══════════════════════════════════════════════════════════════════════════
+let madDatasetCache = null;
+const madPixels = makePixelGrid('mad-pixel-grid', 5, 7);
+
+document.getElementById('btn-mad-train').addEventListener('click', () => {
+  const btn = document.getElementById('btn-mad-train');
+  const spin = document.getElementById('spin-mad');
+  btn.disabled = true; spin.style.display = 'inline-block';
+
+  const log = document.getElementById('mad-log');
+  log.innerHTML = '';
+  addLogTo(log, '// iniciando treinamento MADALINE A–M...', 'dim');
+
+  const progress = document.getElementById('mad-progress');
+  progress.style.width = '0%';
+  document.getElementById('mad-status').textContent = 'treinando...';
+  document.getElementById('mad-status').style.color = 'var(--cyan)';
+
+  const es = new EventSource(API + '/madaline/train');
+  es.onmessage = e => {
+    const step = JSON.parse(e.data);
+    progress.style.width = Math.min((step.ciclo / 10000) * 100, 99) + '%';
+    if (step.ciclo % 50 === 1) addLogTo(log, `ciclo ${String(step.ciclo).padStart(5)} · letra ${step.letra}`, 'ok');
+  };
+  es.addEventListener('done', e => {
+    es.close();
+    const data = JSON.parse(e.data);
+    progress.style.width = '100%';
+    document.getElementById('mad-acc').textContent = data.acuracia.toFixed(0) + '%';
+    document.getElementById('mad-ciclos').textContent = data.ciclos.toLocaleString();
+    const st = document.getElementById('mad-status');
+    st.textContent = data.convergiu ? '✓ convergiu' : '⚠ não convergiu';
+    st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
+    addLogTo(log, `✓ concluído: ${data.acertos}/${data.total} letras (${data.acuracia.toFixed(0)}%)`, 'ok');
+    btn.disabled = false; spin.style.display = 'none';
+    refreshStatus();
+    toast('MADALINE treinada — ' + data.acuracia.toFixed(0) + '%');
+    loadMadDatasetAndBrowser();
+  });
+  es.onerror = () => {
+    es.close();
+    addLogTo(log, '// erro de conexão', 'err');
+    btn.disabled = false; spin.style.display = 'none';
+  };
+});
+
+function addLogTo(logEl, msg, cls = '') {
+  const div = document.createElement('div');
+  div.className = 'log-line ' + cls;
+  div.textContent = msg;
+  logEl.prepend(div);
+  while (logEl.children.length > 60) logEl.removeChild(logEl.lastChild);
+}
+
+async function loadMadDatasetAndBrowser() {
+  try {
+    madDatasetCache = await fetch(API + '/madaline/dataset').then(r => r.json());
+    const browser = document.getElementById('mad-browser');
+    browser.innerHTML = '';
+    const preds = await Promise.all(madDatasetCache.map(entry =>
+      fetch(API + '/madaline/classify', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ grade: entry.grade })
+      }).then(r => r.json())
+    ));
+    madDatasetCache.forEach((entry, i) => {
+      const pred = preds[i];
+      const correct = pred.letraIdx === entry.idx;
+      const chip = document.createElement('div');
+      chip.className = 'letter-chip ' + (correct ? 'correct' : 'wrong');
+      chip.textContent = entry.letra;
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#mad-browser .letter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        showMadPreview(entry, pred);
+      });
+      browser.appendChild(chip);
+    });
+  } catch(_) {}
+}
+
+function showMadPreview(entry, pred) {
+  document.getElementById('mad-preview').style.display = 'block';
+  const pxs = makePreviewGrid('mad-preview-grid', 5, 7, 10);
+  fillPreview(pxs, entry.grade.map(v => v > 0 ? 1 : -1));
+  const correct = pred.letraIdx === entry.idx;
+  document.getElementById('mad-prev-letra').textContent = entry.letra;
+  document.getElementById('mad-prev-pred').textContent = pred.letra;
+  document.getElementById('mad-prev-pred').style.color = correct ? 'var(--primary-glow)' : 'var(--pink)';
+  document.getElementById('mad-prev-score').textContent = pred.top5[0].score.toFixed(4);
+}
+
+document.getElementById('btn-mad-clear').addEventListener('click', () => {
+  clearPixels(madPixels);
+  document.getElementById('mad-classify-result').textContent = '?';
+  document.getElementById('mad-classify-conf').textContent = '';
+  document.getElementById('mad-conf-list').innerHTML = '';
+});
+
+document.getElementById('btn-mad-classify').addEventListener('click', async () => {
+  const grade = getGrade(madPixels);
+  try {
+    const r = await fetch(API + '/madaline/classify', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ grade })
+    });
+    if (!r.ok) { const err = await r.json(); toast(err.error || 'Erro'); return; }
+    const data = await r.json();
+    document.getElementById('mad-classify-result').textContent = data.letra;
+    document.getElementById('mad-classify-conf').textContent = 'score: ' + data.top5[0].score.toFixed(4);
+    renderConfBars('mad-conf-list', data.top5, v => (v + 10) / 20);
+  } catch(e) { toast('Erro: ' + e.message); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MLP DESAFIO
+// ═══════════════════════════════════════════════════════════════════════════
+let mlpSteps = [], stepIdx = 0, mlpNet = null;
+
+document.getElementById('btn-mlp-train').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-mlp-train');
+  const spin = document.getElementById('spin-mlp');
+  btn.disabled = true; spin.style.display = 'inline-block';
+  document.getElementById('mlp-status').textContent = 'treinando...';
+  document.getElementById('mlp-status').style.color = 'var(--cyan)';
+  try {
+    const data = await fetch(API + '/mlp/train', { method: 'POST' }).then(r => r.json());
+    mlpNet = data.rede; mlpSteps = data.steps || []; stepIdx = 0;
+    document.getElementById('mlp-ciclos').textContent = data.ciclos.toLocaleString();
+    document.getElementById('mlp-erro').textContent = data.erroFinal.toFixed(6);
+    const st = document.getElementById('mlp-status');
+    st.textContent = data.convergiu ? '✓ convergiu' : '⚠ não convergiu';
+    st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
+    drawLogChart('mlp-chart', data.erroHistorico);
+    if (mlpSteps.length > 0) {
+      document.getElementById('mlp-steps-empty').style.display = 'none';
+      document.getElementById('mlp-steps-content').style.display = 'block';
+      renderMLPStep();
+    }
+    renderMLPTable(data);
+    refreshStatus(); toast('MLP Desafio treinado');
+  } catch(e) { toast('Erro: ' + e.message); }
+  finally { btn.disabled = false; spin.style.display = 'none'; }
+});
+
+function renderMLPStep() {
+  if (!mlpSteps.length) return;
+  const s = mlpSteps[stepIdx];
+  document.getElementById('step-counter').textContent =
+    `ciclo ${s.ciclo} · padrão ${s.padrao} · passo ${stepIdx+1}/${mlpSteps.length}`;
+  const fmtV = v => `<span class="val ${v>=0?'pos':'neg'}">${v.toFixed(6)}</span>`;
+  document.getElementById('step-info').innerHTML = `
+    <div class="step-block">
+      <div class="step-block-title">Forward Pass</div>
+      <div class="step-row"><span>x</span><span>${[...s.x].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>zin</span><span>${[...s.fwd.Zin].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>z</span><span>${[...s.fwd.Z].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>y</span><span>${[...s.fwd.Y].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>target</span><span>${[...s.target].map(v=>fmtV(v)).join(' ')}</span></div>
+    </div>
+    <div class="step-block">
+      <div class="step-block-title">Backward Pass</div>
+      <div class="step-row"><span>δk</span><span>${[...s.bwd.DeltaK].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>δinj</span><span>${[...s.bwd.DeltaInJ].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>δj</span><span>${[...s.bwd.DeltaJ].map(v=>fmtV(v)).join(' ')}</span></div>
+      <div class="step-row"><span>erro acum.</span>${fmtV(s.erroTotal)}</div>
+    </div>`;
+}
+
+document.getElementById('btn-step-prev').addEventListener('click', () => { if (stepIdx > 0) { stepIdx--; renderMLPStep(); } });
+document.getElementById('btn-step-next').addEventListener('click', () => { if (stepIdx < mlpSteps.length-1) { stepIdx++; renderMLPStep(); } });
+
+function renderMLPTable(data) {
+  const padroes = [[1,0.5,-1],[1,0.5,1],[1,-0.5,-1]];
+  const targets = [[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+  const net = data.rede;
+  const tbody = document.getElementById('mlp-table');
+  tbody.innerHTML = '';
+  padroes.forEach((x, i) => {
+    const z = [0,0];
+    for (let j=0;j<2;j++){let s=net.V0[j];for(let ii=0;ii<3;ii++)s+=x[ii]*net.V[ii][j];z[j]=Math.tanh(s);}
+    const y = [0,0,0];
+    for (let k=0;k<3;k++){let s=net.W0[k];for(let j=0;j<2;j++)s+=z[j]*net.W[j][k];y[k]=Math.tanh(s);}
+    const pred = y.indexOf(Math.max(...y));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="td-cyan">P${i+1}</td>
+      <td>${x[0]}</td><td>${x[1]}</td><td>${x[2]}</td>
+      <td class="td-white">${targets[i][0]}</td><td class="td-white">${targets[i][1]}</td><td class="td-white">${targets[i][2]}</td>
+      <td class="${y[0]>=0?'td-green':'td-pink'}">${y[0].toFixed(4)}</td>
+      <td class="${y[1]>=0?'td-green':'td-pink'}">${y[1].toFixed(4)}</td>
+      <td class="${y[2]>=0?'td-green':'td-pink'}">${y[2].toFixed(4)}</td>
+      <td class="td-white" style="font-weight:700">C${pred+1}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MLP LETRAS
+// ═══════════════════════════════════════════════════════════════════════════
+let ltrDatasetCache = null;
+const ltrPixels = makePixelGrid('pixel-grid', 5, 7);
+
+document.getElementById('btn-ltr-train').addEventListener('click', () => {
+  const btn = document.getElementById('btn-ltr-train');
+  const spin = document.getElementById('spin-ltr');
+  btn.disabled = true; spin.style.display = 'inline-block';
+
+  const log = document.getElementById('ltr-log');
+  log.innerHTML = '';
+  addLogTo(log, '// iniciando treinamento MLP A–Z...', 'dim');
+  document.getElementById('ltr-progress').style.width = '0%';
+
+  const es = new EventSource(API + '/letras/train');
+  es.onmessage = e => {
+    const step = JSON.parse(e.data);
+    document.getElementById('ltr-progress').style.width = Math.min((step.ciclo/50000)*100, 99) + '%';
+    if (step.ciclo % 100 === 1 || step.letraIdx === 0)
+      addLogTo(log, `ciclo ${String(step.ciclo).padStart(5)} · erro ${step.erroTotal.toFixed(4)}`, 'ok');
+  };
+  es.addEventListener('done', e => {
+    es.close();
+    const data = JSON.parse(e.data);
+    document.getElementById('ltr-progress').style.width = '100%';
+    document.getElementById('ltr-acc').textContent = data.acuracia.toFixed(0) + '%';
+    document.getElementById('ltr-ciclos').textContent = data.ciclos.toLocaleString();
+    document.getElementById('ltr-erro').textContent = data.erroFinal.toFixed(4);
+    drawLogChart('ltr-chart', data.erroHistorico, '#00fbfb');
+    addLogTo(log, `✓ concluído: ${data.acertos}/${data.total} (${data.acuracia.toFixed(0)}%)`, 'ok');
+    btn.disabled = false; spin.style.display = 'none';
+    refreshStatus(); toast('MLP Letras treinado — ' + data.acuracia.toFixed(0) + '%');
+    loadLtrDatasetAndBrowser();
+  });
+  es.onerror = () => { es.close(); addLogTo(log,'// erro de conexão','err'); btn.disabled=false; spin.style.display='none'; };
+});
+
+async function loadLtrDatasetAndBrowser() {
+  try {
+    ltrDatasetCache = await fetch(API + '/letras/dataset').then(r => r.json());
+    const browser = document.getElementById('ltr-browser');
+    browser.innerHTML = '';
+    const preds = await Promise.all(ltrDatasetCache.map(entry =>
+      fetch(API + '/letras/classify', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ grade: entry.grade })
+      }).then(r => r.json())
+    ));
+    ltrDatasetCache.forEach((entry, i) => {
+      const pred = preds[i];
+      const correct = pred.letraIdx === entry.idx;
+      const chip = document.createElement('div');
+      chip.className = 'letter-chip ' + (correct ? 'correct' : 'wrong');
+      chip.textContent = entry.letra;
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#ltr-browser .letter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        showLtrPreview(entry, pred);
+      });
+      browser.appendChild(chip);
+    });
+  } catch(_) {}
+}
+
+function showLtrPreview(entry, pred) {
+  document.getElementById('ltr-preview').style.display = 'block';
+  const pxs = makePreviewGrid('ltr-preview-grid', 5, 7, 8);
+  fillPreview(pxs, entry.grade);
+  const correct = pred.letraIdx === entry.idx;
+  document.getElementById('ltr-prev-letra').textContent = entry.letra;
+  document.getElementById('ltr-prev-pred').textContent = pred.letra;
+  document.getElementById('ltr-prev-pred').style.color = correct ? 'var(--primary-glow)' : 'var(--pink)';
+  document.getElementById('ltr-prev-conf').textContent = pred.top5[0].score.toFixed(4);
+}
+
+document.getElementById('btn-grid-clear').addEventListener('click', () => {
+  clearPixels(ltrPixels);
+  document.getElementById('classify-result').textContent = '?';
+  document.getElementById('classify-conf').textContent = '';
+  document.getElementById('conf-list').innerHTML = '';
+});
+
+document.getElementById('btn-grid-classify').addEventListener('click', async () => {
+  const grade = getGrade(ltrPixels);
+  try {
+    const r = await fetch(API + '/letras/classify', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ grade })
+    });
+    if (!r.ok) { const err = await r.json(); toast(err.error || 'Erro'); return; }
+    const data = await r.json();
+    document.getElementById('classify-result').textContent = data.letra;
+    document.getElementById('classify-conf').textContent = 'confiança: ' + data.top5[0].score.toFixed(4);
+    renderConfBars('conf-list', data.top5);
+  } catch(e) { toast('Erro: ' + e.message); }
+});
+</script>
+</body>
+</html>

@@ -14,9 +14,18 @@ Repositório com os trabalhos práticos da disciplina de **Redes Neurais Artific
 | [`Desafios MLP/Multilayer Perceptron (MLP) Letras`](./Desafios%20MLP/Multilayer%20Perceptron%20(MLP)%20Letras/) | MLP | Reconhecimento de letras com MLP e entrada manual via TUI |
 | `slides/` | — | Slides das aulas em PDF |
 
-## Como rodar
+## Web — Mission Control
 
-Todos os trabalhos são escritos em **Go**. Para executar qualquer um:
+Todos os algoritmos rodam via interface web em [`web/`](./web/):
+
+```bash
+cd web
+make run   # compila, mata porta 8080 e abre o browser
+```
+
+## Como rodar (TUI)
+
+Os trabalhos individuais têm TUI em **Go**:
 
 ```bash
 cd "Trab XX"
@@ -27,5 +36,6 @@ go run .
 
 ## Tecnologias
 
-- **Go** — linguagem principal
+- **Go** — linguagem principal (backend HTTP/SSE + algoritmos)
 - **Charm** (Bubble Tea + Lipgloss + Bubbles) — TUI interativa (Trab 02 e 03)
+- **HTML/CSS/JS** — frontend web (sem frameworks)
