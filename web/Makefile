@@ -16,8 +16,12 @@ build:
 	@echo "» compilando..."
 	@cd server && go build -o mlp-server .
 
+build-windows:
+	@echo "» compilando para Windows..."
+	@cd server && GOOS=windows GOARCH=amd64 go build -o mlp-server.exe .
+
 kill:
 	@lsof -ti tcp:$(PORT) | xargs kill -9 2>/dev/null || true
 
 clean: kill
-	@rm -f server/mlp-server
+	@rm -f server/mlp-server server/mlp-server.exe
