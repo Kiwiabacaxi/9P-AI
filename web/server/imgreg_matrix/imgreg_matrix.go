@@ -34,8 +34,8 @@ type Step struct {
 // but converts to gonum.Dense internally during training.
 type Net struct {
 	LayerSizes []int         `json:"layerSizes"`
-	W          [][][]float64 `json:"w"`
-	B          [][]float64   `json:"b"`
+	W          [][][]float64 `json:"-"`
+	B          [][]float64   `json:"-"`
 }
 
 func relu(x float64) float64      { if x > 0 { return x }; return 0 }
