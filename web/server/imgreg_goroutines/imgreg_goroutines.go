@@ -387,6 +387,9 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 		var wg sync.WaitGroup
 
 		// Captura snapshot dos pesos para leitura concorrente segura
+		// netSnap is a shallow struct copy: netSnap.W shares the same backing arrays as net.W.
+		// Goroutines may safely READ these concurrently because atualizarPesos only WRITES
+		// after wg.Wait() has returned. Do not call atualizarPesos or modify net.W before wg.Wait().
 		netSnap := net
 
 		for _, idx := range indices {
@@ -434,6 +437,10 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 		}
 
 		// Update único ao final da época
+		// NOTE: accumW/accumB contain the SUM of gradients for all 256 pixels (not the mean).
+		// This means the effective weight update is: Δw = lr * Σ grad_i (batch GD with sum, not mean).
+		// The learning rate semantics differ from the Standard SGD backend — use a smaller lr
+		// (e.g., divide by 256) if you want numerically equivalent updates per epoch.
 		net = atualizarPesos(net, accumW, accumB, cfg.LearningRate)
 
 		epochMs := time.Since(epochStart).Milliseconds()
