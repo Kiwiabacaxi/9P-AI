@@ -657,7 +657,7 @@ func handleIgorTrain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	flusher, ok := w.(http.Flusher)
-	if !ok { mu.Lock(); igorTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+	if !ok { mu.Lock(); cancel(); igorCancel = nil; igorTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
 
 	progressCh := make(chan igoroutines.Step, 64)
 	go func() {
@@ -716,7 +716,7 @@ func handleImatTrain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	flusher, ok := w.(http.Flusher)
-	if !ok { mu.Lock(); imatTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+	if !ok { mu.Lock(); cancel(); imatCancel = nil; imatTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
 
 	progressCh := make(chan imatrix.Step, 64)
 	go func() {
@@ -775,7 +775,7 @@ func handleImbTrain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	flusher, ok := w.(http.Flusher)
-	if !ok { mu.Lock(); imbTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+	if !ok { mu.Lock(); cancel(); imbCancel = nil; imbTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
 
 	progressCh := make(chan iminibatch.Step, 64)
 	go func() {
@@ -834,7 +834,7 @@ func handleBenchTrain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	flusher, ok := w.(http.Flusher)
-	if !ok { mu.Lock(); benchRunning = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+	if !ok { mu.Lock(); cancel(); benchCancel = nil; benchRunning = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
 
 	benchCh := make(chan ibench.BenchStep, 192)
 	go func() {
