@@ -118,7 +118,11 @@ func Rodar(ctx context.Context, cfg BenchConfig, ch chan<- BenchStep) {
 			close(proxy)
 		}()
 		for bs := range proxy {
-			ch <- bs
+			select {
+			case ch <- bs:
+			case <-ctx.Done():
+				return
+			}
 		}
 	} else {
 		// Sequencial: goroutines → matrix → minibatch
