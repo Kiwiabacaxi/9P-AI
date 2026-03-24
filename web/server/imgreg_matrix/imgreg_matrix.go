@@ -325,6 +325,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 		acts := make([]*mat.Dense, nT+1)
 		preActs := make([]*mat.Dense, nT+1)
 		acts[0] = A0
+		preActs[0] = A0
 
 		for l := 0; l < nT; l++ {
 			fanIn, fanOut := len(net.W[l]), len(net.W[l][0])
