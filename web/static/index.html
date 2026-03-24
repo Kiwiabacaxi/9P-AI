@@ -273,7 +273,6 @@ canvas { width: 100%; height: 160px; display: block; }
     <div class="nav-item active" data-view="hebb">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="2"/><circle cx="3" cy="13" r="2"/><circle cx="13" cy="13" r="2"/><line x1="8" y1="5" x2="3" y2="11" stroke="currentColor" stroke-width="1.2"/><line x1="8" y1="5" x2="13" y2="11" stroke="currentColor" stroke-width="1.2"/></svg>
       Hebb
-      <span class="nav-badge" id="badge-hebb">0/5</span>
     </div>
     <div class="nav-item" data-view="perceptron">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="3" cy="8" r="2"/><circle cx="13" cy="5" r="2"/><circle cx="13" cy="11" r="2"/><line x1="5" y1="8" x2="11" y2="5"/><line x1="5" y1="8" x2="11" y2="11"/></svg>
@@ -825,42 +824,138 @@ canvas { width: 100%; height: 160px; display: block; }
         </div>
       </div>
 
+      <!-- Tabela comparativa completa -->
       <div class="card" style="margin-bottom:16px">
         <div class="card-title">Comparativo Geral</div>
+        <div class="card-pulse"></div>
         <table class="data-table">
-          <thead><tr><th>Algoritmo</th><th>Trab</th><th>Entradas</th><th>Camadas</th><th>Ativação</th><th>Aprende quando</th><th>Convergência</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Algoritmo</th><th>Aula</th><th>Pacote</th>
+              <th>Arquitetura</th><th>Ativação</th>
+              <th>Regra de atualização</th><th>Convergência</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td class="td-cyan">Hebb</td><td>01</td><td>2 + bias</td><td>1</td><td>Degrau bipolar</td><td class="td-white">Sempre</td><td class="td-pink">Não garantida</td></tr>
-            <tr><td class="td-cyan">Perceptron Portas</td><td>02 PT2</td><td>2 + bias</td><td>1</td><td>Degrau bipolar</td><td class="td-white">Só no erro</td><td class="td-green">Garantida (sep. linear)</td></tr>
-            <tr><td class="td-cyan">Perceptron Letras</td><td>02 PT1</td><td>49 + bias</td><td>1</td><td>Degrau bipolar</td><td class="td-white">Só no erro</td><td class="td-green">Garantida (sep. linear)</td></tr>
-            <tr><td class="td-cyan">MADALINE</td><td>03</td><td>35</td><td>2 (13 ADALINE)</td><td>Degrau bipolar</td><td class="td-white">Argmin erro</td><td class="td-green">Garantida (sep. linear)</td></tr>
-            <tr><td class="td-cyan">MLP Desafio</td><td>D1</td><td>3</td><td>3 (2 ocultos)</td><td>tanh</td><td class="td-white">Backpropagation</td><td class="td-green">Geralmente sim</td></tr>
-            <tr><td class="td-cyan">MLP Letras</td><td>D2</td><td>35</td><td>3 (15 ocultos)</td><td>tanh</td><td class="td-white">Backpropagation</td><td class="td-green">Geralmente sim</td></tr>
+            <tr>
+              <td class="td-cyan">Hebb</td><td>02</td><td style="color:var(--on-surface);font-size:10px">hebb</td>
+              <td>2 → 1</td><td>sign(y_in)</td>
+              <td class="td-white">w ← w + x·t &nbsp;<span style="color:var(--surface-top)">(sempre)</span></td>
+              <td class="td-pink">Não garantida</td>
+            </tr>
+            <tr>
+              <td class="td-cyan">Perceptron Portas</td><td>03</td><td style="color:var(--on-surface);font-size:10px">perceptronportas</td>
+              <td>2 → 1</td><td>sign(y_in)</td>
+              <td class="td-white">w ← w + α(t−y)x &nbsp;<span style="color:var(--surface-top)">(só no erro)</span></td>
+              <td class="td-green">Garantida (sep. linear)</td>
+            </tr>
+            <tr>
+              <td class="td-cyan">Perceptron Letras</td><td>03</td><td style="color:var(--on-surface);font-size:10px">perceptronletras</td>
+              <td>49 → 1 &nbsp;<span style="color:var(--surface-top)">(7×7)</span></td><td>sign(y_in)</td>
+              <td class="td-white">w ← w + α(t−y)x &nbsp;<span style="color:var(--surface-top)">(só no erro)</span></td>
+              <td class="td-green">Garantida (sep. linear)</td>
+            </tr>
+            <tr>
+              <td class="td-cyan">MADALINE</td><td>04</td><td style="color:var(--on-surface);font-size:10px">madaline</td>
+              <td>35 → 13 ADALINE → 13 &nbsp;<span style="color:var(--surface-top)">(5×7)</span></td><td>sign · argmin</td>
+              <td class="td-white">MRII — atualiza unidade com menor |y_in|</td>
+              <td class="td-green">Garantida (sep. linear)</td>
+            </tr>
+            <tr>
+              <td class="td-cyan">MLP Desafio</td><td>05</td><td style="color:var(--on-surface);font-size:10px">mlp</td>
+              <td>3 → 2 → 3</td><td>tanh</td>
+              <td class="td-white">Backpropagation — δ·α·a</td>
+              <td class="td-green">Geralmente sim</td>
+            </tr>
+            <tr>
+              <td class="td-cyan">MLP Letras</td><td>05</td><td style="color:var(--on-surface);font-size:10px">letras</td>
+              <td>35 → 15 → 26 &nbsp;<span style="color:var(--surface-top)">(5×7, A–Z)</span></td><td>tanh</td>
+              <td class="td-white">Backpropagation — δ·α·a</td>
+              <td class="td-green">Geralmente sim</td>
+            </tr>
+            <tr>
+              <td class="td-cyan">MLP Image Reg.</td><td>05</td><td style="color:var(--on-surface);font-size:10px">imgreg</td>
+              <td>2 → [N×M] → 3 &nbsp;<span style="color:var(--surface-top)">(configurável)</span></td><td>ReLU · Sigmoid</td>
+              <td class="td-white">SGD estocástico — He init · MSE loss</td>
+              <td class="td-green">Aproximação universal</td>
+            </tr>
           </tbody>
         </table>
       </div>
 
-      <div class="grid-2" style="margin-bottom:16px">
+      <!-- Cards por grupo de algoritmo -->
+      <div class="grid-3" style="margin-bottom:16px">
+
         <div class="card">
-          <div class="card-title">Hebb vs Perceptron</div>
+          <div class="card-title">Aula 02 — Hebb</div>
           <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:2">
-            <div><span style="color:var(--pink)">Hebb:</span> &nbsp;&nbsp;&nbsp;&nbsp;w = w + (x · target)</div>
-            <div style="color:var(--surface-top)">// atualiza sempre, use target direto</div>
-            <br/>
-            <div><span style="color:var(--pink)">Perceptron:</span> w = w + α·(t−y)·x</div>
-            <div style="color:var(--surface-top)">// atualiza só se y ≠ target</div>
-            <div style="color:var(--surface-top)">// repete ciclos até convergir</div>
+            <div style="color:var(--on-surface);margin-bottom:4px">Regra de Hebb (1949) — aprendizado hebbiano:</div>
+            <div><span style="color:var(--pink)">Δw<sub>i</sub></span> = x<sub>i</sub> · t</div>
+            <div><span style="color:var(--pink)">Δbias</span> &nbsp;= t</div>
+            <div style="color:var(--surface-top);margin-top:6px">// passo único, sem iteração</div>
+            <div style="color:var(--surface-top)">// não converge para XOR</div>
           </div>
         </div>
+
         <div class="card">
-          <div class="card-title">MLP — Backpropagation</div>
-          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:1.8">
-            <div><span style="color:var(--pink)">Forward:</span> &nbsp;y = tanh(w·x + b)</div>
-            <div><span style="color:var(--pink)">δ saída:</span> &nbsp;(t−y) · f'(y)</div>
-            <div><span style="color:var(--pink)">δ oculta:</span> Σδ·w · f'(z)</div>
-            <div><span style="color:var(--pink)">Update:</span> &nbsp; Δw = α · δ · entrada</div>
+          <div class="card-title">Aula 03 — Perceptron</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:2">
+            <div style="color:var(--on-surface);margin-bottom:4px">Regra do Perceptron — corrige apenas erros:</div>
+            <div><span style="color:var(--pink)">y_in</span> = bias + Σ x<sub>i</sub>·w<sub>i</sub></div>
+            <div><span style="color:var(--pink)">y</span> &nbsp;&nbsp; = sign(y_in)</div>
+            <div><span style="color:var(--pink)">Δw<sub>i</sub></span> = α·(t−y)·x<sub>i</sub></div>
+            <div style="color:var(--surface-top);margin-top:6px">// só atualiza se t ≠ y</div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-title">Aula 04 — MADALINE</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:2">
+            <div style="color:var(--on-surface);margin-bottom:4px">MRII — mínimo impacto:</div>
+            <div><span style="color:var(--pink)">y_in<sub>j</sub></span> = bias<sub>j</sub> + Σ x<sub>i</sub>·w<sub>ij</sub></div>
+            <div><span style="color:var(--pink)">escolhe</span> j* = argmin |y_in<sub>j</sub>|</div>
+            <div><span style="color:var(--pink)">Δw<sub>ij*</sub></span> = α·(t−y<sub>j*</sub>)·x<sub>i</sub></div>
+            <div style="color:var(--surface-top);margin-top:6px">// 13 unidades ADALINE, saída OR</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Aula 05 — MLP Backprop</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:2">
+            <div><span style="color:var(--pink)">Forward:</span> z = w·a + b &nbsp;· &nbsp;a = tanh(z)</div>
+            <div><span style="color:var(--pink)">δ saída:</span> (t−y) · tanh'(y)</div>
+            <div><span style="color:var(--pink)">δ oculta:</span> (Σ δ·w) · tanh'(z)</div>
+            <div><span style="color:var(--pink)">Update:</span> &nbsp;w += α · δ · a_anterior</div>
+            <div style="color:var(--surface-top);margin-top:4px">// tanh'(x) = 1 − tanh²(x)</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Aula 05 — Image Regression</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface);line-height:2">
+            <div><span style="color:var(--pink)">Input:</span> &nbsp;(x,y) ∈ [−1,1]²</div>
+            <div><span style="color:var(--pink)">Oculta:</span> ReLU(w·a + b)</div>
+            <div><span style="color:var(--pink)">Saída:</span> &nbsp;σ(w·a + b) → (R,G,B)</div>
+            <div><span style="color:var(--pink)">Loss:</span> &nbsp; 0.5·Σ(t−y)²</div>
+            <div style="color:var(--surface-top);margin-top:4px">// He init · SGD por pixel · 16×16</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Estrutura de Pacotes</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--on-surface);line-height:1.9">
+            <div style="color:var(--cyan)">web/server/</div>
+            <div>&nbsp;├─ <span style="color:var(--primary-glow)">main.go</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← HTTP + SSE</div>
+            <div>&nbsp;├─ hebb/</div>
+            <div>&nbsp;├─ perceptron_portas/</div>
+            <div>&nbsp;├─ perceptron_letras/</div>
+            <div>&nbsp;├─ madaline/</div>
+            <div>&nbsp;├─ mlp/</div>
+            <div>&nbsp;├─ letras/</div>
+            <div>&nbsp;└─ imgreg/</div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -928,7 +1023,6 @@ async function refreshStatus() {
     setDot('dot-mlp',    s.mlpTrained);
     setDot('dot-ltr',    s.letrasTrained, s.ltrTraining);
     setDot('dot-imgreg', s.imgregTrained, s.imgregTraining);
-    document.getElementById('badge-hebb').textContent = s.hebbCount + '/5';
   } catch(_) {}
 }
 function setDot(id, active, warn = false) {
@@ -2004,7 +2098,7 @@ $id('btn-imgreg-init').addEventListener('click', async () => {
   addLogTo($id('imgreg-log'), `// rede inicializada: ${arch} · α=${cfg.learningRate}`, 'ok');
   addLogTo($id('imgreg-log'), `// imagem: ${cfg.imagem} · ${cfg.maxEpocas} épocas`, 'dim');
   $id('ir-progress').style.width = '0%';
-  $id('badge-imgreg').textContent = 'READY';
+  $id('badge-imgreg').textContent = '';
 });
 
 // ── TREINAR — usa EventSource (GET) após salvar config via POST ───────────
@@ -2113,6 +2207,8 @@ $id('btn-imgreg-reset').addEventListener('click', async () => {
   buildImgregGrids();
   drawNetworkViz([]);
   updateImgregStats('—', 0, 0, null, 'resetado', 'var(--on-surface)');
+  $id('ir-output-epoch').textContent = 'época 0';
+  $id('ir-output-loss').textContent = 'LOSS: —';
   $id('ir-progress').style.width = '0%';
   $id('badge-imgreg').textContent = 'OFF';
   $id('dot-imgreg').classList.remove('active');
