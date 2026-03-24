@@ -1288,6 +1288,9 @@ canvas { width: 100%; height: 160px; display: block; }
           <option value="200">200</option>
           <option value="500" selected>500</option>
           <option value="1000">1000</option>
+          <option value="2000">2000</option>
+          <option value="5000">5000</option>
+          <option value="10000">10000</option>
         </select>
       </div>
     </div>
@@ -2322,8 +2325,12 @@ let imgregAbortCtrl = null;
 
 // ── Inicializa os dois grids de pixels (target e output) ─────────────────
 function buildImgregGrids() {
-  ['imgreg-target-grid', 'imgreg-output-grid'].forEach(id => {
+  ['imgreg-target-grid', 'imgreg-output-grid',
+   'igor-target-grid', 'igor-output-grid',
+   'imat-target-grid', 'imat-output-grid',
+   'imb-target-grid',  'imb-output-grid'].forEach(id => {
     const el = document.getElementById(id);
+    if (!el) return;
     el.innerHTML = '';
     for (let i = 0; i < 256; i++) {
       const px = document.createElement('div');
@@ -3144,6 +3151,7 @@ $id('bench-btn-seq').addEventListener('click', () => {
 // ── BENCHMARK RUN ──
 let benchES = null;
 const benchResults = {goroutines: null, matrix: null, minibatch: null};
+const benchLastEpochMs = {goroutines: 0, matrix: 0, minibatch: 0};
 
 function getBenchCfg() {
   return {
@@ -3170,6 +3178,7 @@ $id('btn-bench-run').addEventListener('click', async () => {
     $id(`bench-stat-${b}`).textContent = 'aguardando...';
     $id(`bench-grid-${b}`).style.opacity = '0.4';
     benchResults[b] = null;
+    benchLastEpochMs[b] = 0;
   });
   $id('bench-results').style.display = 'none';
   $id('bench-chart-card').style.display = 'none';
@@ -3206,6 +3215,7 @@ $id('btn-bench-run').addEventListener('click', async () => {
 
     fillImgregGrid(`bench-grid-${backend}`, step.outputPixels);
     grid.style.opacity = '1';
+    if (step.epochMs > 0) benchLastEpochMs[backend] = step.epochMs;
     const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : 0;
     stat.textContent = `ép ${step.epoca}/${step.maxEpocas} · loss ${step.loss.toFixed(5)} · ${step.epochMs}ms/ép · ${throughput}px/s`;
   };
@@ -3225,7 +3235,8 @@ function showBenchResults() {
   backends.forEach(b => {
     const r = benchResults[b];
     const msPerEpoca = (r.elapsedMs / r.maxEpocas).toFixed(1);
-    const throughput = r.epochMs > 0 ? Math.round(256 / (r.epochMs / 1000)) : 0;
+    const lastEpMs = benchLastEpochMs[b];
+    const throughput = lastEpMs > 0 ? Math.round(256 / (lastEpMs / 1000)) : 0;
     $id(`bench-total-${b}`).textContent = `${r.elapsedMs}ms`;
     $id(`bench-msepoca-${b}`).textContent = `${msPerEpoca}ms`;
     $id(`bench-pxs-${b}`).textContent = `${throughput}`;
