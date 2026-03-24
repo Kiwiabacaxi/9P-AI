@@ -37,6 +37,11 @@ var (
 	madRede     *MadNet
 	madRes      *MadResult
 	madTraining bool
+
+	// Image Regression
+	imgregRede     *ImgRegNet
+	imgregTraining bool
+	imgregCfg      *ImgRegConfig
 )
 
 func init() {
@@ -79,14 +84,16 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	mu.RLock()
 	defer mu.RUnlock()
 	type status struct {
-		MLPTrained     bool `json:"mlpTrained"`
-		LetrasTrained  bool `json:"letrasTrained"`
-		LtrTraining    bool `json:"ltrTraining"`
-		HebbCount      int  `json:"hebbCount"`
-		PercPortaCount int  `json:"percPortaCount"`
-		PercLetrasDone bool `json:"percLetrasDone"`
-		MadTrained     bool `json:"madTrained"`
-		MadTraining    bool `json:"madTraining"`
+		MLPTrained      bool `json:"mlpTrained"`
+		LetrasTrained   bool `json:"letrasTrained"`
+		LtrTraining     bool `json:"ltrTraining"`
+		HebbCount       int  `json:"hebbCount"`
+		PercPortaCount  int  `json:"percPortaCount"`
+		PercLetrasDone  bool `json:"percLetrasDone"`
+		MadTrained      bool `json:"madTrained"`
+		MadTraining     bool `json:"madTraining"`
+		ImgregTrained   bool `json:"imgregTrained"`
+		ImgregTraining  bool `json:"imgregTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:     mlpRede != nil,
@@ -97,6 +104,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		PercLetrasDone: percLetrasRede != nil,
 		MadTrained:     madRede != nil,
 		MadTraining:    madTraining,
+		ImgregTrained:  imgregRede != nil,
+		ImgregTraining: imgregTraining,
 	})
 }
 
@@ -462,13 +471,135 @@ func handleMadDataset(w http.ResponseWriter, r *http.Request) {
 }
 
 // =============================================================================
+// Image Regression
+// =============================================================================
+
+// POST /api/imgreg/config
+// Salva a configuração escolhida pelo usuário antes do treino.
+// Separado do SSE para permitir GET no EventSource.
+func handleImgregConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg ImgRegConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	imgregCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+// GET /api/imgreg/train  (SSE via EventSource)
+// Inicia o treinamento com a config previamente salva via POST /api/imgreg/config.
+// Usa GET para compatibilidade com EventSource do browser.
+func handleImgregTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if imgregTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento já em andamento")
+		return
+	}
+	cfg := imgregCfg
+	if cfg == nil {
+		mu.Unlock()
+		errJSON(w, http.StatusBadRequest, "configure primeiro via POST /api/imgreg/config")
+		return
+	}
+	imgregTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		imgregTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	// Canal com buffer generoso; o treinamento envia steps periódicos + 1 step final com Done=true
+	progressCh := make(chan ImgRegStep, 64)
+	go func() {
+		rede := imgregTreinar(*cfg, progressCh)
+		mu.Lock()
+		imgregRede = &rede
+		imgregTraining = false
+		mu.Unlock()
+	}()
+
+	// Lê todos os steps do canal. O último terá Done=true e é enviado como evento "done".
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		if step.Done {
+			fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		} else {
+			fmt.Fprintf(w, "data: %s\n\n", data)
+		}
+		flusher.Flush()
+	}
+}
+
+// GET /api/imgreg/target?img=coracao
+// Retorna os 256 pixels RGB [0,1] da imagem-alvo escolhida (sem treinar).
+func handleImgregTarget(w http.ResponseWriter, r *http.Request) {
+	img := r.URL.Query().Get("img")
+	if img == "" {
+		img = "coracao"
+	}
+	pixels := imgGetTarget(img)
+	writeJSON(w, http.StatusOK, pixels)
+}
+
+// POST /api/imgreg/reset
+// Para qualquer treino em andamento e limpa o estado da rede.
+func handleImgregReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	imgregRede = nil
+	imgregCfg = nil
+	// imgregTraining permanece até a goroutine em andamento terminar naturalmente.
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+// GET /api/imgreg/status
+func handleImgregStatus(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	training := imgregTraining
+	trained := imgregRede != nil
+	cfg := imgregCfg
+	mu.RUnlock()
+
+	type resp struct {
+		Training bool   `json:"training"`
+		Trained  bool   `json:"trained"`
+		Imagem   string `json:"imagem"`
+	}
+	out := resp{Training: training, Trained: trained}
+	if cfg != nil {
+		out.Imagem = cfg.Imagem
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// =============================================================================
 // main
 // =============================================================================
 
 func main() {
 	mux := http.NewServeMux()
 
-	mux.Handle("/", http.FileServer(http.Dir("../static")))
+	fs := http.FileServer(http.Dir("../static"))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		fs.ServeHTTP(w, r)
+	}))
 
 	mux.HandleFunc("/api/status", cors(handleStatus))
 
@@ -499,6 +630,13 @@ func main() {
 	mux.HandleFunc("/api/madaline/result", cors(handleMadResult))
 	mux.HandleFunc("/api/madaline/classify", cors(handleMadClassify))
 	mux.HandleFunc("/api/madaline/dataset", cors(handleMadDataset))
+
+	// Image Regression
+	mux.HandleFunc("/api/imgreg/config", cors(handleImgregConfig))
+	mux.HandleFunc("/api/imgreg/train", cors(handleImgregTrain))
+	mux.HandleFunc("/api/imgreg/target", cors(handleImgregTarget))
+	mux.HandleFunc("/api/imgreg/reset", cors(handleImgregReset))
+	mux.HandleFunc("/api/imgreg/status", cors(handleImgregStatus))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
