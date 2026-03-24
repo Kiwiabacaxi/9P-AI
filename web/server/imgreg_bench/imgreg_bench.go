@@ -71,21 +71,33 @@ func Rodar(ctx context.Context, cfg BenchConfig, ch chan<- BenchStep) {
 		c := make(chan gor.Step, 64)
 		go gor.Treinar(ctx, gorCfg, c)
 		for s := range c {
-			out <- BenchStep{Backend: "goroutines", Step: fromGor(s)}
+			select {
+			case out <- BenchStep{Backend: "goroutines", Step: fromGor(s)}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 	runMat := func(ctx context.Context, out chan<- BenchStep) {
 		c := make(chan mat.Step, 64)
 		go mat.Treinar(ctx, matCfg, c)
 		for s := range c {
-			out <- BenchStep{Backend: "matrix", Step: fromMat(s)}
+			select {
+			case out <- BenchStep{Backend: "matrix", Step: fromMat(s)}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 	runMb := func(ctx context.Context, out chan<- BenchStep) {
 		c := make(chan mb.Step, 64)
 		go mb.Treinar(ctx, mbCfg, c)
 		for s := range c {
-			out <- BenchStep{Backend: "minibatch", Step: fromMb(s)}
+			select {
+			case out <- BenchStep{Backend: "minibatch", Step: fromMb(s)}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 
