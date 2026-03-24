@@ -1246,7 +1246,7 @@ canvas { width: 100%; height: 160px; display: block; }
   <div class="page-header">
     <div>
       <div class="page-title">MLP Image Regression · <span>Benchmark</span></div>
-      <div class="page-sub">Compara Goroutines vs Matrix vs Mini-batch · paralelo ou sequencial</div>
+      <div class="page-sub">Compara Standard vs Goroutines vs Matrix vs Mini-batch · paralelo ou sequencial</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <div class="bench-mode-toggle">
@@ -1314,7 +1314,14 @@ canvas { width: 100%; height: 160px; display: block; }
     </div>
   </div>
 
-  <div class="bench-cols" id="bench-cols">
+  <div class="bench-cols" id="bench-cols" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card" style="padding:16px">
+      <div class="bench-col-header">Standard</div>
+      <div style="display:flex;justify-content:center;margin-bottom:8px">
+        <div class="imgreg-grid" id="bench-grid-standard" style="opacity:0.4"></div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--on-surface);text-align:center" id="bench-stat-standard">aguardando...</div>
+    </div>
     <div class="card" style="padding:16px">
       <div class="bench-col-header">Goroutines</div>
       <div style="display:flex;justify-content:center;margin-bottom:8px">
@@ -1338,7 +1345,18 @@ canvas { width: 100%; height: 160px; display: block; }
     </div>
   </div>
 
-  <div class="bench-result-cards" id="bench-results" style="display:none">
+  <div class="bench-result-cards" id="bench-results" style="display:none;grid-template-columns:repeat(4,1fr)">
+    <div class="bench-result-card" id="bench-card-standard">
+      <div class="bench-col-header">Standard</div>
+      <div class="metric-label">Tempo Total</div>
+      <div class="metric-val" id="bench-total-standard">—</div>
+      <div class="metric-label" style="margin-top:8px">ms/época</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-msepoca-standard">—</div>
+      <div class="metric-label" style="margin-top:8px">px/s</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-pxs-standard">—</div>
+      <div class="metric-label" style="margin-top:8px">Loss Final</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--on-surface)" id="bench-loss-standard">—</div>
+    </div>
     <div class="bench-result-card" id="bench-card-goroutines">
       <div class="bench-col-header">Goroutines</div>
       <div class="metric-label">Tempo Total</div>
@@ -1375,8 +1393,8 @@ canvas { width: 100%; height: 160px; display: block; }
   </div>
 
   <div class="card" style="margin-top:16px;display:none" id="bench-chart-card">
-    <div class="card-title">Comparação — Tempo Total por Backend</div>
-    <div class="chart-wrap"><canvas id="bench-chart"></canvas></div>
+    <div class="card-title">Comparação — Tempo Total por Backend (ms)</div>
+    <div class="chart-wrap"><canvas id="bench-chart" style="height:180px"></canvas></div>
   </div>
 </div>
 
@@ -3122,7 +3140,7 @@ $id('btn-imb-reset').addEventListener('click', async () => {
 
 // ── BENCHMARK GRID INIT ──
 function initBenchGrids() {
-  ['bench-grid-goroutines','bench-grid-matrix','bench-grid-minibatch'].forEach(id => {
+  ['bench-grid-standard','bench-grid-goroutines','bench-grid-matrix','bench-grid-minibatch'].forEach(id => {
     const el = document.getElementById(id);
     el.innerHTML = '';
     for (let i = 0; i < 256; i++) {
@@ -3150,8 +3168,8 @@ $id('bench-btn-seq').addEventListener('click', () => {
 
 // ── BENCHMARK RUN ──
 let benchES = null;
-const benchResults = {goroutines: null, matrix: null, minibatch: null};
-const benchLastEpochMs = {goroutines: 0, matrix: 0, minibatch: 0};
+const benchResults = {standard: null, goroutines: null, matrix: null, minibatch: null};
+const benchLastEpochMs = {standard: 0, goroutines: 0, matrix: 0, minibatch: 0};
 
 function getBenchCfg() {
   return {
@@ -3174,7 +3192,7 @@ $id('btn-bench-run').addEventListener('click', async () => {
     return;
   }
 
-  ['goroutines','matrix','minibatch'].forEach(b => {
+  ['standard','goroutines','matrix','minibatch'].forEach(b => {
     $id(`bench-stat-${b}`).textContent = 'aguardando...';
     $id(`bench-grid-${b}`).style.opacity = '0.4';
     benchResults[b] = null;
@@ -3204,7 +3222,7 @@ $id('btn-bench-run').addEventListener('click', async () => {
       benchResults[backend] = step;
       fillImgregGrid(`bench-grid-${backend}`, step.outputPixels);
       stat.textContent = `✓ ${step.elapsedMs}ms · loss ${step.loss.toFixed(5)}`;
-      if (benchResults.goroutines && benchResults.matrix && benchResults.minibatch) {
+      if (benchResults.standard && benchResults.goroutines && benchResults.matrix && benchResults.minibatch) {
         benchES.close(); benchES = null;
         $id('btn-bench-run').textContent = 'RODAR BENCHMARK';
         $id('spin-bench').style.display = 'none';
@@ -3227,7 +3245,10 @@ $id('btn-bench-run').addEventListener('click', async () => {
 });
 
 function showBenchResults() {
-  const backends = ['goroutines','matrix','minibatch'];
+  const backends = ['standard','goroutines','matrix','minibatch'];
+  const labels   = ['Standard','Goroutines','Matrix','Mini-batch'];
+  const colors   = ['#c9b4ff','#ff6ec7','#00fbfb','#00ff00'];
+
   let fastest = backends.reduce((a, b) =>
     benchResults[a].elapsedMs < benchResults[b].elapsedMs ? a : b
   );
@@ -3245,29 +3266,70 @@ function showBenchResults() {
   });
 
   $id('bench-results').style.display = 'grid';
-
   $id('bench-chart-card').style.display = 'block';
-  const ctx = document.getElementById('bench-chart').getContext('2d');
-  if (window.benchChartInst) window.benchChartInst.destroy();
-  window.benchChartInst = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: ['Goroutines', 'Matrix', 'Mini-batch'],
-      datasets: [{
-        label: 'Tempo Total (ms)',
-        data: backends.map(b => benchResults[b].elapsedMs),
-        backgroundColor: ['#ff6ec7','#00fbfb','#00ff00'],
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { ticks: { color: '#b9ccaf', font: {family:'JetBrains Mono',size:10} } },
-        x: { ticks: { color: '#b9ccaf', font: {family:'JetBrains Mono',size:10} } }
-      }
+
+  // ── Gráfico de barras — canvas 2D puro, sem dependências externas ──
+  const canvas = document.getElementById('bench-chart');
+  const W = canvas.offsetWidth || 600;
+  const H = 180;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const values = backends.map(b => benchResults[b].elapsedMs);
+  const maxVal = Math.max(...values) || 1;
+
+  const pad = {t: 12, r: 16, b: 40, l: 56};
+  const chartW = W - pad.l - pad.r;
+  const chartH = H - pad.t - pad.b;
+  const barW = Math.floor(chartW / backends.length * 0.55);
+  const gap  = chartW / backends.length;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#181c22';
+  ctx.fillRect(0, 0, W, H);
+
+  // Gridlines + y-axis labels
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.fillStyle = '#6b7a6b';
+  ctx.strokeStyle = '#ffffff10';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (1 - i/4) * chartH;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + chartW, y); ctx.stroke();
+    const label = Math.round(maxVal * i / 4);
+    ctx.fillText(label + 'ms', pad.l - 54, y + 3);
+  }
+
+  // Bars
+  backends.forEach((b, i) => {
+    const barH = (values[i] / maxVal) * chartH;
+    const x = pad.l + i * gap + (gap - barW) / 2;
+    const y = pad.t + chartH - barH;
+
+    // Glow
+    ctx.shadowColor = colors[i];
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = colors[i] + 'cc';
+    ctx.fillRect(x, y, barW, barH);
+    ctx.shadowBlur = 0;
+
+    // Value label on top of bar
+    ctx.fillStyle = colors[i];
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(values[i] + 'ms', x + barW/2, y - 4);
+
+    // X-axis label
+    ctx.fillStyle = b === fastest ? colors[i] : '#b9ccaf';
+    ctx.font = b === fastest ? 'bold 10px JetBrains Mono, monospace' : '10px JetBrains Mono, monospace';
+    ctx.fillText(labels[i], x + barW/2, pad.t + chartH + 18);
+    if (b === fastest) {
+      ctx.fillStyle = colors[i];
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillText('★ FASTEST', x + barW/2, pad.t + chartH + 30);
     }
   });
+  ctx.textAlign = 'left';
 }
 
 $id('btn-bench-reset').addEventListener('click', async () => {
@@ -3276,7 +3338,7 @@ $id('btn-bench-reset').addEventListener('click', async () => {
   $id('spin-bench').style.display = 'none';
   $id('bench-results').style.display = 'none';
   $id('bench-chart-card').style.display = 'none';
-  ['goroutines','matrix','minibatch'].forEach(b => {
+  ['standard','goroutines','matrix','minibatch'].forEach(b => {
     $id(`bench-stat-${b}`).textContent = 'aguardando...';
     $id(`bench-grid-${b}`).style.opacity = '0.4';
     benchResults[b] = null;

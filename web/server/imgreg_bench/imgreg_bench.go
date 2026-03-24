@@ -3,7 +3,9 @@ package imgreg_bench
 import (
 	"context"
 	"sync"
+	"time"
 
+	std "mlp-server/imgreg"
 	gor "mlp-server/imgreg_goroutines"
 	mat "mlp-server/imgreg_matrix"
 	mb  "mlp-server/imgreg_minibatch"
@@ -35,10 +37,16 @@ type Step struct {
 }
 
 type BenchStep struct {
-	Backend string `json:"backend"` // "goroutines" | "matrix" | "minibatch"
+	Backend string `json:"backend"` // "standard" | "goroutines" | "matrix" | "minibatch"
 	Step    Step   `json:"step"`
 }
 
+func fromStd(s std.Step, elapsedMs, epochMs int64) Step {
+	return Step{Epoca: s.Epoca, MaxEpocas: s.MaxEpocas, Loss: s.Loss,
+		OutputPixels: s.OutputPixels, ActiveLayer: s.ActiveLayer, Done: s.Done,
+		Convergiu: s.Convergiu, LossHistorico: s.LossHistorico,
+		ElapsedMs: elapsedMs, EpochMs: epochMs}
+}
 func fromGor(s gor.Step) Step {
 	return Step{Epoca: s.Epoca, MaxEpocas: s.MaxEpocas, Loss: s.Loss,
 		OutputPixels: s.OutputPixels, ActiveLayer: s.ActiveLayer, Done: s.Done,
@@ -59,6 +67,8 @@ func fromMb(s mb.Step) Step {
 }
 
 func Rodar(ctx context.Context, cfg BenchConfig, ch chan<- BenchStep) {
+	stdCfg := std.Config{HiddenLayers: cfg.HiddenLayers, NeuronsPerLayer: cfg.NeuronsPerLayer,
+		LearningRate: cfg.LearningRate, Imagem: cfg.Imagem, MaxEpocas: cfg.MaxEpocas}
 	gorCfg := gor.Config{HiddenLayers: cfg.HiddenLayers, NeuronsPerLayer: cfg.NeuronsPerLayer,
 		LearningRate: cfg.LearningRate, Imagem: cfg.Imagem, MaxEpocas: cfg.MaxEpocas}
 	matCfg := mat.Config{HiddenLayers: cfg.HiddenLayers, NeuronsPerLayer: cfg.NeuronsPerLayer,
@@ -67,6 +77,26 @@ func Rodar(ctx context.Context, cfg BenchConfig, ch chan<- BenchStep) {
 		LearningRate: cfg.LearningRate, Imagem: cfg.Imagem, MaxEpocas: cfg.MaxEpocas,
 		BatchSize: cfg.BatchSize, NumWorkers: cfg.NumWorkers}
 
+	// Standard wraps the original imgreg which has no timing fields — measure externally
+	runStd := func(ctx context.Context, out chan<- BenchStep) {
+		c := make(chan std.Step, 64)
+		start := time.Now()
+		go std.Treinar(ctx, stdCfg, c)
+		var lastEpochStart time.Time
+		var epochMs int64
+		for s := range c {
+			now := time.Now()
+			if !s.Done {
+				epochMs = now.Sub(lastEpochStart).Milliseconds()
+				lastEpochStart = now
+			}
+			select {
+			case out <- BenchStep{Backend: "standard", Step: fromStd(s, time.Since(start).Milliseconds(), epochMs)}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
 	runGor := func(ctx context.Context, out chan<- BenchStep) {
 		c := make(chan gor.Step, 64)
 		go gor.Treinar(ctx, gorCfg, c)
@@ -101,11 +131,12 @@ func Rodar(ctx context.Context, cfg BenchConfig, ch chan<- BenchStep) {
 		}
 	}
 
+	runners := []func(context.Context, chan<- BenchStep){runStd, runGor, runMat, runMb}
+
 	if cfg.Parallel {
-		// Todos os 3 backends em paralelo; canal intermediário para serializar
-		proxy := make(chan BenchStep, 192)
+		proxy := make(chan BenchStep, 256)
 		var wg sync.WaitGroup
-		for _, fn := range []func(context.Context, chan<- BenchStep){runGor, runMat, runMb} {
+		for _, fn := range runners {
 			wg.Add(1)
 			fn := fn
 			go func() {
@@ -125,10 +156,10 @@ func Rodar(ctx context.Context, cfg BenchConfig, ch chan<- BenchStep) {
 			}
 		}
 	} else {
-		// Sequencial: goroutines → matrix → minibatch
-		runGor(ctx, ch)
-		runMat(ctx, ch)
-		runMb(ctx, ch)
+		// Sequencial: standard → goroutines → matrix → minibatch
+		for _, fn := range runners {
+			fn(ctx, ch)
+		}
 	}
 	close(ch)
 }

@@ -30,12 +30,16 @@ type Step struct {
 	EpochMs       int64        `json:"epochMs"`
 }
 
-// Net stores weights as Go slices (for JSON serialization and initialization)
-// but converts to gonum.Dense internally during training.
+// Net stores weights as Go slices (for JSON serialization and initialization).
+// During training, Wm/Bvec hold persistent gonum Dense matrices to avoid
+// per-epoch allocation and data copying.
 type Net struct {
 	LayerSizes []int         `json:"layerSizes"`
 	W          [][][]float64 `json:"-"`
 	B          [][]float64   `json:"-"`
+	// Persistent gonum matrices, populated by buildMatrices()
+	Wm   []*mat.Dense `json:"-"`
+	Bvec [][]float64  `json:"-"` // bias per layer (plain slice, added row-by-row)
 }
 
 func relu(x float64) float64      { if x > 0 { return x }; return 0 }
@@ -64,16 +68,13 @@ func inicializar(cfg Config, rng *rand.Rand) Net {
 	sizes = append(sizes, 3)
 
 	nLayers := len(sizes) - 1
-
 	W := make([][][]float64, nLayers)
 	B := make([][]float64, nLayers)
 
 	for l := 0; l < nLayers; l++ {
 		fanIn := sizes[l]
 		fanOut := sizes[l+1]
-
 		scale := math.Sqrt(2.0 / float64(fanIn))
-
 		W[l] = make([][]float64, fanIn)
 		for i := 0; i < fanIn; i++ {
 			W[l][i] = make([]float64, fanOut)
@@ -81,18 +82,55 @@ func inicializar(cfg Config, rng *rand.Rand) Net {
 				W[l][i][j] = rng.NormFloat64() * scale
 			}
 		}
-
 		B[l] = make([]float64, fanOut)
 	}
 
-	return Net{LayerSizes: sizes, W: W, B: B}
+	net := Net{LayerSizes: sizes, W: W, B: B}
+	net.buildMatrices()
+	return net
+}
+
+// buildMatrices creates persistent gonum Dense matrices from W/B slices.
+// Called once after initialization (and after weight updates) so that Mul
+// operates directly on the matrix data without per-epoch copying.
+func (n *Net) buildMatrices() {
+	nT := len(n.W)
+	n.Wm = make([]*mat.Dense, nT)
+	n.Bvec = make([][]float64, nT)
+	for l := 0; l < nT; l++ {
+		fanIn := len(n.W[l])
+		fanOut := len(n.W[l][0])
+		data := make([]float64, fanIn*fanOut)
+		for i := 0; i < fanIn; i++ {
+			for j := 0; j < fanOut; j++ {
+				data[i*fanOut+j] = n.W[l][i][j]
+			}
+		}
+		n.Wm[l] = mat.NewDense(fanIn, fanOut, data)
+		b := make([]float64, fanOut)
+		copy(b, n.B[l])
+		n.Bvec[l] = b
+	}
+}
+
+// syncFromMatrices writes Wm/Bvec back to W/B slices (for predict/JSON).
+func (n *Net) syncFromMatrices() {
+	for l, Wl := range n.Wm {
+		fanIn := len(n.W[l])
+		fanOut := len(n.W[l][0])
+		for i := 0; i < fanIn; i++ {
+			for j := 0; j < fanOut; j++ {
+				n.W[l][i][j] = Wl.At(i, j)
+			}
+		}
+		copy(n.B[l], n.Bvec[l])
+	}
 }
 
 // =============================================================================
 // GERAÇÃO DE IMAGENS-ALVO (16×16 pixels, proceduralmente)
 // =============================================================================
 
-// GetTarget — retorna os 256 pixels RGB [0,1] da imagem escolhida
 func GetTarget(nome string) [][3]float64 {
 	switch nome {
 	case "smiley":
@@ -106,29 +144,22 @@ func GetTarget(nome string) [][3]float64 {
 	}
 }
 
-// imgCoracao — coração vermelho com gradiente sobre fundo escuro
 func imgCoracao() [][3]float64 {
 	pixels := make([][3]float64, 256)
 	for py := 0; py < 16; py++ {
 		for px := 0; px < 16; px++ {
 			x := (float64(px)/15.0)*2.0 - 1.0
 			y := -((float64(py)/15.0)*2.0 - 1.0)
-
 			cx, cy := x*1.3, y*1.3
 			x2, y2 := cx*cx, cy*cy
 			f := (x2+y2-1)*(x2+y2-1)*(x2+y2-1) - x2*cy*y2
-
 			var r, g, b float64
 			if f <= 0 {
 				intensity := 1.0 - math.Sqrt(x2+y2)*0.3
 				intensity = math.Max(0.6, math.Min(1.0, intensity))
-				r = intensity
-				g = 0.05
-				b = 0.1
+				r = intensity; g = 0.05; b = 0.1
 			} else {
-				r = 0.04
-				g = 0.05
-				b = 0.08
+				r = 0.04; g = 0.05; b = 0.08
 			}
 			pixels[py*16+px] = [3]float64{r, g, b}
 		}
@@ -136,94 +167,54 @@ func imgCoracao() [][3]float64 {
 	return pixels
 }
 
-// imgSmiley — rosto amarelo com olhos e sorriso em fundo azul escuro
 func imgSmiley() [][3]float64 {
 	pixels := make([][3]float64, 256)
 	for py := 0; py < 16; py++ {
 		for px := 0; px < 16; px++ {
 			x := (float64(px)/15.0)*2.0 - 1.0
 			y := -((float64(py)/15.0)*2.0 - 1.0)
-
 			dist := math.Sqrt(x*x + y*y)
-
 			var r, g, b float64
 			r, g, b = 0.05, 0.08, 0.25
-
-			if dist < 0.85 {
-				r, g, b = 0.95, 0.85, 0.05
-			}
-
-			olhoEsqX, olhoEsqY := -0.28, 0.28
-			if math.Sqrt((x-olhoEsqX)*(x-olhoEsqX)+(y-olhoEsqY)*(y-olhoEsqY)) < 0.14 {
-				r, g, b = 0.1, 0.07, 0.05
-			}
-
-			olhoDirX, olhoDirY := 0.28, 0.28
-			if math.Sqrt((x-olhoDirX)*(x-olhoDirX)+(y-olhoDirY)*(y-olhoDirY)) < 0.14 {
-				r, g, b = 0.1, 0.07, 0.05
-			}
-
-			sorrisoX, sorrisoY := 0.0, -0.1
-			distSorriso := math.Sqrt((x-sorrisoX)*(x-sorrisoX) + (y-sorrisoY)*(y-sorrisoY))
-			if distSorriso > 0.38 && distSorriso < 0.55 && y < sorrisoY+0.05 {
-				r, g, b = 0.1, 0.07, 0.05
-			}
-
+			if dist < 0.85 { r, g, b = 0.95, 0.85, 0.05 }
+			if math.Sqrt((x+0.28)*(x+0.28)+(y-0.28)*(y-0.28)) < 0.14 { r, g, b = 0.1, 0.07, 0.05 }
+			if math.Sqrt((x-0.28)*(x-0.28)+(y-0.28)*(y-0.28)) < 0.14 { r, g, b = 0.1, 0.07, 0.05 }
+			dS := math.Sqrt(x*x + (y+0.1)*(y+0.1))
+			if dS > 0.38 && dS < 0.55 && y < -0.05 { r, g, b = 0.1, 0.07, 0.05 }
 			pixels[py*16+px] = [3]float64{r, g, b}
 		}
 	}
 	return pixels
 }
 
-// imgRadial — padrão de ondas concêntricas coloridas (sin/cos)
 func imgRadial() [][3]float64 {
 	pixels := make([][3]float64, 256)
 	for py := 0; py < 16; py++ {
 		for px := 0; px < 16; px++ {
 			x := (float64(px)/15.0)*2.0 - 1.0
 			y := (float64(py)/15.0)*2.0 - 1.0
-
 			dist := math.Sqrt(x*x + y*y)
 			angle := math.Atan2(y, x)
-
 			wave := math.Sin(dist*8.0)*0.5 + 0.5
 			angWave := math.Cos(angle*3.0+dist*4.0)*0.3 + 0.7
-
-			r := wave * angWave
-			g := math.Sin(dist*6.0+1.0)*0.5 + 0.5
-			b := math.Cos(dist*10.0)*0.5 + 0.5
-
-			pixels[py*16+px] = [3]float64{r, g, b}
+			pixels[py*16+px] = [3]float64{wave * angWave, math.Sin(dist*6.0+1.0)*0.5 + 0.5, math.Cos(dist*10.0)*0.5 + 0.5}
 		}
 	}
 	return pixels
 }
 
-// imgBrasil — bandeira do Brasil simplificada (verde, losango amarelo, círculo azul)
 func imgBrasil() [][3]float64 {
 	pixels := make([][3]float64, 256)
 	for py := 0; py < 16; py++ {
 		for px := 0; px < 16; px++ {
 			x := (float64(px)/15.0)*2.0 - 1.0
 			y := -((float64(py)/15.0)*2.0 - 1.0)
-
 			var r, g, b float64
-
 			r, g, b = 0.0, 0.5, 0.15
-
-			if math.Abs(x)*0.9+math.Abs(y) < 0.65 {
-				r, g, b = 0.95, 0.80, 0.0
-			}
-
+			if math.Abs(x)*0.9+math.Abs(y) < 0.65 { r, g, b = 0.95, 0.80, 0.0 }
 			dist := math.Sqrt(x*x + y*y)
-			if dist < 0.35 {
-				r, g, b = 0.0, 0.2, 0.7
-			}
-
-			if dist < 0.35 && math.Abs(y) < 0.06 {
-				r, g, b = 0.95, 0.95, 0.95
-			}
-
+			if dist < 0.35 { r, g, b = 0.0, 0.2, 0.7 }
+			if dist < 0.35 && math.Abs(y) < 0.06 { r, g, b = 0.95, 0.95, 0.95 }
 			pixels[py*16+px] = [3]float64{r, g, b}
 		}
 	}
@@ -236,13 +227,11 @@ func imgBrasil() [][3]float64 {
 
 func predict(net Net) [][3]float64 {
 	pixels := make([][3]float64, 256)
+	nLayers := len(net.LayerSizes)
 	for py := 0; py < 16; py++ {
 		for px := 0; px < 16; px++ {
 			x := (float64(px)/15.0)*2.0 - 1.0
 			y := (float64(py)/15.0)*2.0 - 1.0
-			// predict does a single-sample forward pass using the slice-based Net
-			// (not matrix ops, since it's just one sample)
-			nLayers := len(net.LayerSizes)
 			acts := make([][]float64, nLayers)
 			acts[0] = []float64{x, y}
 			for l := 0; l < len(net.W); l++ {
@@ -270,7 +259,7 @@ func predict(net Net) [][3]float64 {
 }
 
 // =============================================================================
-// TREINAR — forward/backward matricial com gonum
+// TREINAR — forward/backward matricial com gonum (matrizes persistentes)
 // =============================================================================
 
 func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
@@ -290,8 +279,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 	const epochStep = 5
 	start := time.Now()
 
-	// Prepara a matrix de inputs: 256x2 (coordenadas normalizadas)
-	// e a matrix de targets: 256x3 (RGB)
+	// Input matrix A0: 256×2 — fixo, nunca muda
 	inputData := make([]float64, 256*2)
 	targetData := make([]float64, 256*3)
 	for py := 0; py < 16; py++ {
@@ -304,10 +292,39 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 			targetData[idx*3+2] = target[idx][2]
 		}
 	}
-	A0 := mat.NewDense(256, 2, inputData) // input fixed
+	A0 := mat.NewDense(256, 2, inputData)
 	T := mat.NewDense(256, 3, targetData)
 
-	nT := len(net.W)
+	nT := len(net.Wm)
+
+	// Pré-aloca buffers reutilizáveis para forward/backward (sem alloc por época)
+	acts := make([]*mat.Dense, nT+1)
+	preActs := make([]*mat.Dense, nT+1)
+	acts[0] = A0
+	preActs[0] = A0
+	for l := 0; l < nT; l++ {
+		fanOut := net.LayerSizes[l+1]
+		acts[l+1] = mat.NewDense(256, fanOut, nil)
+		preActs[l+1] = mat.NewDense(256, fanOut, nil)
+	}
+	dZ := make([]*mat.Dense, nT+1)
+	for l := 1; l <= nT; l++ {
+		fanOut := net.LayerSizes[l]
+		dZ[l] = mat.NewDense(256, fanOut, nil)
+	}
+	dW := make([]*mat.Dense, nT)
+	for l := 0; l < nT; l++ {
+		dW[l] = mat.NewDense(net.LayerSizes[l], net.LayerSizes[l+1], nil)
+	}
+	// dAl reutilizado para cada camada no backward (tamanho máximo = max fanIn)
+	maxFanIn := 0
+	for l := 0; l < nT; l++ {
+		if net.LayerSizes[l] > maxFanIn {
+			maxFanIn = net.LayerSizes[l]
+		}
+	}
+	dAlBuf := mat.NewDense(256, maxFanIn, nil)
+
 	lossHistorico := make([]float64, 0, cfg.MaxEpocas)
 
 	for epoca := 1; epoca <= cfg.MaxEpocas; epoca++ {
@@ -320,136 +337,116 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 
 		epochStart := time.Now()
 
-		// === FORWARD PASS MATRICIAL ===
-		// acts[l] = 256xsizes[l], preActs[l] = 256xsizes[l]
-		acts := make([]*mat.Dense, nT+1)
-		preActs := make([]*mat.Dense, nT+1)
-		acts[0] = A0
-		preActs[0] = A0
-
+		// === FORWARD PASS — usa matrizes persistentes net.Wm[l] ===
 		for l := 0; l < nT; l++ {
-			fanIn, fanOut := len(net.W[l]), len(net.W[l][0])
+			fanOut := net.LayerSizes[l+1]
 
-			// Build weight matrix Wl: fanIn x fanOut
-			wData := make([]float64, fanIn*fanOut)
-			for i := 0; i < fanIn; i++ {
-				for j := 0; j < fanOut; j++ {
-					wData[i*fanOut+j] = net.W[l][i][j]
-				}
-			}
-			Wl := mat.NewDense(fanIn, fanOut, wData)
+			// Z = A_{l} * W_{l}  (BLAS dgemm via gonum)
+			preActs[l+1].Mul(acts[l], net.Wm[l])
 
-			// Z = A * W  (256xfanIn x fanInxfanOut = 256xfanOut)
-			Z := mat.NewDense(256, fanOut, nil)
-			Z.Mul(acts[l], Wl)
-
-			// Add bias row by row (gonum does not broadcast)
+			// Z += bias (row-by-row, não há broadcast em gonum)
+			b := net.Bvec[l]
+			raw := preActs[l+1].RawMatrix().Data
 			for row := 0; row < 256; row++ {
+				off := row * fanOut
 				for j := 0; j < fanOut; j++ {
-					Z.Set(row, j, Z.At(row, j)+net.B[l][j])
+					raw[off+j] += b[j]
 				}
 			}
-			preActs[l+1] = Z
 
-			// Apply activation element-wise
-			A := mat.NewDense(256, fanOut, nil)
+			// Ativação element-wise no buffer acts[l+1]
 			isOut := (l == nT-1)
-			for row := 0; row < 256; row++ {
-				for j := 0; j < fanOut; j++ {
-					z := Z.At(row, j)
-					if isOut {
-						A.Set(row, j, sigmoid(z))
-					} else {
-						A.Set(row, j, relu(z))
-					}
+			zRaw := preActs[l+1].RawMatrix().Data
+			aRaw := acts[l+1].RawMatrix().Data
+			if isOut {
+				for k, v := range zRaw {
+					aRaw[k] = sigmoid(v)
+				}
+			} else {
+				for k, v := range zRaw {
+					aRaw[k] = relu(v)
 				}
 			}
-			acts[l+1] = A
 		}
 
 		// === LOSS (MSE) ===
+		outRaw := acts[nT].RawMatrix().Data
+		tRaw := T.RawMatrix().Data
 		var lossTotal float64
-		outA := acts[nT] // 256x3
-		for row := 0; row < 256; row++ {
-			for k := 0; k < 3; k++ {
-				d := T.At(row, k) - outA.At(row, k)
-				lossTotal += 0.5 * d * d
-			}
+		for k, a := range outRaw {
+			d := tRaw[k] - a
+			lossTotal += d * d
 		}
-		lossMedia := lossTotal / float64(256*3)
+		lossMedia := lossTotal * 0.5 / float64(256*3)
 		lossHistorico = append(lossHistorico, lossMedia)
 
-		// === BACKWARD PASS MATRICIAL ===
-		// dZ_out: 256x3 = (T - outA) * sigmoidDeriv(outA) element-wise
-		dZ := make([]*mat.Dense, nT+1)
-		dZout := mat.NewDense(256, 3, nil)
-		for row := 0; row < 256; row++ {
-			for k := 0; k < 3; k++ {
-				y := outA.At(row, k)
-				dZout.Set(row, k, (T.At(row, k)-y)*sigmoidDeriv(y))
-			}
+		// === BACKWARD PASS ===
+		// dZ_out: 256×3 = (T - A_out) * sigmoidDeriv(A_out)
+		dzRaw := dZ[nT].RawMatrix().Data
+		for k, a := range outRaw {
+			dzRaw[k] = (tRaw[k] - a) * sigmoidDeriv(a)
 		}
-		dZ[nT] = dZout
 
-		// Propagate delta backwards through hidden layers
+		// Propagate delta backwards
 		for l := nT - 1; l >= 1; l-- {
-			fanIn2, fanOut2 := len(net.W[l]), len(net.W[l][0])
-			wData := make([]float64, fanIn2*fanOut2)
-			for i := 0; i < fanIn2; i++ {
-				for j := 0; j < fanOut2; j++ {
-					wData[i*fanOut2+j] = net.W[l][i][j]
-				}
-			}
-			Wl := mat.NewDense(fanIn2, fanOut2, wData)
+			fanIn2 := net.LayerSizes[l]
 
-			// dA_l = dZ_{l+1} * W_l^T  (256xfanOut2 x fanOut2xfanIn2 = 256xfanIn2)
-			dAl := mat.NewDense(256, fanIn2, nil)
-			dAl.Mul(dZ[l+1], Wl.T())
+			// dA_l = dZ_{l+1} * W_l^T  (BLAS dgemm)
+			dAlView := dAlBuf.Slice(0, 256, 0, fanIn2).(*mat.Dense)
+			dAlView.Mul(dZ[l+1], net.Wm[l].T())
 
 			// dZ_l = dA_l * reluDeriv(preActs[l]) element-wise
-			dZl := mat.NewDense(256, fanIn2, nil)
-			for row := 0; row < 256; row++ {
-				for j := 0; j < fanIn2; j++ {
-					dZl.Set(row, j, dAl.At(row, j)*reluDeriv(preActs[l].At(row, j)))
-				}
+			dzlRaw := dZ[l].RawMatrix().Data
+			daRaw := dAlView.RawMatrix().Data
+			zRaw := preActs[l].RawMatrix().Data
+			for k := range dzlRaw {
+				dzlRaw[k] = daRaw[k] * reluDeriv(zRaw[k])
 			}
-			dZ[l] = dZl
 		}
 
-		// === WEIGHT UPDATE ===
-		// dW_l = (A_{l-1}^T * dZ_l) / 256  (mean over 256 pixels)
+		// === WEIGHT UPDATE — dW_l = (A_{l-1}^T * dZ_{l+1}) / 256 ===
+		lr256 := cfg.LearningRate / 256.0
 		for l := 0; l < nT; l++ {
-			fanIn3, fanOut3 := len(net.W[l]), len(net.W[l][0])
-			dWl := mat.NewDense(fanIn3, fanOut3, nil)
-			dWl.Mul(acts[l].T(), dZ[l+1])
+			fanIn3 := net.LayerSizes[l]
+			fanOut3 := net.LayerSizes[l+1]
 
-			for i := 0; i < fanIn3; i++ {
-				for j := 0; j < fanOut3; j++ {
-					net.W[l][i][j] += cfg.LearningRate * dWl.At(i, j) / 256.0
-				}
+			// dW via BLAS
+			dW[l].Mul(acts[l].T(), dZ[l+1])
+
+			// Update Wm in-place via RawMatrix data
+			wRaw := net.Wm[l].RawMatrix().Data
+			dwRaw := dW[l].RawMatrix().Data
+			for k := range wRaw {
+				wRaw[k] += lr256 * dwRaw[k]
 			}
-			// dB_l = mean of rows of dZ_{l+1}
+
+			// dB = mean of rows of dZ[l+1]
+			dzColRaw := dZ[l+1].RawMatrix().Data
+			b := net.Bvec[l]
 			for j := 0; j < fanOut3; j++ {
 				var sum float64
 				for row := 0; row < 256; row++ {
-					sum += dZ[l+1].At(row, j)
+					sum += dzColRaw[row*fanOut3+j]
 				}
-				net.B[l][j] += cfg.LearningRate * sum / 256.0
+				b[j] += lr256 * sum
 			}
+			_ = fanIn3
 		}
 
 		epochMs := time.Since(epochStart).Milliseconds()
 
 		if epoca%epochStep == 0 || epoca == 1 || epoca == cfg.MaxEpocas {
+			// Sync gonum matrices back to slices for predict()
+			net.syncFromMatrices()
 			pixels := predict(net)
 			step := Step{
-				Epoca:       epoca,
-				MaxEpocas:   cfg.MaxEpocas,
-				Loss:        lossMedia,
+				Epoca:        epoca,
+				MaxEpocas:    cfg.MaxEpocas,
+				Loss:         lossMedia,
 				OutputPixels: pixels,
-				ActiveLayer: epoca % len(net.W),
-				ElapsedMs:   time.Since(start).Milliseconds(),
-				EpochMs:     epochMs,
+				ActiveLayer:  epoca % len(net.W),
+				ElapsedMs:    time.Since(start).Milliseconds(),
+				EpochMs:      epochMs,
 			}
 			select {
 			case progressCh <- step:
@@ -458,6 +455,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 		}
 	}
 
+	net.syncFromMatrices()
 	finalPixels := predict(net)
 	convergiu := lossHistorico[len(lossHistorico)-1] < 0.01
 	select {
