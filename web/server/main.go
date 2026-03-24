@@ -10,6 +10,10 @@ import (
 
 	"mlp-server/hebb"
 	"mlp-server/imgreg"
+	igoroutines "mlp-server/imgreg_goroutines"
+	imatrix     "mlp-server/imgreg_matrix"
+	iminibatch  "mlp-server/imgreg_minibatch"
+	ibench      "mlp-server/imgreg_bench"
 	"mlp-server/letras"
 	"mlp-server/madaline"
 	"mlp-server/mlp"
@@ -52,6 +56,29 @@ var (
 	imgregTraining bool
 	imgregCfg      *imgreg.Config
 	imgregCancel   context.CancelFunc // cancela treino em andamento
+
+	// imgreg_goroutines
+	igorRede     *igoroutines.Net
+	igorTraining bool
+	igorCfg      *igoroutines.Config
+	igorCancel   context.CancelFunc
+
+	// imgreg_matrix
+	imatRede     *imatrix.Net
+	imatTraining bool
+	imatCfg      *imatrix.Config
+	imatCancel   context.CancelFunc
+
+	// imgreg_minibatch
+	imbRede      *iminibatch.Net
+	imbTraining  bool
+	imbCfg       *iminibatch.Config
+	imbCancel    context.CancelFunc
+
+	// imgreg_bench
+	benchCfg     *ibench.BenchConfig
+	benchRunning bool
+	benchCancel  context.CancelFunc
 )
 
 func init() {
@@ -603,6 +630,235 @@ func handleImgregStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // =============================================================================
+// Image Regression — Goroutines backend
+// =============================================================================
+
+func handleIgorConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg igoroutines.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error()); return
+	}
+	mu.Lock(); igorCfg = &cfg; mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleIgorTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if igorTraining { mu.Unlock(); errJSON(w, http.StatusConflict, "treino em andamento"); return }
+	cfg := igorCfg
+	if cfg == nil { mu.Unlock(); errJSON(w, http.StatusBadRequest, "configure primeiro"); return }
+	igorTraining = true
+	ctx, cancel := context.WithCancel(r.Context())
+	igorCancel = cancel
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok { mu.Lock(); igorTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+
+	progressCh := make(chan igoroutines.Step, 64)
+	go func() {
+		defer cancel()
+		rede := igoroutines.Treinar(ctx, *cfg, progressCh)
+		mu.Lock(); igorRede = &rede; igorTraining = false; igorCancel = nil; mu.Unlock()
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleIgorReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if igorCancel != nil { igorCancel(); igorCancel = nil }
+	igorRede = nil; igorCfg = nil; igorTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleIgorStatus(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	training, trained := igorTraining, igorRede != nil
+	mu.RUnlock()
+	writeJSON(w, http.StatusOK, map[string]any{"training": training, "trained": trained})
+}
+
+// =============================================================================
+// Image Regression — Matrix backend
+// =============================================================================
+
+func handleImatConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg imatrix.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error()); return
+	}
+	mu.Lock(); imatCfg = &cfg; mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleImatTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if imatTraining { mu.Unlock(); errJSON(w, http.StatusConflict, "treino em andamento"); return }
+	cfg := imatCfg
+	if cfg == nil { mu.Unlock(); errJSON(w, http.StatusBadRequest, "configure primeiro"); return }
+	imatTraining = true
+	ctx, cancel := context.WithCancel(r.Context())
+	imatCancel = cancel
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok { mu.Lock(); imatTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+
+	progressCh := make(chan imatrix.Step, 64)
+	go func() {
+		defer cancel()
+		rede := imatrix.Treinar(ctx, *cfg, progressCh)
+		mu.Lock(); imatRede = &rede; imatTraining = false; imatCancel = nil; mu.Unlock()
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleImatReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if imatCancel != nil { imatCancel(); imatCancel = nil }
+	imatRede = nil; imatCfg = nil; imatTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleImatStatus(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	training, trained := imatTraining, imatRede != nil
+	mu.RUnlock()
+	writeJSON(w, http.StatusOK, map[string]any{"training": training, "trained": trained})
+}
+
+// =============================================================================
+// Image Regression — Mini-batch backend
+// =============================================================================
+
+func handleImbConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg iminibatch.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error()); return
+	}
+	mu.Lock(); imbCfg = &cfg; mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleImbTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if imbTraining { mu.Unlock(); errJSON(w, http.StatusConflict, "treino em andamento"); return }
+	cfg := imbCfg
+	if cfg == nil { mu.Unlock(); errJSON(w, http.StatusBadRequest, "configure primeiro"); return }
+	imbTraining = true
+	ctx, cancel := context.WithCancel(r.Context())
+	imbCancel = cancel
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok { mu.Lock(); imbTraining = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+
+	progressCh := make(chan iminibatch.Step, 64)
+	go func() {
+		defer cancel()
+		rede := iminibatch.Treinar(ctx, *cfg, progressCh)
+		mu.Lock(); imbRede = &rede; imbTraining = false; imbCancel = nil; mu.Unlock()
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleImbReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if imbCancel != nil { imbCancel(); imbCancel = nil }
+	imbRede = nil; imbCfg = nil; imbTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleImbStatus(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	training, trained := imbTraining, imbRede != nil
+	mu.RUnlock()
+	writeJSON(w, http.StatusOK, map[string]any{"training": training, "trained": trained})
+}
+
+// =============================================================================
+// Image Regression — Benchmark
+// =============================================================================
+
+func handleBenchConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg ibench.BenchConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error()); return
+	}
+	mu.Lock(); benchCfg = &cfg; mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleBenchTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if benchRunning { mu.Unlock(); errJSON(w, http.StatusConflict, "benchmark em andamento"); return }
+	cfg := benchCfg
+	if cfg == nil { mu.Unlock(); errJSON(w, http.StatusBadRequest, "configure primeiro"); return }
+	benchRunning = true
+	ctx, cancel := context.WithCancel(r.Context())
+	benchCancel = cancel
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok { mu.Lock(); benchRunning = false; mu.Unlock(); errJSON(w, 500, "streaming não suportado"); return }
+
+	benchCh := make(chan ibench.BenchStep, 192)
+	go func() {
+		defer cancel()
+		ibench.Rodar(ctx, *cfg, benchCh)
+		mu.Lock(); benchRunning = false; benchCancel = nil; mu.Unlock()
+	}()
+
+	for step := range benchCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleBenchReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if benchCancel != nil { benchCancel(); benchCancel = nil }
+	benchCfg = nil; benchRunning = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+// =============================================================================
 // main
 // =============================================================================
 
@@ -653,6 +909,29 @@ func main() {
 	mux.HandleFunc("/api/imgreg/target", cors(handleImgregTarget))
 	mux.HandleFunc("/api/imgreg/reset", cors(handleImgregReset))
 	mux.HandleFunc("/api/imgreg/status", cors(handleImgregStatus))
+
+	// imgreg_goroutines
+	mux.HandleFunc("/api/imgreg-goroutines/config", cors(handleIgorConfig))
+	mux.HandleFunc("/api/imgreg-goroutines/train",  cors(handleIgorTrain))
+	mux.HandleFunc("/api/imgreg-goroutines/reset",  cors(handleIgorReset))
+	mux.HandleFunc("/api/imgreg-goroutines/status", cors(handleIgorStatus))
+
+	// imgreg_matrix
+	mux.HandleFunc("/api/imgreg-matrix/config", cors(handleImatConfig))
+	mux.HandleFunc("/api/imgreg-matrix/train",  cors(handleImatTrain))
+	mux.HandleFunc("/api/imgreg-matrix/reset",  cors(handleImatReset))
+	mux.HandleFunc("/api/imgreg-matrix/status", cors(handleImatStatus))
+
+	// imgreg_minibatch
+	mux.HandleFunc("/api/imgreg-minibatch/config", cors(handleImbConfig))
+	mux.HandleFunc("/api/imgreg-minibatch/train",  cors(handleImbTrain))
+	mux.HandleFunc("/api/imgreg-minibatch/reset",  cors(handleImbReset))
+	mux.HandleFunc("/api/imgreg-minibatch/status", cors(handleImbStatus))
+
+	// benchmark
+	mux.HandleFunc("/api/imgreg-bench/config", cors(handleBenchConfig))
+	mux.HandleFunc("/api/imgreg-bench/train",  cors(handleBenchTrain))
+	mux.HandleFunc("/api/imgreg-bench/reset",  cors(handleBenchReset))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
