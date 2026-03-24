@@ -1997,7 +1997,6 @@ Copie, substituindo:
 ```js
 function getImbCfg() {
   return {
-    ...getIgorCfg(), // reutiliza campos comuns mas com IDs `sel-imb-*`
     hiddenLayers:    parseInt($id('sel-imb-layers').value),
     neuronsPerLayer: parseInt($id('sel-imb-neurons').value),
     learningRate:    parseFloat($id('sel-imb-lr').value),
