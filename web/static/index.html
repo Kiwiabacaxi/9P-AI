@@ -161,6 +161,32 @@ canvas { width: 100%; height: 160px; display: block; }
 .imgreg-stat-bar .stat-val.pink { color: var(--pink); }
 .imgreg-stat-bar .stat-sep { color: var(--surface-top); }
 
+/* ── ACCORDION SIDEBAR ── */
+.nav-accordion-header { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); transition: color 100ms, background 100ms; user-select: none; }
+.nav-accordion-header:hover { color: var(--primary); background: var(--surface); }
+.nav-accordion-header.open { color: var(--primary); }
+.nav-accordion-arrow { margin-left: auto; font-size: 9px; transition: transform 150ms; }
+.nav-accordion-header.open .nav-accordion-arrow { transform: rotate(90deg); }
+.nav-accordion-children { display: none; padding-left: 12px; }
+.nav-accordion-children.open { display: block; }
+.nav-accordion-children .nav-item { font-size: 10px; padding: 7px 20px; }
+.nav-accordion-children .nav-item.active::before { background: var(--cyan); }
+
+/* ── TIMING STATS ── */
+.imgreg-stat-bar .stat-val.time { color: var(--pink); }
+
+/* ── BENCHMARK VIEW ── */
+.bench-mode-toggle { display: flex; gap: 8px; }
+.bench-mode-btn { font-family: var(--font-mono); font-size: 10px; padding: 6px 14px; background: var(--surface-high); color: var(--on-surface); border: none; cursor: pointer; }
+.bench-mode-btn.active { background: var(--primary-glow); color: #013a00; }
+.bench-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.bench-col-header { font-family: var(--font-mono); font-size: 10px; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; text-align: center; }
+.bench-result-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+.bench-result-card { background: var(--surface); padding: 16px 20px; }
+.bench-result-card .metric-label { font-family: var(--font-mono); font-size: 9px; color: var(--on-surface); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+.bench-result-card .metric-val { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--primary-glow); }
+.bench-result-card.winner .metric-val { color: var(--cyan); }
+
 .imgreg-select { background: var(--surface-high); color: var(--primary); border: none; font-family: var(--font-mono); font-size: 11px; padding: 8px 12px; cursor: pointer; outline: none; width: 100%; }
 .imgreg-select:focus { box-shadow: 0 0 0 1px var(--primary-glow); }
 .imgreg-select-label { font-family: var(--font-mono); font-size: 9px; color: var(--on-surface); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
@@ -292,10 +318,33 @@ canvas { width: 100%; height: 160px; display: block; }
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>
       MLP Letras
     </div>
-    <div class="nav-item" data-view="imgreg">
+    <!-- IMG_REGRESSION accordion -->
+    <div class="nav-accordion-header" id="accordion-imgreg">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/><line x1="4" y1="4" x2="12" y2="4" stroke-dasharray="1,1"/><line x1="4" y1="12" x2="12" y2="12" stroke-dasharray="1,1"/></svg>
       IMG_REGRESSION
-      <span class="nav-badge" id="badge-imgreg">OFF</span>
+      <span class="nav-accordion-arrow">▶</span>
+    </div>
+    <div class="nav-accordion-children" id="accordion-imgreg-children">
+      <div class="nav-item" data-view="imgreg">
+        Standard
+        <span class="nav-badge" id="badge-imgreg">OFF</span>
+      </div>
+      <div class="nav-item" data-view="imgreg-goroutines">
+        Goroutines
+        <span class="nav-badge" id="badge-igor">OFF</span>
+      </div>
+      <div class="nav-item" data-view="imgreg-matrix">
+        Matrix
+        <span class="nav-badge" id="badge-imat">OFF</span>
+      </div>
+      <div class="nav-item" data-view="imgreg-minibatch">
+        Mini-batch
+        <span class="nav-badge" id="badge-imb">OFF</span>
+      </div>
+      <div class="nav-item" data-view="imgreg-bench">
+        Benchmark
+        <span class="nav-badge" id="badge-bench">—</span>
+      </div>
     </div>
     <div class="sidebar-divider"></div>
     <div class="nav-item" data-view="about">
@@ -815,6 +864,519 @@ canvas { width: 100%; height: 160px; display: block; }
       </div>
     </div>
 
+<!-- ══════════════════════ VIEW: IMGREG GOROUTINES ══════════════════════ -->
+<div class="view" id="view-imgreg-goroutines">
+  <div class="page-header">
+    <div>
+      <div class="page-title">MLP <span>Image Regression</span> · Goroutines</div>
+      <div class="page-sub">Batch GD paralelo · 256 goroutines/época · sem dependências externas</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-ghost" id="btn-igor-reset" style="padding:8px 16px;font-size:10px">RESET</button>
+      <button class="btn btn-ghost" id="btn-igor-init" style="padding:8px 16px;font-size:10px">INICIALIZAR</button>
+      <button class="btn btn-primary" id="btn-igor-train">
+        <span class="spin" id="spin-igor" style="display:none"></span>
+        TREINAR
+      </button>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:12px">
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Imagem Alvo</div>
+      <select class="imgreg-select" id="sel-igor-img">
+        <option value="coracao">♥ Coração</option>
+        <option value="smiley">☺ Smiley</option>
+        <option value="radial">◎ Ondas Radiais</option>
+        <option value="brasil">◈ Brasil</option>
+      </select>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Camadas Ocultas × Neurônios</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-igor-layers" style="flex:1">
+          <option value="2">2 camadas</option>
+          <option value="3" selected>3 camadas</option>
+          <option value="4">4 camadas</option>
+          <option value="5">5 camadas</option>
+        </select>
+        <select class="imgreg-select" id="sel-igor-neurons" style="flex:1">
+          <option value="16">16 neurônios</option>
+          <option value="32" selected>32 neurônios</option>
+          <option value="64">64 neurônios</option>
+          <option value="128">128 neurônios</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Learning Rate · Épocas</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-igor-lr" style="flex:1">
+          <option value="0.001">α 0.001</option>
+          <option value="0.005">α 0.005</option>
+          <option value="0.01" selected>α 0.01</option>
+          <option value="0.02">α 0.02</option>
+          <option value="0.05">α 0.05</option>
+        </select>
+        <select class="imgreg-select" id="sel-igor-epocas" style="flex:1">
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="2000" selected>2000</option>
+          <option value="5000">5000</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="imgreg-stat-bar" id="igor-stat-bar">
+    <span class="stat-key">ARCH</span><span class="stat-val" id="igor-arch">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">ÉPOCA</span><span class="stat-val cyan" id="igor-epoca">0/0</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">LOSS</span><span class="stat-val" id="igor-loss">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">ms/ép</span><span class="stat-val time" id="igor-epochms">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">px/s</span><span class="stat-val" id="igor-throughput">—</span>
+    <div style="flex:1"></div>
+    <div style="width:160px">
+      <div class="imgreg-progress-bar"><div class="imgreg-progress-fill" id="igor-progress"></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;padding:24px">
+    <div class="card-title">Visualização — Goroutines Paralelas</div>
+    <div class="card-pulse"></div>
+    <div class="imgreg-center-panel" id="igor-center-panel">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="imgreg-label" style="color:var(--cyan)">TARGET · original</div>
+        <div class="imgreg-canvas-wrap">
+          <div class="imgreg-hud imgreg-hud-tl">INPUT_IMG</div>
+          <div class="imgreg-grid" id="igor-target-grid"></div>
+          <div class="imgreg-hud imgreg-hud-br">16×16 · 256px</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px">
+        <div class="imgreg-label" style="color:var(--primary-glow)">NEURAL NETWORK · live</div>
+        <div id="igor-net-svg" style="width:100%;"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="imgreg-label" style="color:var(--primary-glow)">MLP OUTPUT · predição</div>
+        <div class="imgreg-canvas-wrap">
+          <div class="imgreg-hud imgreg-hud-tl">OUTPUT_MLP</div>
+          <div class="imgreg-grid" id="igor-output-grid"></div>
+          <div class="imgreg-hud imgreg-hud-br" id="igor-output-epoch">época 0</div>
+        </div>
+        <div class="imgreg-label" id="igor-output-loss" style="color:var(--on-surface)">LOSS: —</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Loss Curve</div>
+      <div class="chart-wrap"><canvas id="igor-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Training Log</div>
+      <div class="log-panel" id="igor-log"><div class="log-line dim">// aguardando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ VIEW: IMGREG MATRIX ══════════════════════ -->
+<div class="view" id="view-imgreg-matrix">
+  <div class="page-header">
+    <div>
+      <div class="page-title">MLP <span>Image Regression</span> · Matrix</div>
+      <div class="page-sub">Batch GD matricial · gonum/mat · forward/backward vetorizado</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-ghost" id="btn-imat-reset" style="padding:8px 16px;font-size:10px">RESET</button>
+      <button class="btn btn-ghost" id="btn-imat-init" style="padding:8px 16px;font-size:10px">INICIALIZAR</button>
+      <button class="btn btn-primary" id="btn-imat-train">
+        <span class="spin" id="spin-imat" style="display:none"></span>
+        TREINAR
+      </button>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:12px">
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Imagem Alvo</div>
+      <select class="imgreg-select" id="sel-imat-img">
+        <option value="coracao">♥ Coração</option>
+        <option value="smiley">☺ Smiley</option>
+        <option value="radial">◎ Ondas Radiais</option>
+        <option value="brasil">◈ Brasil</option>
+      </select>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Camadas Ocultas × Neurônios</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-imat-layers" style="flex:1">
+          <option value="2">2 camadas</option>
+          <option value="3" selected>3 camadas</option>
+          <option value="4">4 camadas</option>
+          <option value="5">5 camadas</option>
+        </select>
+        <select class="imgreg-select" id="sel-imat-neurons" style="flex:1">
+          <option value="16">16 neurônios</option>
+          <option value="32" selected>32 neurônios</option>
+          <option value="64">64 neurônios</option>
+          <option value="128">128 neurônios</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Learning Rate · Épocas</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-imat-lr" style="flex:1">
+          <option value="0.001">α 0.001</option>
+          <option value="0.005">α 0.005</option>
+          <option value="0.01" selected>α 0.01</option>
+          <option value="0.02">α 0.02</option>
+          <option value="0.05">α 0.05</option>
+        </select>
+        <select class="imgreg-select" id="sel-imat-epocas" style="flex:1">
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="2000" selected>2000</option>
+          <option value="5000">5000</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="imgreg-stat-bar" id="imat-stat-bar">
+    <span class="stat-key">ARCH</span><span class="stat-val" id="imat-arch">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">ÉPOCA</span><span class="stat-val cyan" id="imat-epoca">0/0</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">LOSS</span><span class="stat-val" id="imat-loss">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">ms/ép</span><span class="stat-val time" id="imat-epochms">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">px/s</span><span class="stat-val" id="imat-throughput">—</span>
+    <div style="flex:1"></div>
+    <div style="width:160px">
+      <div class="imgreg-progress-bar"><div class="imgreg-progress-fill" id="imat-progress"></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;padding:24px">
+    <div class="card-title">Visualização — Matrix Vetorizado</div>
+    <div class="card-pulse"></div>
+    <div class="imgreg-center-panel" id="imat-center-panel">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="imgreg-label" style="color:var(--cyan)">TARGET · original</div>
+        <div class="imgreg-canvas-wrap">
+          <div class="imgreg-hud imgreg-hud-tl">INPUT_IMG</div>
+          <div class="imgreg-grid" id="imat-target-grid"></div>
+          <div class="imgreg-hud imgreg-hud-br">16×16 · 256px</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px">
+        <div class="imgreg-label" style="color:var(--primary-glow)">NEURAL NETWORK · live</div>
+        <div id="imat-net-svg" style="width:100%;"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="imgreg-label" style="color:var(--primary-glow)">MLP OUTPUT · predição</div>
+        <div class="imgreg-canvas-wrap">
+          <div class="imgreg-hud imgreg-hud-tl">OUTPUT_MLP</div>
+          <div class="imgreg-grid" id="imat-output-grid"></div>
+          <div class="imgreg-hud imgreg-hud-br" id="imat-output-epoch">época 0</div>
+        </div>
+        <div class="imgreg-label" id="imat-output-loss" style="color:var(--on-surface)">LOSS: —</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Loss Curve</div>
+      <div class="chart-wrap"><canvas id="imat-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Training Log</div>
+      <div class="log-panel" id="imat-log"><div class="log-line dim">// aguardando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ VIEW: IMGREG MINIBATCH ══════════════════════ -->
+<div class="view" id="view-imgreg-minibatch">
+  <div class="page-header">
+    <div>
+      <div class="page-title">MLP <span>Image Regression</span> · Mini-batch</div>
+      <div class="page-sub">Worker pool · mini-batches paralelos · batch size + workers configuráveis</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-ghost" id="btn-imb-reset" style="padding:8px 16px;font-size:10px">RESET</button>
+      <button class="btn btn-ghost" id="btn-imb-init" style="padding:8px 16px;font-size:10px">INICIALIZAR</button>
+      <button class="btn btn-primary" id="btn-imb-train">
+        <span class="spin" id="spin-imb" style="display:none"></span>
+        TREINAR
+      </button>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:12px">
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Imagem Alvo</div>
+      <select class="imgreg-select" id="sel-imb-img">
+        <option value="coracao">♥ Coração</option>
+        <option value="smiley">☺ Smiley</option>
+        <option value="radial">◎ Ondas Radiais</option>
+        <option value="brasil">◈ Brasil</option>
+      </select>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Camadas Ocultas × Neurônios</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-imb-layers" style="flex:1">
+          <option value="2">2 camadas</option>
+          <option value="3" selected>3 camadas</option>
+          <option value="4">4 camadas</option>
+          <option value="5">5 camadas</option>
+        </select>
+        <select class="imgreg-select" id="sel-imb-neurons" style="flex:1">
+          <option value="16">16 neurônios</option>
+          <option value="32" selected>32 neurônios</option>
+          <option value="64">64 neurônios</option>
+          <option value="128">128 neurônios</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Learning Rate · Épocas</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-imb-lr" style="flex:1">
+          <option value="0.001">α 0.001</option>
+          <option value="0.005">α 0.005</option>
+          <option value="0.01" selected>α 0.01</option>
+          <option value="0.02">α 0.02</option>
+          <option value="0.05">α 0.05</option>
+        </select>
+        <select class="imgreg-select" id="sel-imb-epocas" style="flex:1">
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="2000" selected>2000</option>
+          <option value="5000">5000</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Batch Size · Workers</div>
+      <div style="display:flex;gap:8px">
+        <select class="imgreg-select" id="sel-imb-batch" style="flex:1">
+          <option value="8">8 px/batch</option>
+          <option value="16">16 px/batch</option>
+          <option value="32" selected>32 px/batch</option>
+          <option value="64">64 px/batch</option>
+        </select>
+        <select class="imgreg-select" id="sel-imb-workers" style="flex:1">
+          <option value="2">2 workers</option>
+          <option value="4" selected>4 workers</option>
+          <option value="8">8 workers</option>
+          <option value="0">NumCPU</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="imgreg-stat-bar" id="imb-stat-bar">
+    <span class="stat-key">ARCH</span><span class="stat-val" id="imb-arch">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">ÉPOCA</span><span class="stat-val cyan" id="imb-epoca">0/0</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">LOSS</span><span class="stat-val" id="imb-loss">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">ms/ép</span><span class="stat-val time" id="imb-epochms">—</span>
+    <span class="stat-sep">·</span>
+    <span class="stat-key">px/s</span><span class="stat-val" id="imb-throughput">—</span>
+    <div style="flex:1"></div>
+    <div style="width:160px">
+      <div class="imgreg-progress-bar"><div class="imgreg-progress-fill" id="imb-progress"></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;padding:24px">
+    <div class="card-title">Visualização — Mini-batch Worker Pool</div>
+    <div class="card-pulse"></div>
+    <div class="imgreg-center-panel" id="imb-center-panel">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="imgreg-label" style="color:var(--cyan)">TARGET · original</div>
+        <div class="imgreg-canvas-wrap">
+          <div class="imgreg-hud imgreg-hud-tl">INPUT_IMG</div>
+          <div class="imgreg-grid" id="imb-target-grid"></div>
+          <div class="imgreg-hud imgreg-hud-br">16×16 · 256px</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px">
+        <div class="imgreg-label" style="color:var(--primary-glow)">NEURAL NETWORK · live</div>
+        <div id="imb-net-svg" style="width:100%;"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="imgreg-label" style="color:var(--primary-glow)">MLP OUTPUT · predição</div>
+        <div class="imgreg-canvas-wrap">
+          <div class="imgreg-hud imgreg-hud-tl">OUTPUT_MLP</div>
+          <div class="imgreg-grid" id="imb-output-grid"></div>
+          <div class="imgreg-hud imgreg-hud-br" id="imb-output-epoch">época 0</div>
+        </div>
+        <div class="imgreg-label" id="imb-output-loss" style="color:var(--on-surface)">LOSS: —</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Loss Curve</div>
+      <div class="chart-wrap"><canvas id="imb-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Training Log</div>
+      <div class="log-panel" id="imb-log"><div class="log-line dim">// aguardando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ VIEW: IMGREG BENCHMARK ══════════════════════ -->
+<div class="view" id="view-imgreg-bench">
+  <div class="page-header">
+    <div>
+      <div class="page-title">MLP Image Regression · <span>Benchmark</span></div>
+      <div class="page-sub">Compara Goroutines vs Matrix vs Mini-batch · paralelo ou sequencial</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="bench-mode-toggle">
+        <button class="bench-mode-btn active" id="bench-btn-parallel">PARALELO</button>
+        <button class="bench-mode-btn" id="bench-btn-seq">SEQUENCIAL</button>
+      </div>
+      <button class="btn btn-ghost" id="btn-bench-reset" style="padding:8px 16px;font-size:10px">RESET</button>
+      <button class="btn btn-primary" id="btn-bench-run">
+        <span class="spin" id="spin-bench" style="display:none"></span>
+        RODAR BENCHMARK
+      </button>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:12px">
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Imagem Alvo</div>
+      <select class="imgreg-select" id="sel-bench-img">
+        <option value="coracao">♥ Coração</option>
+        <option value="smiley">☺ Smiley</option>
+        <option value="radial">◎ Ondas Radiais</option>
+        <option value="brasil">◈ Brasil</option>
+      </select>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">Camadas × Neurônios · Épocas</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select class="imgreg-select" id="sel-bench-layers" style="flex:1">
+          <option value="2">2 cam.</option>
+          <option value="3" selected>3 cam.</option>
+          <option value="4">4 cam.</option>
+        </select>
+        <select class="imgreg-select" id="sel-bench-neurons" style="flex:1">
+          <option value="16">16</option>
+          <option value="32" selected>32</option>
+          <option value="64">64</option>
+        </select>
+        <select class="imgreg-select" id="sel-bench-epocas" style="flex:1">
+          <option value="200">200</option>
+          <option value="500" selected>500</option>
+          <option value="1000">1000</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" style="padding:16px 20px">
+      <div class="imgreg-select-label">LR · Batch Size · Workers</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select class="imgreg-select" id="sel-bench-lr" style="flex:1">
+          <option value="0.01" selected>α 0.01</option>
+          <option value="0.02">α 0.02</option>
+        </select>
+        <select class="imgreg-select" id="sel-bench-batch" style="flex:1">
+          <option value="32" selected>32px</option>
+          <option value="64">64px</option>
+        </select>
+        <select class="imgreg-select" id="sel-bench-workers" style="flex:1">
+          <option value="4" selected>4w</option>
+          <option value="8">8w</option>
+          <option value="0">CPU</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="bench-cols" id="bench-cols">
+    <div class="card" style="padding:16px">
+      <div class="bench-col-header">Goroutines</div>
+      <div style="display:flex;justify-content:center;margin-bottom:8px">
+        <div class="imgreg-grid" id="bench-grid-goroutines" style="opacity:0.4"></div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--on-surface);text-align:center" id="bench-stat-goroutines">aguardando...</div>
+    </div>
+    <div class="card" style="padding:16px">
+      <div class="bench-col-header">Matrix</div>
+      <div style="display:flex;justify-content:center;margin-bottom:8px">
+        <div class="imgreg-grid" id="bench-grid-matrix" style="opacity:0.4"></div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--on-surface);text-align:center" id="bench-stat-matrix">aguardando...</div>
+    </div>
+    <div class="card" style="padding:16px">
+      <div class="bench-col-header">Mini-batch</div>
+      <div style="display:flex;justify-content:center;margin-bottom:8px">
+        <div class="imgreg-grid" id="bench-grid-minibatch" style="opacity:0.4"></div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--on-surface);text-align:center" id="bench-stat-minibatch">aguardando...</div>
+    </div>
+  </div>
+
+  <div class="bench-result-cards" id="bench-results" style="display:none">
+    <div class="bench-result-card" id="bench-card-goroutines">
+      <div class="bench-col-header">Goroutines</div>
+      <div class="metric-label">Tempo Total</div>
+      <div class="metric-val" id="bench-total-goroutines">—</div>
+      <div class="metric-label" style="margin-top:8px">ms/época</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-msepoca-goroutines">—</div>
+      <div class="metric-label" style="margin-top:8px">px/s</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-pxs-goroutines">—</div>
+      <div class="metric-label" style="margin-top:8px">Loss Final</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--on-surface)" id="bench-loss-goroutines">—</div>
+    </div>
+    <div class="bench-result-card" id="bench-card-matrix">
+      <div class="bench-col-header">Matrix</div>
+      <div class="metric-label">Tempo Total</div>
+      <div class="metric-val" id="bench-total-matrix">—</div>
+      <div class="metric-label" style="margin-top:8px">ms/época</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-msepoca-matrix">—</div>
+      <div class="metric-label" style="margin-top:8px">px/s</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-pxs-matrix">—</div>
+      <div class="metric-label" style="margin-top:8px">Loss Final</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--on-surface)" id="bench-loss-matrix">—</div>
+    </div>
+    <div class="bench-result-card" id="bench-card-minibatch">
+      <div class="bench-col-header">Mini-batch</div>
+      <div class="metric-label">Tempo Total</div>
+      <div class="metric-val" id="bench-total-minibatch">—</div>
+      <div class="metric-label" style="margin-top:8px">ms/época</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-msepoca-minibatch">—</div>
+      <div class="metric-label" style="margin-top:8px">px/s</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--primary)" id="bench-pxs-minibatch">—</div>
+      <div class="metric-label" style="margin-top:8px">Loss Final</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--on-surface)" id="bench-loss-minibatch">—</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;display:none" id="bench-chart-card">
+    <div class="card-title">Comparação — Tempo Total por Backend</div>
+    <div class="chart-wrap"><canvas id="bench-chart"></canvas></div>
+  </div>
+</div>
+
     <!-- ══════════════════════ VIEW: ABOUT ══════════════════════ -->
     <div class="view" id="view-about">
       <div class="page-header">
@@ -992,6 +1554,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     item.classList.add('active');
     document.getElementById('view-' + item.dataset.view).classList.add('active');
+    ensureAccordionOpen(item.dataset.view);
   });
 });
 
@@ -1812,8 +2375,8 @@ function buildArchString(layers, neurons, inputs = 2, outputs = 3) {
 // Para animação de treino usa classes CSS em vez de redesenhar tudo.
 let _netVizSizes = null;  // última arquitetura renderizada
 
-function drawNetworkViz(layerSizes, activeLayer = -1) {
-  const container = document.getElementById('imgreg-net-svg');
+function drawNetworkViz(layerSizes, activeLayer = -1, containerId = 'imgreg-net-svg') {
+  const container = document.getElementById(containerId);
   if (!container) return;
 
   if (!layerSizes || layerSizes.length === 0) {
@@ -2231,6 +2794,484 @@ document.querySelector('[data-view="imgreg"]').addEventListener('click', () => {
       drawNetworkViz(sizes);
     }
   }, 50);
+});
+
+// ── Accordion IMG_REGRESSION ──
+const accordionHeader = document.getElementById('accordion-imgreg');
+const accordionChildren = document.getElementById('accordion-imgreg-children');
+accordionHeader.addEventListener('click', () => {
+  const open = accordionChildren.classList.toggle('open');
+  accordionHeader.classList.toggle('open', open);
+});
+function ensureAccordionOpen(viewId) {
+  const childViews = ['imgreg','imgreg-goroutines','imgreg-matrix','imgreg-minibatch','imgreg-bench'];
+  if (childViews.includes(viewId)) {
+    accordionChildren.classList.add('open');
+    accordionHeader.classList.add('open');
+  }
+}
+
+// ── IMGREG GOROUTINES ──
+let igorES = null;
+let igorLossHistory = [];
+let igorInitialized = false;
+let igorLayerSizes = [];
+
+function getIgorCfg() {
+  return {
+    hiddenLayers:    parseInt($id('sel-igor-layers').value),
+    neuronsPerLayer: parseInt($id('sel-igor-neurons').value),
+    learningRate:    parseFloat($id('sel-igor-lr').value),
+    imagem:          $id('sel-igor-img').value,
+    maxEpocas:       parseInt($id('sel-igor-epocas').value),
+  };
+}
+
+$id('btn-igor-init').addEventListener('click', async () => {
+  if (igorES) { igorES.close(); igorES = null; }
+  const cfg = getIgorCfg();
+  igorLayerSizes = [2];
+  for (let i = 0; i < cfg.hiddenLayers; i++) igorLayerSizes.push(cfg.neuronsPerLayer);
+  igorLayerSizes.push(3);
+  igorLossHistory = [];
+  igorInitialized = true;
+  const pixels = await fetch(`${API}/imgreg/target?img=${cfg.imagem}`).then(r => r.json());
+  fillImgregGrid('igor-target-grid', pixels);
+  const noise = Array.from({length:256}, () => [Math.random()*0.3,Math.random()*0.3,Math.random()*0.3]);
+  fillImgregGrid('igor-output-grid', noise);
+  drawNetworkViz(igorLayerSizes, -1, 'igor-net-svg');
+  addLogTo($id('igor-log'), `// rede inicializada: [${igorLayerSizes.join('→')}] · α=${cfg.learningRate}`, 'ok');
+  $id('badge-igor').textContent = '';
+});
+
+$id('btn-igor-train').addEventListener('click', async () => {
+  if (igorES) {
+    igorES.close(); igorES = null;
+    $id('btn-igor-train').textContent = 'TREINAR';
+    $id('spin-igor').style.display = 'none';
+    return;
+  }
+  if (!igorInitialized) {
+    addLogTo($id('igor-log'), '// inicialize primeiro', 'err'); return;
+  }
+  const cfg = getIgorCfg();
+  const log = $id('igor-log');
+  await fetch(API + '/imgreg-goroutines/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  });
+  $id('btn-igor-train').textContent = 'PAUSAR';
+  $id('spin-igor').style.display = 'inline-block';
+  addLogTo(log, `// iniciando treino goroutines · ${cfg.maxEpocas} épocas`, 'dim');
+
+  igorES = new EventSource(API + '/imgreg-goroutines/train');
+  igorES.onmessage = e => {
+    const step = JSON.parse(e.data);
+    if (step.done) {
+      igorES.close(); igorES = null;
+      fillImgregGrid('igor-output-grid', step.outputPixels);
+      drawLogChart('igor-chart', step.lossHistorico, '#00ff00');
+      igorLossHistory = step.lossHistorico;
+      $id('igor-output-loss').textContent = `LOSS: ${step.loss.toFixed(6)}`;
+      $id('igor-output-epoch').textContent = `época ${step.epoca}`;
+      $id('btn-igor-train').textContent = 'TREINAR';
+      $id('spin-igor').style.display = 'none';
+      $id('badge-igor').textContent = 'ON';
+      drawNetworkViz(igorLayerSizes, -1, 'igor-net-svg');
+      addLogTo(log, `// concluído · loss=${step.loss.toFixed(6)} · ${step.convergiu?'CONVERGIU':'não convergiu'}`, step.convergiu?'ok':'warn');
+      igorInitialized = false;
+      return;
+    }
+    igorLossHistory.push(step.loss);
+    fillImgregGrid('igor-output-grid', step.outputPixels);
+    drawNetworkViz(igorLayerSizes, step.activeLayer, 'igor-net-svg');
+    $id('igor-output-epoch').textContent = `época ${step.epoca}`;
+    $id('igor-output-loss').textContent = `LOSS: ${step.loss.toFixed(6)}`;
+    $id('igor-epoca').textContent = `${step.epoca}/${step.maxEpocas}`;
+    $id('igor-loss').textContent = step.loss.toFixed(6);
+    $id('igor-epochms').textContent = `${step.epochMs}ms`;
+    const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : '—';
+    $id('igor-throughput').textContent = `${throughput}`;
+    $id('igor-progress').style.width = `${(step.epoca/step.maxEpocas*100).toFixed(1)}%`;
+    if (igorLossHistory.length % 20 === 0) drawLogChart('igor-chart', igorLossHistory, '#00ff00');
+  };
+  igorES.onerror = () => {
+    if (igorES) { igorES.close(); igorES = null; }
+    $id('btn-igor-train').textContent = 'TREINAR';
+    $id('spin-igor').style.display = 'none';
+  };
+});
+
+$id('btn-igor-reset').addEventListener('click', async () => {
+  if (igorES) { igorES.close(); igorES = null; }
+  igorLossHistory = []; igorInitialized = false; igorLayerSizes = [];
+  $id('badge-igor').textContent = 'OFF';
+  $id('btn-igor-train').textContent = 'TREINAR';
+  $id('spin-igor').style.display = 'none';
+  $id('igor-log').innerHTML = '<div class="log-line dim">// resetado.</div>';
+  try { await fetch(API + '/imgreg-goroutines/reset', { method: 'POST' }); } catch(_) {}
+});
+
+// ── IMGREG MATRIX ──
+let imatES = null;
+let imatLossHistory = [];
+let imatInitialized = false;
+let imatLayerSizes = [];
+
+function getImatCfg() {
+  return {
+    hiddenLayers:    parseInt($id('sel-imat-layers').value),
+    neuronsPerLayer: parseInt($id('sel-imat-neurons').value),
+    learningRate:    parseFloat($id('sel-imat-lr').value),
+    imagem:          $id('sel-imat-img').value,
+    maxEpocas:       parseInt($id('sel-imat-epocas').value),
+  };
+}
+
+$id('btn-imat-init').addEventListener('click', async () => {
+  if (imatES) { imatES.close(); imatES = null; }
+  const cfg = getImatCfg();
+  imatLayerSizes = [2];
+  for (let i = 0; i < cfg.hiddenLayers; i++) imatLayerSizes.push(cfg.neuronsPerLayer);
+  imatLayerSizes.push(3);
+  imatLossHistory = [];
+  imatInitialized = true;
+  const pixels = await fetch(`${API}/imgreg/target?img=${cfg.imagem}`).then(r => r.json());
+  fillImgregGrid('imat-target-grid', pixels);
+  const noise = Array.from({length:256}, () => [Math.random()*0.3,Math.random()*0.3,Math.random()*0.3]);
+  fillImgregGrid('imat-output-grid', noise);
+  drawNetworkViz(imatLayerSizes, -1, 'imat-net-svg');
+  addLogTo($id('imat-log'), `// rede inicializada: [${imatLayerSizes.join('→')}] · α=${cfg.learningRate}`, 'ok');
+  $id('badge-imat').textContent = '';
+});
+
+$id('btn-imat-train').addEventListener('click', async () => {
+  if (imatES) {
+    imatES.close(); imatES = null;
+    $id('btn-imat-train').textContent = 'TREINAR';
+    $id('spin-imat').style.display = 'none';
+    return;
+  }
+  if (!imatInitialized) {
+    addLogTo($id('imat-log'), '// inicialize primeiro', 'err'); return;
+  }
+  const cfg = getImatCfg();
+  const log = $id('imat-log');
+  await fetch(API + '/imgreg-matrix/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  });
+  $id('btn-imat-train').textContent = 'PAUSAR';
+  $id('spin-imat').style.display = 'inline-block';
+  addLogTo(log, `// iniciando treino matrix · ${cfg.maxEpocas} épocas`, 'dim');
+
+  imatES = new EventSource(API + '/imgreg-matrix/train');
+  imatES.onmessage = e => {
+    const step = JSON.parse(e.data);
+    if (step.done) {
+      imatES.close(); imatES = null;
+      fillImgregGrid('imat-output-grid', step.outputPixels);
+      drawLogChart('imat-chart', step.lossHistorico, '#00fbfb');
+      imatLossHistory = step.lossHistorico;
+      $id('imat-output-loss').textContent = `LOSS: ${step.loss.toFixed(6)}`;
+      $id('imat-output-epoch').textContent = `época ${step.epoca}`;
+      $id('btn-imat-train').textContent = 'TREINAR';
+      $id('spin-imat').style.display = 'none';
+      $id('badge-imat').textContent = 'ON';
+      drawNetworkViz(imatLayerSizes, -1, 'imat-net-svg');
+      addLogTo(log, `// concluído · loss=${step.loss.toFixed(6)} · ${step.convergiu?'CONVERGIU':'não convergiu'}`, step.convergiu?'ok':'warn');
+      imatInitialized = false;
+      return;
+    }
+    imatLossHistory.push(step.loss);
+    fillImgregGrid('imat-output-grid', step.outputPixels);
+    drawNetworkViz(imatLayerSizes, step.activeLayer, 'imat-net-svg');
+    $id('imat-output-epoch').textContent = `época ${step.epoca}`;
+    $id('imat-output-loss').textContent = `LOSS: ${step.loss.toFixed(6)}`;
+    $id('imat-epoca').textContent = `${step.epoca}/${step.maxEpocas}`;
+    $id('imat-loss').textContent = step.loss.toFixed(6);
+    $id('imat-epochms').textContent = `${step.epochMs}ms`;
+    const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : '—';
+    $id('imat-throughput').textContent = `${throughput}`;
+    $id('imat-progress').style.width = `${(step.epoca/step.maxEpocas*100).toFixed(1)}%`;
+    if (imatLossHistory.length % 20 === 0) drawLogChart('imat-chart', imatLossHistory, '#00fbfb');
+  };
+  imatES.onerror = () => {
+    if (imatES) { imatES.close(); imatES = null; }
+    $id('btn-imat-train').textContent = 'TREINAR';
+    $id('spin-imat').style.display = 'none';
+  };
+});
+
+$id('btn-imat-reset').addEventListener('click', async () => {
+  if (imatES) { imatES.close(); imatES = null; }
+  imatLossHistory = []; imatInitialized = false; imatLayerSizes = [];
+  $id('badge-imat').textContent = 'OFF';
+  $id('btn-imat-train').textContent = 'TREINAR';
+  $id('spin-imat').style.display = 'none';
+  $id('imat-log').innerHTML = '<div class="log-line dim">// resetado.</div>';
+  try { await fetch(API + '/imgreg-matrix/reset', { method: 'POST' }); } catch(_) {}
+});
+
+// ── IMGREG MINIBATCH ──
+let imbES = null;
+let imbLossHistory = [];
+let imbInitialized = false;
+let imbLayerSizes = [];
+
+function getImbCfg() {
+  return {
+    hiddenLayers:    parseInt($id('sel-imb-layers').value),
+    neuronsPerLayer: parseInt($id('sel-imb-neurons').value),
+    learningRate:    parseFloat($id('sel-imb-lr').value),
+    imagem:          $id('sel-imb-img').value,
+    maxEpocas:       parseInt($id('sel-imb-epocas').value),
+    batchSize:       parseInt($id('sel-imb-batch').value),
+    numWorkers:      parseInt($id('sel-imb-workers').value),
+  };
+}
+
+$id('btn-imb-init').addEventListener('click', async () => {
+  if (imbES) { imbES.close(); imbES = null; }
+  const cfg = getImbCfg();
+  imbLayerSizes = [2];
+  for (let i = 0; i < cfg.hiddenLayers; i++) imbLayerSizes.push(cfg.neuronsPerLayer);
+  imbLayerSizes.push(3);
+  imbLossHistory = [];
+  imbInitialized = true;
+  const pixels = await fetch(`${API}/imgreg/target?img=${cfg.imagem}`).then(r => r.json());
+  fillImgregGrid('imb-target-grid', pixels);
+  const noise = Array.from({length:256}, () => [Math.random()*0.3,Math.random()*0.3,Math.random()*0.3]);
+  fillImgregGrid('imb-output-grid', noise);
+  drawNetworkViz(imbLayerSizes, -1, 'imb-net-svg');
+  addLogTo($id('imb-log'), `// rede inicializada: [${imbLayerSizes.join('→')}] · α=${cfg.learningRate}`, 'ok');
+  $id('badge-imb').textContent = '';
+});
+
+$id('btn-imb-train').addEventListener('click', async () => {
+  if (imbES) {
+    imbES.close(); imbES = null;
+    $id('btn-imb-train').textContent = 'TREINAR';
+    $id('spin-imb').style.display = 'none';
+    return;
+  }
+  if (!imbInitialized) {
+    addLogTo($id('imb-log'), '// inicialize primeiro', 'err'); return;
+  }
+  const cfg = getImbCfg();
+  const log = $id('imb-log');
+  await fetch(API + '/imgreg-minibatch/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  });
+  $id('btn-imb-train').textContent = 'PAUSAR';
+  $id('spin-imb').style.display = 'inline-block';
+  addLogTo(log, `// iniciando treino minibatch · ${cfg.maxEpocas} épocas`, 'dim');
+
+  imbES = new EventSource(API + '/imgreg-minibatch/train');
+  imbES.onmessage = e => {
+    const step = JSON.parse(e.data);
+    if (step.done) {
+      imbES.close(); imbES = null;
+      fillImgregGrid('imb-output-grid', step.outputPixels);
+      drawLogChart('imb-chart', step.lossHistorico, '#ff6ec7');
+      imbLossHistory = step.lossHistorico;
+      $id('imb-output-loss').textContent = `LOSS: ${step.loss.toFixed(6)}`;
+      $id('imb-output-epoch').textContent = `época ${step.epoca}`;
+      $id('btn-imb-train').textContent = 'TREINAR';
+      $id('spin-imb').style.display = 'none';
+      $id('badge-imb').textContent = 'ON';
+      drawNetworkViz(imbLayerSizes, -1, 'imb-net-svg');
+      addLogTo(log, `// concluído · loss=${step.loss.toFixed(6)} · ${step.convergiu?'CONVERGIU':'não convergiu'}`, step.convergiu?'ok':'warn');
+      imbInitialized = false;
+      return;
+    }
+    imbLossHistory.push(step.loss);
+    fillImgregGrid('imb-output-grid', step.outputPixels);
+    drawNetworkViz(imbLayerSizes, step.activeLayer, 'imb-net-svg');
+    $id('imb-output-epoch').textContent = `época ${step.epoca}`;
+    $id('imb-output-loss').textContent = `LOSS: ${step.loss.toFixed(6)}`;
+    $id('imb-epoca').textContent = `${step.epoca}/${step.maxEpocas}`;
+    $id('imb-loss').textContent = step.loss.toFixed(6);
+    $id('imb-epochms').textContent = `${step.epochMs}ms`;
+    const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : '—';
+    $id('imb-throughput').textContent = `${throughput}`;
+    $id('imb-progress').style.width = `${(step.epoca/step.maxEpocas*100).toFixed(1)}%`;
+    if (imbLossHistory.length % 20 === 0) drawLogChart('imb-chart', imbLossHistory, '#ff6ec7');
+  };
+  imbES.onerror = () => {
+    if (imbES) { imbES.close(); imbES = null; }
+    $id('btn-imb-train').textContent = 'TREINAR';
+    $id('spin-imb').style.display = 'none';
+  };
+});
+
+$id('btn-imb-reset').addEventListener('click', async () => {
+  if (imbES) { imbES.close(); imbES = null; }
+  imbLossHistory = []; imbInitialized = false; imbLayerSizes = [];
+  $id('badge-imb').textContent = 'OFF';
+  $id('btn-imb-train').textContent = 'TREINAR';
+  $id('spin-imb').style.display = 'none';
+  $id('imb-log').innerHTML = '<div class="log-line dim">// resetado.</div>';
+  try { await fetch(API + '/imgreg-minibatch/reset', { method: 'POST' }); } catch(_) {}
+});
+
+// ── BENCHMARK GRID INIT ──
+function initBenchGrids() {
+  ['bench-grid-goroutines','bench-grid-matrix','bench-grid-minibatch'].forEach(id => {
+    const el = document.getElementById(id);
+    el.innerHTML = '';
+    for (let i = 0; i < 256; i++) {
+      const px = document.createElement('div');
+      px.className = 'imgreg-pixel';
+      px.style.background = '#1c2026';
+      el.appendChild(px);
+    }
+  });
+}
+initBenchGrids();
+
+// ── BENCHMARK MODE TOGGLE ──
+let benchParallel = true;
+$id('bench-btn-parallel').addEventListener('click', () => {
+  benchParallel = true;
+  $id('bench-btn-parallel').classList.add('active');
+  $id('bench-btn-seq').classList.remove('active');
+});
+$id('bench-btn-seq').addEventListener('click', () => {
+  benchParallel = false;
+  $id('bench-btn-seq').classList.add('active');
+  $id('bench-btn-parallel').classList.remove('active');
+});
+
+// ── BENCHMARK RUN ──
+let benchES = null;
+const benchResults = {goroutines: null, matrix: null, minibatch: null};
+
+function getBenchCfg() {
+  return {
+    hiddenLayers:    parseInt($id('sel-bench-layers').value),
+    neuronsPerLayer: parseInt($id('sel-bench-neurons').value),
+    learningRate:    parseFloat($id('sel-bench-lr').value),
+    imagem:          $id('sel-bench-img').value,
+    maxEpocas:       parseInt($id('sel-bench-epocas').value),
+    batchSize:       parseInt($id('sel-bench-batch').value),
+    numWorkers:      parseInt($id('sel-bench-workers').value),
+    parallel:        benchParallel,
+  };
+}
+
+$id('btn-bench-run').addEventListener('click', async () => {
+  if (benchES) {
+    benchES.close(); benchES = null;
+    $id('btn-bench-run').textContent = 'RODAR BENCHMARK';
+    $id('spin-bench').style.display = 'none';
+    return;
+  }
+
+  ['goroutines','matrix','minibatch'].forEach(b => {
+    $id(`bench-stat-${b}`).textContent = 'aguardando...';
+    $id(`bench-grid-${b}`).style.opacity = '0.4';
+    benchResults[b] = null;
+  });
+  $id('bench-results').style.display = 'none';
+  $id('bench-chart-card').style.display = 'none';
+  initBenchGrids();
+
+  const cfg = getBenchCfg();
+  await fetch(API + '/imgreg-bench/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  });
+
+  $id('btn-bench-run').textContent = 'PARAR';
+  $id('spin-bench').style.display = 'inline-block';
+
+  benchES = new EventSource(API + '/imgreg-bench/train');
+  benchES.onmessage = e => {
+    const bs = JSON.parse(e.data);
+    const {backend, step} = bs;
+    const grid = $id(`bench-grid-${backend}`);
+    const stat = $id(`bench-stat-${backend}`);
+
+    if (step.done) {
+      grid.style.opacity = '1';
+      benchResults[backend] = step;
+      fillImgregGrid(`bench-grid-${backend}`, step.outputPixels);
+      stat.textContent = `✓ ${step.elapsedMs}ms · loss ${step.loss.toFixed(5)}`;
+      if (benchResults.goroutines && benchResults.matrix && benchResults.minibatch) {
+        benchES.close(); benchES = null;
+        $id('btn-bench-run').textContent = 'RODAR BENCHMARK';
+        $id('spin-bench').style.display = 'none';
+        showBenchResults();
+      }
+      return;
+    }
+
+    fillImgregGrid(`bench-grid-${backend}`, step.outputPixels);
+    grid.style.opacity = '1';
+    const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : 0;
+    stat.textContent = `ép ${step.epoca}/${step.maxEpocas} · loss ${step.loss.toFixed(5)} · ${step.epochMs}ms/ép · ${throughput}px/s`;
+  };
+  benchES.onerror = () => {
+    if (benchES) { benchES.close(); benchES = null; }
+    $id('btn-bench-run').textContent = 'RODAR BENCHMARK';
+    $id('spin-bench').style.display = 'none';
+  };
+});
+
+function showBenchResults() {
+  const backends = ['goroutines','matrix','minibatch'];
+  let fastest = backends.reduce((a, b) =>
+    benchResults[a].elapsedMs < benchResults[b].elapsedMs ? a : b
+  );
+
+  backends.forEach(b => {
+    const r = benchResults[b];
+    const msPerEpoca = (r.elapsedMs / r.maxEpocas).toFixed(1);
+    const throughput = r.epochMs > 0 ? Math.round(256 / (r.epochMs / 1000)) : 0;
+    $id(`bench-total-${b}`).textContent = `${r.elapsedMs}ms`;
+    $id(`bench-msepoca-${b}`).textContent = `${msPerEpoca}ms`;
+    $id(`bench-pxs-${b}`).textContent = `${throughput}`;
+    $id(`bench-loss-${b}`).textContent = r.loss.toFixed(6);
+    $id(`bench-card-${b}`).classList.toggle('winner', b === fastest);
+  });
+
+  $id('bench-results').style.display = 'grid';
+
+  $id('bench-chart-card').style.display = 'block';
+  const ctx = document.getElementById('bench-chart').getContext('2d');
+  if (window.benchChartInst) window.benchChartInst.destroy();
+  window.benchChartInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Goroutines', 'Matrix', 'Mini-batch'],
+      datasets: [{
+        label: 'Tempo Total (ms)',
+        data: backends.map(b => benchResults[b].elapsedMs),
+        backgroundColor: ['#ff6ec7','#00fbfb','#00ff00'],
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { color: '#b9ccaf', font: {family:'JetBrains Mono',size:10} } },
+        x: { ticks: { color: '#b9ccaf', font: {family:'JetBrains Mono',size:10} } }
+      }
+    }
+  });
+}
+
+$id('btn-bench-reset').addEventListener('click', async () => {
+  if (benchES) { benchES.close(); benchES = null; }
+  $id('btn-bench-run').textContent = 'RODAR BENCHMARK';
+  $id('spin-bench').style.display = 'none';
+  $id('bench-results').style.display = 'none';
+  $id('bench-chart-card').style.display = 'none';
+  ['goroutines','matrix','minibatch'].forEach(b => {
+    $id(`bench-stat-${b}`).textContent = 'aguardando...';
+    $id(`bench-grid-${b}`).style.opacity = '0.4';
+    benchResults[b] = null;
+  });
+  initBenchGrids();
+  try { await fetch(API + '/imgreg-bench/reset', { method: 'POST' }); } catch(_) {}
 });
 </script>
 </body>
