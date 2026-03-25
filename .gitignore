@@ -34,3 +34,7 @@ Thumbs.db
 
 # Playwright MCP screenshots/logs
 .playwright-mcp/
+
+# WASM (built in CI from source)
+web/static/main.wasm
+web/static/wasm_exec.js

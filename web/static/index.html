@@ -274,6 +274,7 @@ canvas { width: 100%; height: 160px; display: block; }
 #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface-top); color: var(--primary); font-family: var(--font-mono); font-size: 11px; padding: 10px 18px; opacity: 0; transition: opacity 200ms linear; pointer-events: none; z-index: 9999; }
 #toast.show { opacity: 1; }
 </style>
+<script src="wasm_exec.js"></script>
 </head>
 <body>
 <div class="shell">
@@ -1548,6 +1549,110 @@ canvas { width: 100%; height: 160px; display: block; }
 
 <script>
 const API = 'http://localhost:8080/api';
+
+// ── WASM dual-mode: detecta se roda via servidor local ou estático (GitHub Pages) ──
+let wasmReady = false;
+const useWasm = location.protocol === 'file:' || location.port !== '8080' || location.hostname.includes('github.io');
+
+if (useWasm) {
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch('main.wasm'), go.importObject).then(result => {
+    go.run(result.instance);
+  });
+  document.addEventListener('wasmReady', () => { wasmReady = true; refreshStatus(); });
+}
+
+// ── WASM API router: intercepta chamadas para rodar local via WASM ──
+// Mapeia URL path → função WASM. Se WASM não pronto, faz fetch normal.
+const wasmRoutes = {
+  '/status':                  () => wasmStatus(),
+  '/hebb/portas':             () => wasmHebbPortas(),
+  '/hebb/train':              (_, url) => wasmHebbTrain(new URL(url, location).searchParams.get('porta') || 'ALL'),
+  '/perceptron-portas/portas':() => wasmPercPortasLista(),
+  '/perceptron-portas/train': (_, url) => wasmPercPortasTrain(new URL(url, location).searchParams.get('porta') || 'ALL'),
+  '/perceptron-letras/train': () => wasmPercLetrasTrain(),
+  '/perceptron-letras/dataset': () => wasmPercLetrasDataset(),
+  '/mlp/train':               () => wasmMlpTrain(),
+  '/mlp/result':              () => wasmMlpResult(),
+  '/letras/result':           () => wasmLetrasResult(),
+  '/letras/dataset':          () => wasmLetrasDataset(),
+  '/madaline/result':         () => wasmMadResult(),
+  '/madaline/dataset':        () => wasmMadDataset(),
+  '/imgreg/target':           (_, url) => wasmImgregTarget(new URL(url, location).searchParams.get('img') || 'coracao'),
+  '/imgreg/reset':            () => wasmImgregReset(),
+  '/imgreg/config':           (o) => { window._wasmImgregCfg = o?.body; return '{"ok":"config salva"}'; },
+  '/imgreg-goroutines/config':(o) => { window._wasmIgorCfg = o?.body; return '{"ok":"config salva"}'; },
+  '/imgreg-goroutines/reset': () => wasmIgorReset(),
+  '/imgreg-minibatch/config': (o) => { window._wasmImbCfg = o?.body; return '{"ok":"config salva"}'; },
+  '/imgreg-minibatch/reset':  () => wasmImbReset(),
+  '/imgreg-matrix/config':    () => '{"ok":"não disponível em WASM (gonum)"}',
+  '/imgreg-matrix/reset':     () => '{"ok":"não disponível em WASM (gonum)"}',
+  '/imgreg-bench/config':     () => '{"ok":"não disponível em WASM"}',
+  '/imgreg-bench/reset':      () => '{"ok":"não disponível em WASM"}',
+};
+
+// Override fetch para interceptar chamadas à API quando em modo WASM
+const _origFetch = window.fetch;
+window.fetch = function(url, opts) {
+  if (wasmReady && typeof url === 'string' && url.startsWith(API)) {
+    const path = url.slice(API.length).split('?')[0];
+    const handler = wasmRoutes[path];
+    if (handler) {
+      try {
+        const result = handler(opts, url);
+        // Se for Promise (ex: wasmMlpTrain), resolve e wrapa em Response
+        if (result && typeof result.then === 'function') {
+          return result.then(r => new Response(r, {status: 200, headers: {'Content-Type':'application/json'}}));
+        }
+        return Promise.resolve(new Response(result, {status: 200, headers: {'Content-Type':'application/json'}}));
+      } catch(e) {
+        return Promise.resolve(new Response(JSON.stringify({error: e.message}), {status: 500}));
+      }
+    }
+    // Classify routes com body JSON
+
+    if (path === '/letras/classify' && opts?.body) {
+      return Promise.resolve(new Response(wasmLetrasClassify(opts.body), {status:200, headers:{'Content-Type':'application/json'}}));
+    }
+    if (path === '/madaline/classify' && opts?.body) {
+      return Promise.resolve(new Response(wasmMadClassify(opts.body), {status:200, headers:{'Content-Type':'application/json'}}));
+    }
+  }
+  return _origFetch.apply(this, arguments);
+};
+
+// Override EventSource para streams SSE via WASM callbacks
+const _OrigEventSource = window.EventSource;
+class WasmEventSource {
+  constructor(url) {
+    this._closed = false;
+    this.onmessage = null;
+    this.onerror = null;
+    const path = url.slice(API.length);
+    setTimeout(() => this._start(path), 0);
+  }
+  _start(path) {
+    const self = this;
+    const onStep = (jsonStr) => {
+      if (self._closed) return;
+      if (self.onmessage) self.onmessage({data: jsonStr});
+    };
+    if (path === '/imgreg/train')           wasmImgregTrain(window._wasmImgregCfg || '{}', onStep);
+    else if (path === '/imgreg-goroutines/train') wasmIgorTrain(window._wasmIgorCfg || '{}', onStep);
+    else if (path === '/imgreg-minibatch/train')  wasmImbTrain(window._wasmImbCfg || '{}', onStep);
+    else if (path === '/letras/train')       wasmLetrasTrain(onStep);
+    else if (path === '/madaline/train')     wasmMadTrain(onStep);
+    else if (self.onerror) self.onerror();
+  }
+  close() { this._closed = true; }
+}
+
+window.EventSource = function(url) {
+  if (wasmReady && typeof url === 'string' && url.startsWith(API)) {
+    return new WasmEventSource(url);
+  }
+  return new _OrigEventSource(url);
+};
 
 // Helper seguro: nunca crasha se elemento não existir
 function $id(id) {
