@@ -31,3 +31,6 @@ Thumbs.db
 
 # claude
 /.claude/
+
+# Playwright MCP screenshots/logs
+.playwright-mcp/

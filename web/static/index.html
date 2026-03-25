@@ -2917,6 +2917,7 @@ $id('btn-igor-train').addEventListener('click', async () => {
     const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : '—';
     $id('igor-throughput').textContent = `${throughput}`;
     $id('igor-progress').style.width = `${(step.epoca/step.maxEpocas*100).toFixed(1)}%`;
+    if (igorLossHistory.length % 5 === 0) addLogTo(log, `época ${String(step.epoca).padStart(5)} · loss ${step.loss.toFixed(6)}`, 'ok');
     if (igorLossHistory.length % 20 === 0) drawLogChart('igor-chart', igorLossHistory, '#00ff00');
   };
   igorES.onerror = () => {
@@ -3017,6 +3018,7 @@ $id('btn-imat-train').addEventListener('click', async () => {
     const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : '—';
     $id('imat-throughput').textContent = `${throughput}`;
     $id('imat-progress').style.width = `${(step.epoca/step.maxEpocas*100).toFixed(1)}%`;
+    if (imatLossHistory.length % 5 === 0) addLogTo(log, `época ${String(step.epoca).padStart(5)} · loss ${step.loss.toFixed(6)}`, 'ok');
     if (imatLossHistory.length % 20 === 0) drawLogChart('imat-chart', imatLossHistory, '#00fbfb');
   };
   imatES.onerror = () => {
@@ -3119,6 +3121,7 @@ $id('btn-imb-train').addEventListener('click', async () => {
     const throughput = step.epochMs > 0 ? Math.round(256 / (step.epochMs / 1000)) : '—';
     $id('imb-throughput').textContent = `${throughput}`;
     $id('imb-progress').style.width = `${(step.epoca/step.maxEpocas*100).toFixed(1)}%`;
+    if (imbLossHistory.length % 5 === 0) addLogTo(log, `época ${String(step.epoca).padStart(5)} · loss ${step.loss.toFixed(6)}`, 'ok');
     if (imbLossHistory.length % 20 === 0) drawLogChart('imb-chart', imbLossHistory, '#ff6ec7');
   };
   imbES.onerror = () => {
