@@ -538,7 +538,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 		})
 
 		var lossTotal float64
-		activeLayer := (epoca % len(net.W)) // alterna a camada em destaque para animação
+		activeLayer := ((epoca / epochStep) % len(net.W)) // alterna a cada step enviado
 
 		// Para cada pixel na ordem embaralhada:
 		for _, idx := range indices {

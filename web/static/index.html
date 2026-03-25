@@ -2410,15 +2410,15 @@ function drawNetworkViz(layerSizes, activeLayer = -1, containerId = 'imgreg-net-
     return;
   }
 
-  const sizesKey = layerSizes.join(',');
+  const W = Math.max(container.offsetWidth || 500, 400);
+  const H = 300;
+  const sizesKey = layerSizes.join(',') + '@' + W;
   const needRebuild = _netVizSizes !== sizesKey;
   _netVizSizes = sizesKey;
 
-  const W = Math.max(container.offsetWidth || 420, 300);
-  const H = 300;
   const MAX_SHOWN = 8;
   const nLayers = layerSizes.length;
-  const padX = 40, padY = 32;
+  const padX = 55, padY = 32;
   const usableW = W - padX * 2;
   const usableH = H - padY * 2 - 24;
   const R = 8;

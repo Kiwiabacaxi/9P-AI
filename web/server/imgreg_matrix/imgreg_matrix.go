@@ -447,7 +447,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 				MaxEpocas:    cfg.MaxEpocas,
 				Loss:         lossMedia,
 				OutputPixels: pixels,
-				ActiveLayer:  epoca % len(net.W),
+				ActiveLayer:  (epoca / epochStep) % len(net.W),
 				ElapsedMs:    time.Since(start).Milliseconds(),
 				EpochMs:      epochMs,
 			}
