@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"math/rand"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -367,7 +368,10 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 	}
 
 	lossHistorico := make([]float64, 0, cfg.MaxEpocas)
-	const epochStep = 5
+	epochStep := cfg.MaxEpocas / 50
+	if epochStep < 1 {
+		epochStep = 1
+	}
 	start := time.Now()
 
 	for epoca := 1; epoca <= cfg.MaxEpocas; epoca++ {
@@ -377,6 +381,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 			return net
 		default:
 		}
+		runtime.Gosched()
 
 		rng.Shuffle(len(indices), func(i, j int) { indices[i], indices[j] = indices[j], indices[i] })
 
@@ -454,7 +459,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 				MaxEpocas:    cfg.MaxEpocas,
 				Loss:         lossMedia,
 				OutputPixels: pixels,
-				ActiveLayer:  epoca % len(net.W),
+				ActiveLayer:  (epoca / epochStep) % len(net.W),
 				ElapsedMs:    time.Since(start).Milliseconds(),
 				EpochMs:      epochMs,
 			}

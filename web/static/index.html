@@ -1669,7 +1669,13 @@ class WasmEventSource {
     else if (path === '/imgreg-minibatch/train')  wasmStream('imbTrain',    [_wasmCfgStore.imb || '{}'], onStep);
     else if (path === '/letras/train')            wasmStream('letrasTrain', [], onStep);
     else if (path === '/madaline/train')          wasmStream('madTrain',    [], onStep);
-    else if (self.onerror) self.onerror();
+    else if (path === '/imgreg-matrix/train' || path === '/imgreg-bench/run') {
+      // Matrix (gonum) e Benchmark nao estao disponiveis no WASM
+      onStep(JSON.stringify({ done: true, convergiu: false, loss: 0, epoca: 0, maxEpocas: 0,
+        outputPixels: [], lossHistorico: [], activeLayer: -1,
+        _wasmError: 'Este backend requer gonum/mat (cgo) e nao esta disponivel no modo browser.' }));
+    }
+    else { setTimeout(() => { if (self.onerror) self.onerror(); }, 0); }
   }
   close() { this._closed = true; }
 }
@@ -3124,6 +3130,14 @@ $id('btn-imat-train').addEventListener('click', async () => {
   imatES = new EventSource(API + '/imgreg-matrix/train');
   imatES.onmessage = e => {
     const step = JSON.parse(e.data);
+    if (step._wasmError) {
+      imatES.close(); imatES = null;
+      $id('btn-imat-train').textContent = 'TREINAR';
+      $id('spin-imat').style.display = 'none';
+      addLogTo(log, `// ${step._wasmError}`, 'warn');
+      toast('Matrix não disponível no modo browser (requer gonum/mat)');
+      return;
+    }
     if (step.done) {
       imatES.close(); imatES = null;
       fillImgregGrid('imat-output-grid', step.outputPixels);
@@ -3345,9 +3359,16 @@ $id('btn-bench-run').addEventListener('click', async () => {
   $id('btn-bench-run').textContent = 'PARAR';
   $id('spin-bench').style.display = 'inline-block';
 
-  benchES = new EventSource(API + '/imgreg-bench/train');
+  benchES = new EventSource(API + '/imgreg-bench/run');
   benchES.onmessage = e => {
     const bs = JSON.parse(e.data);
+    if (bs._wasmError) {
+      benchES.close(); benchES = null;
+      $id('btn-bench-run').textContent = 'RUN';
+      $id('spin-bench').style.display = 'none';
+      toast('Benchmark não disponível no modo browser');
+      return;
+    }
     const {backend, step} = bs;
     const grid = $id(`bench-grid-${backend}`);
     const stat = $id(`bench-stat-${backend}`);

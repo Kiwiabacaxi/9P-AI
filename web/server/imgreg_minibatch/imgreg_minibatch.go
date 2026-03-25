@@ -401,7 +401,10 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 	for i := range indices { indices[i] = i }
 
 	lossHistorico := make([]float64, 0, cfg.MaxEpocas)
-	const epochStep = 5
+	epochStep := cfg.MaxEpocas / 50
+	if epochStep < 1 {
+		epochStep = 1
+	}
 	start := time.Now()
 
 	// Canal de jobs e results para o worker pool
@@ -421,6 +424,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 	}
 
 	for epoca := 1; epoca <= cfg.MaxEpocas; epoca++ {
+		runtime.Gosched()
 		select {
 		case <-ctx.Done():
 			close(jobCh)
@@ -481,7 +485,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 				MaxEpocas:    cfg.MaxEpocas,
 				Loss:         lossMedia,
 				OutputPixels: pixels,
-				ActiveLayer:  epoca % len(net.W),
+				ActiveLayer:  (epoca / epochStep) % len(net.W),
 				ElapsedMs:    time.Since(start).Milliseconds(),
 				EpochMs:      epochMs,
 			}

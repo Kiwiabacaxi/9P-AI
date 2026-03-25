@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"math/rand"
+	"runtime"
 )
 
 // =============================================================================
@@ -530,6 +531,8 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 			return net
 		default:
 		}
+		// Yield para o runtime (importante no WASM para não bloquear o event loop do Worker)
+		runtime.Gosched()
 
 		// SHUFFLE dos índices — SGD estocástico sem ordem fixa
 		// Evita que a rede "memorize" a ordem de apresentação dos pixels
