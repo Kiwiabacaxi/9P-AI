@@ -1,64 +1,113 @@
 # Redes Neurais Artificiais
 
-Repositório com os trabalhos práticos da disciplina de **Redes Neurais Artificiais** (Inteligência Artificial).
+Repositorio com os trabalhos praticos da disciplina de **Redes Neurais Artificiais** (Inteligencia Artificial).
 
-## Estrutura
+Todos os algoritmos rodam **direto no browser** via WebAssembly — sem backend, sem instalacao.
 
-Cada projeto individual tem subpasta `cli/` com a TUI Go interativa.
-O servidor web centraliza todos os algoritmos em [`web/`](./web/), organizado por pacotes.
+> **[Abrir o Mission Control](https://kiwiabacaxi.github.io/9P-AI/)**
 
-### Projetos individuais (CLI)
+## Algoritmos implementados
 
-| Pasta | Algoritmo | Descrição |
-|-------|-----------|-----------|
-| [`Trab 01/cli`](./Trab%2001/cli/) | Regra de Hebb | Portas Lógicas (AND, OR, NAND, NOR, XOR) |
-| [`Trab 02 - PT 1/cli`](./Trab%2002%20-%20PT%201/cli/) | Perceptron | Reconhecimento de Letras A e B (grade 7×7) |
-| [`Trab 02 - PT 2/cli`](./Trab%2002%20-%20PT%202/cli/) | Perceptron | Portas Lógicas (AND, OR, NAND, NOR, XOR) |
-| [`Trab 03/cli`](./Trab%2003/cli/) | MADALINE | Reconhecimento de Letras A–M (grade 5×7) |
-| [`Desafios MLP/Desafio Multilayer Perceptron (MLP)/cli`](./Desafios%20MLP/Desafio%20Multilayer%20Perceptron%20(MLP)/cli/) | MLP | Treinamento e visualização passo a passo com TUI |
-| [`Desafios MLP/Multilayer Perceptron (MLP) Letras/cli`](./Desafios%20MLP/Multilayer%20Perceptron%20(MLP)%20Letras/cli/) | MLP | Reconhecimento de letras A–Z com entrada manual via TUI |
+| # | Algoritmo | Aula | Arquitetura | Ativacao | Regra de atualizacao |
+|---|-----------|------|-------------|----------|---------------------|
+| 1 | **Hebb** | 02 | 2 -> 1 | sign(y_in) | w <- w + x*t (sempre) |
+| 2 | **Perceptron Portas** | 03 | 2 -> 1 | sign(y_in) | w <- w + a(t-y)x (so no erro) |
+| 3 | **Perceptron Letras** | 03 | 49 -> 1 (7x7) | sign(y_in) | w <- w + a(t-y)x (so no erro) |
+| 4 | **MADALINE** | 04 | 35 -> 13 ADALINE -> 13 | sign / argmin | MRII — atualiza unidade com menor \|y_in\| |
+| 5 | **MLP Desafio** | 05 | 3 -> 2 -> 3 | tanh | Backpropagation |
+| 6 | **MLP Letras** | 05 | 35 -> 15 -> 26 (A-Z) | tanh | Backpropagation |
+| 7 | **MLP Image Regression** | 05 | 2 -> [NxM] -> 3 | ReLU / Sigmoid | SGD estocastico / He init / MSE |
 
-### Servidor web (`web/`)
+### Backends de Image Regression
+
+O Image Regression tem 4 implementacoes que demonstram diferentes estrategias de otimizacao:
+
+| Backend | Descricao | Disponivel no WASM |
+|---------|-----------|-------------------|
+| **Standard** | SGD online, 1 pixel por vez | Sim |
+| **Goroutines** | Batch GD com goroutines paralelas | Sim |
+| **Matrix** | Batch GD matricial com gonum/mat (BLAS) | Nao (cgo) |
+| **Mini-batch** | Mini-batch GD com workers configuravel | Sim |
+
+## Estrutura do projeto
 
 ```
-web/
-├── main.go                   ← HTTP server, rotas, handlers (SSE)
-├── static/index.html         ← frontend (HTML/CSS/JS, sem frameworks)
-└── server/
-    ├── main.go
-    ├── hebb/                 ← package hebb        (Aula 02)
-    ├── perceptron_portas/    ← package perceptronportas (Aula 03)
-    ├── perceptron_letras/    ← package perceptronletras (Aula 03)
-    ├── madaline/             ← package madaline    (Aula 04)
-    ├── mlp/                  ← package mlp         (Aula 05)
-    ├── letras/               ← package letras      (Aula 05)
-    └── imgreg/               ← package imgreg      (Aula 05 — Aproximação Universal)
+├── Trab 01/cli/              Hebb — TUI interativa
+├── Trab 02 - PT 1/cli/       Perceptron Letras — TUI
+├── Trab 02 - PT 2/cli/       Perceptron Portas — TUI
+├── Trab 03/cli/               MADALINE — TUI
+├── Desafios MLP/
+│   ├── Desafio .../cli/       MLP Desafio — TUI
+│   └── MLP Letras/cli/        MLP Letras — TUI
+├── slides/                    PDFs das aulas
+└── web/
+    ├── static/
+    │   └── index.html         Frontend (HTML/CSS/JS, sem frameworks)
+    └── server/
+        ├── main.go            HTTP server + SSE handlers
+        ├── hebb/              package hebb
+        ├── perceptron_portas/ package perceptronportas
+        ├── perceptron_letras/ package perceptronletras
+        ├── madaline/          package madaline
+        ├── mlp/               package mlp
+        ├── letras/            package letras
+        ├── imgreg/            package imgreg (Standard)
+        ├── imgreg_goroutines/ package igoroutines
+        ├── imgreg_matrix/     package imatrix (gonum/mat)
+        ├── imgreg_minibatch/  package iminibatch
+        ├── imgreg_bench/      package ibench (benchmark)
+        └── wasm/              WebAssembly bridge (syscall/js)
 ```
 
-Slides das aulas em PDF estão em `slides/`.
+## Como usar
 
-## Web — Mission Control
+### GitHub Pages (sem instalar nada)
 
-Todos os algoritmos rodam via interface web em [`web/`](./web/):
+Acesse **https://kiwiabacaxi.github.io/9P-AI/** — tudo roda no seu browser via WebAssembly.
+
+### Servidor local (desenvolvimento)
 
 ```bash
 cd web
-make run   # compila, mata porta 8080 e abre o browser
+make run   # compila Go, inicia servidor na :8080 e abre o browser
 ```
 
-## Como rodar (TUI)
+### TUI (terminal interativo)
 
-Cada trabalho tem TUI em **Go** na subpasta `cli/`:
+Cada trabalho tem uma TUI em Go:
 
 ```bash
 cd "Trab 01/cli"
 go run .
 ```
 
-> Requisito: [Go 1.24+](https://go.dev/dl/)
+## Arquitetura web
+
+O projeto usa **dual-mode** — o mesmo `index.html` funciona em dois modos:
+
+| Modo | Quando | Como funciona |
+|------|--------|---------------|
+| **Servidor** | `localhost:8080` | Frontend faz `fetch()` / `EventSource` para o Go HTTP server |
+| **WASM** | GitHub Pages / qualquer host estatico | Go compilado para WebAssembly roda em **Web Worker** (thread separada, nao trava a UI) |
+
+A deteccao e automatica: se a porta e 8080, usa o servidor; senao, carrega o WASM.
+
+### Build do WASM
+
+```bash
+cd web/server
+GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o ../static/main.wasm ./wasm/
+cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" ../static/
+```
+
+O GitHub Actions faz isso automaticamente a cada push para `main`.
 
 ## Tecnologias
 
-- **Go** — linguagem principal (backend HTTP/SSE + algoritmos)
-- **Charm** (Bubble Tea + Lipgloss + Bubbles) — TUI interativa (Trab 02 e 03)
-- **HTML/CSS/JS** — frontend web (sem frameworks)
+- **Go 1.24** — algoritmos + HTTP server + WebAssembly
+- **gonum/mat** — multiplicacao matricial otimizada (backend Matrix)
+- **syscall/js** — bridge Go <-> JavaScript para WASM
+- **Web Workers** — execucao em thread separada no browser
+- **Charm** (Bubble Tea + Lipgloss) — TUI interativa
+- **HTML/CSS/JS** — frontend sem frameworks
+- **GitHub Actions** — CI/CD para deploy automatico no Pages
