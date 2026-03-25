@@ -1550,48 +1550,83 @@ canvas { width: 100%; height: 160px; display: block; }
 <script>
 const API = 'http://localhost:8080/api';
 
-// ── WASM dual-mode: detecta se roda via servidor local ou estático (GitHub Pages) ──
+// ── WASM via Web Worker: roda em thread separada, não trava a UI ──
 let wasmReady = false;
 const useWasm = location.protocol === 'file:' || location.port !== '8080' || location.hostname.includes('github.io');
 
+let wasmWorker = null;
+let _wasmCallId = 0;
+const _wasmPending = {};     // id → { resolve }
+const _wasmStreamCbs = {};   // id → onStep callback
+
 if (useWasm) {
-  const go = new Go();
-  WebAssembly.instantiateStreaming(fetch('main.wasm'), go.importObject).then(result => {
-    go.run(result.instance);
-  });
-  document.addEventListener('wasmReady', () => { wasmReady = true; refreshStatus(); });
+  wasmWorker = new Worker('wasm_worker.js');
+  wasmWorker.onmessage = (e) => {
+    const { id, type, data, error } = e.data;
+    if (type === 'ready') { wasmReady = true; refreshStatus(); return; }
+    if (type === 'step') {
+      const cb = _wasmStreamCbs[id];
+      if (cb) cb(data);
+      return;
+    }
+    if (type === 'result' || error) {
+      const p = _wasmPending[id];
+      if (p) { delete _wasmPending[id]; p.resolve(data || JSON.stringify({error})); }
+    }
+  };
 }
 
-// ── WASM API router: intercepta chamadas para rodar local via WASM ──
-// Mapeia URL path → função WASM. Se WASM não pronto, faz fetch normal.
+// Send a command to the WASM Worker and return a Promise for the result
+function wasmCall(cmd, ...args) {
+  return new Promise(resolve => {
+    const id = ++_wasmCallId;
+    _wasmPending[id] = { resolve };
+    wasmWorker.postMessage({ id, cmd, args });
+  });
+}
+
+// Send a streaming command — onStep called for each progress update
+function wasmStream(cmd, args, onStep) {
+  const id = ++_wasmCallId;
+  _wasmStreamCbs[id] = onStep;
+  wasmWorker.postMessage({ id, cmd, args });
+  return id;
+}
+
+// Config storage for imgreg variants (saved here, passed to Worker on train)
+const _wasmCfgStore = {};
+
+// Maps API path → { cmd, args builder }
 const wasmRoutes = {
-  '/status':                  () => wasmStatus(),
-  '/hebb/portas':             () => wasmHebbPortas(),
-  '/hebb/train':              (_, url) => wasmHebbTrain(new URL(url, location).searchParams.get('porta') || 'ALL'),
-  '/perceptron-portas/portas':() => wasmPercPortasLista(),
-  '/perceptron-portas/train': (_, url) => wasmPercPortasTrain(new URL(url, location).searchParams.get('porta') || 'ALL'),
-  '/perceptron-letras/train': () => wasmPercLetrasTrain(),
-  '/perceptron-letras/dataset': () => wasmPercLetrasDataset(),
-  '/mlp/train':               () => wasmMlpTrain(),
-  '/mlp/result':              () => wasmMlpResult(),
-  '/letras/result':           () => wasmLetrasResult(),
-  '/letras/dataset':          () => wasmLetrasDataset(),
-  '/madaline/result':         () => wasmMadResult(),
-  '/madaline/dataset':        () => wasmMadDataset(),
-  '/imgreg/target':           (_, url) => wasmImgregTarget(new URL(url, location).searchParams.get('img') || 'coracao'),
-  '/imgreg/reset':            () => wasmImgregReset(),
-  '/imgreg/config':           (o) => { window._wasmImgregCfg = o?.body; return '{"ok":"config salva"}'; },
-  '/imgreg-goroutines/config':(o) => { window._wasmIgorCfg = o?.body; return '{"ok":"config salva"}'; },
-  '/imgreg-goroutines/reset': () => wasmIgorReset(),
-  '/imgreg-minibatch/config': (o) => { window._wasmImbCfg = o?.body; return '{"ok":"config salva"}'; },
-  '/imgreg-minibatch/reset':  () => wasmImbReset(),
-  '/imgreg-matrix/config':    () => '{"ok":"não disponível em WASM (gonum)"}',
-  '/imgreg-matrix/reset':     () => '{"ok":"não disponível em WASM (gonum)"}',
-  '/imgreg-bench/config':     () => '{"ok":"não disponível em WASM"}',
-  '/imgreg-bench/reset':      () => '{"ok":"não disponível em WASM"}',
+  '/status':                  () => wasmCall('status'),
+  '/hebb/portas':             () => wasmCall('hebbPortas'),
+  '/hebb/train':              (_, url) => wasmCall('hebbTrain', new URL(url, location).searchParams.get('porta') || 'ALL'),
+  '/perceptron-portas/portas':() => wasmCall('percPortasLista'),
+  '/perceptron-portas/train': (_, url) => wasmCall('percPortasTrain', new URL(url, location).searchParams.get('porta') || 'ALL'),
+  '/perceptron-letras/train': () => wasmCall('percLetrasTrain'),
+  '/perceptron-letras/dataset': () => wasmCall('percLetrasDataset'),
+  '/mlp/train':               () => wasmCall('mlpTrain'),
+  '/mlp/result':              () => wasmCall('mlpResult'),
+  '/letras/result':           () => wasmCall('letrasResult'),
+  '/letras/classify':         (o) => wasmCall('letrasClassify', o?.body),
+  '/letras/dataset':          () => wasmCall('letrasDataset'),
+  '/madaline/result':         () => wasmCall('madResult'),
+  '/madaline/classify':       (o) => wasmCall('madClassify', o?.body),
+  '/madaline/dataset':        () => wasmCall('madDataset'),
+  '/imgreg/target':           (_, url) => wasmCall('imgregTarget', new URL(url, location).searchParams.get('img') || 'coracao'),
+  '/imgreg/reset':            () => wasmCall('imgregReset'),
+  '/imgreg/config':           (o) => { _wasmCfgStore.imgreg = o?.body; return null; },
+  '/imgreg-goroutines/config':(o) => { _wasmCfgStore.igor = o?.body; return null; },
+  '/imgreg-goroutines/reset': () => wasmCall('igorReset'),
+  '/imgreg-minibatch/config': (o) => { _wasmCfgStore.imb = o?.body; return null; },
+  '/imgreg-minibatch/reset':  () => wasmCall('imbReset'),
+  '/imgreg-matrix/config':    () => null,
+  '/imgreg-matrix/reset':     () => null,
+  '/imgreg-bench/config':     () => null,
+  '/imgreg-bench/reset':      () => null,
 };
 
-// Override fetch para interceptar chamadas à API quando em modo WASM
+// Override fetch — routes to Worker when in WASM mode
 const _origFetch = window.fetch;
 window.fetch = function(url, opts) {
   if (wasmReady && typeof url === 'string' && url.startsWith(API)) {
@@ -1600,28 +1635,20 @@ window.fetch = function(url, opts) {
     if (handler) {
       try {
         const result = handler(opts, url);
-        // Se for Promise (ex: wasmMlpTrain), resolve e wrapa em Response
+        if (result === null) return Promise.resolve(new Response('{"ok":"ok"}', {status:200, headers:{'Content-Type':'application/json'}}));
         if (result && typeof result.then === 'function') {
-          return result.then(r => new Response(r, {status: 200, headers: {'Content-Type':'application/json'}}));
+          return result.then(r => new Response(r, {status:200, headers:{'Content-Type':'application/json'}}));
         }
-        return Promise.resolve(new Response(result, {status: 200, headers: {'Content-Type':'application/json'}}));
+        return Promise.resolve(new Response(result, {status:200, headers:{'Content-Type':'application/json'}}));
       } catch(e) {
-        return Promise.resolve(new Response(JSON.stringify({error: e.message}), {status: 500}));
+        return Promise.resolve(new Response(JSON.stringify({error:e.message}), {status:500}));
       }
-    }
-    // Classify routes com body JSON
-
-    if (path === '/letras/classify' && opts?.body) {
-      return Promise.resolve(new Response(wasmLetrasClassify(opts.body), {status:200, headers:{'Content-Type':'application/json'}}));
-    }
-    if (path === '/madaline/classify' && opts?.body) {
-      return Promise.resolve(new Response(wasmMadClassify(opts.body), {status:200, headers:{'Content-Type':'application/json'}}));
     }
   }
   return _origFetch.apply(this, arguments);
 };
 
-// Override EventSource para streams SSE via WASM callbacks
+// Override EventSource — streaming via Worker postMessage
 const _OrigEventSource = window.EventSource;
 class WasmEventSource {
   constructor(url) {
@@ -1635,13 +1662,13 @@ class WasmEventSource {
     const self = this;
     const onStep = (jsonStr) => {
       if (self._closed) return;
-      if (self.onmessage) self.onmessage({data: jsonStr});
+      if (self.onmessage) self.onmessage({ data: jsonStr });
     };
-    if (path === '/imgreg/train')           wasmImgregTrain(window._wasmImgregCfg || '{}', onStep);
-    else if (path === '/imgreg-goroutines/train') wasmIgorTrain(window._wasmIgorCfg || '{}', onStep);
-    else if (path === '/imgreg-minibatch/train')  wasmImbTrain(window._wasmImbCfg || '{}', onStep);
-    else if (path === '/letras/train')       wasmLetrasTrain(onStep);
-    else if (path === '/madaline/train')     wasmMadTrain(onStep);
+    if (path === '/imgreg/train')                 wasmStream('imgregTrain', [_wasmCfgStore.imgreg || '{}'], onStep);
+    else if (path === '/imgreg-goroutines/train') wasmStream('igorTrain',   [_wasmCfgStore.igor || '{}'], onStep);
+    else if (path === '/imgreg-minibatch/train')  wasmStream('imbTrain',    [_wasmCfgStore.imb || '{}'], onStep);
+    else if (path === '/letras/train')            wasmStream('letrasTrain', [], onStep);
+    else if (path === '/madaline/train')          wasmStream('madTrain',    [], onStep);
     else if (self.onerror) self.onerror();
   }
   close() { this._closed = true; }

@@ -608,9 +608,13 @@ func main() {
 	g.Set("wasmImbTrain", js.FuncOf(wasmImbTrain))
 	g.Set("wasmImbReset", js.FuncOf(wasmImbReset))
 
-	// Signal ready
-	g.Get("document").Call("dispatchEvent",
-		js.Global().Get("CustomEvent").New("wasmReady"))
+	// Signal ready — works in both main thread (document) and Web Worker (no document)
+	doc := g.Get("document")
+	if !doc.IsUndefined() && !doc.IsNull() {
+		doc.Call("dispatchEvent", g.Get("CustomEvent").New("wasmReady"))
+	}
+	// Also set a global flag that the Worker can check
+	g.Set("_wasmReady", true)
 
 	// Block forever
 	<-make(chan struct{})
