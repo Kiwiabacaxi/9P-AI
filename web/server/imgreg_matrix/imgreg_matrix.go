@@ -276,7 +276,6 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 
 	net := inicializar(cfg, rng)
 	target := GetTarget(cfg.Imagem)
-	const epochStep = 5
 	start := time.Now()
 
 	// Input matrix A0: 256×2 — fixo, nunca muda
@@ -316,16 +315,19 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 	for l := 0; l < nT; l++ {
 		dW[l] = mat.NewDense(net.LayerSizes[l], net.LayerSizes[l+1], nil)
 	}
-	// dAl reutilizado para cada camada no backward (tamanho máximo = max fanIn)
-	maxFanIn := 0
+	// dAl: buffer próprio por camada para evitar problema de stride de views
+	dAl := make([]*mat.Dense, nT)
 	for l := 0; l < nT; l++ {
-		if net.LayerSizes[l] > maxFanIn {
-			maxFanIn = net.LayerSizes[l]
-		}
+		dAl[l] = mat.NewDense(256, net.LayerSizes[l], nil)
 	}
-	dAlBuf := mat.NewDense(256, maxFanIn, nil)
 
 	lossHistorico := make([]float64, 0, cfg.MaxEpocas)
+
+	// epochStep proporcional: no máximo ~50 steps para nunca saturar o canal
+	epochStep := cfg.MaxEpocas / 50
+	if epochStep < 1 {
+		epochStep = 1
+	}
 
 	for epoca := 1; epoca <= cfg.MaxEpocas; epoca++ {
 		select {
@@ -381,7 +383,7 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 		lossHistorico = append(lossHistorico, lossMedia)
 
 		// === BACKWARD PASS ===
-		// dZ_out: 256×3 = (T - A_out) * sigmoidDeriv(A_out)
+		// dZ_out = (T - A_out) * sigmoidDeriv(A_out)  — sem normalizar por N
 		dzRaw := dZ[nT].RawMatrix().Data
 		for k, a := range outRaw {
 			dzRaw[k] = (tRaw[k] - a) * sigmoidDeriv(a)
@@ -392,35 +394,37 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 			fanIn2 := net.LayerSizes[l]
 
 			// dA_l = dZ_{l+1} * W_l^T  (BLAS dgemm)
-			dAlView := dAlBuf.Slice(0, 256, 0, fanIn2).(*mat.Dense)
-			dAlView.Mul(dZ[l+1], net.Wm[l].T())
+			// Usa buffer dedicado (não view) para garantir stride contíguo
+			dAl[l].Mul(dZ[l+1], net.Wm[l].T())
 
 			// dZ_l = dA_l * reluDeriv(preActs[l]) element-wise
 			dzlRaw := dZ[l].RawMatrix().Data
-			daRaw := dAlView.RawMatrix().Data
+			daRaw := dAl[l].RawMatrix().Data
 			zRaw := preActs[l].RawMatrix().Data
 			for k := range dzlRaw {
 				dzlRaw[k] = daRaw[k] * reluDeriv(zRaw[k])
 			}
+			_ = fanIn2
 		}
 
-		// === WEIGHT UPDATE — dW_l = (A_{l-1}^T * dZ_{l+1}) / 256 ===
-		lr256 := cfg.LearningRate / 256.0
+		// === WEIGHT UPDATE ===
+		// Batch GD: gradiente acumulado sem normalizar por N, lr aplicado direto.
+		// Equivale ao SGD online da versão slice (que atualiza 256x com lr por sample).
+		lr := cfg.LearningRate
 		for l := 0; l < nT; l++ {
-			fanIn3 := net.LayerSizes[l]
 			fanOut3 := net.LayerSizes[l+1]
 
-			// dW via BLAS
+			// dW via BLAS: A_{l}^T * dZ_{l+1}
 			dW[l].Mul(acts[l].T(), dZ[l+1])
 
-			// Update Wm in-place via RawMatrix data
+			// Update Wm in-place
 			wRaw := net.Wm[l].RawMatrix().Data
 			dwRaw := dW[l].RawMatrix().Data
 			for k := range wRaw {
-				wRaw[k] += lr256 * dwRaw[k]
+				wRaw[k] += lr * dwRaw[k]
 			}
 
-			// dB = mean of rows of dZ[l+1]
+			// dB = soma das linhas de dZ[l+1]
 			dzColRaw := dZ[l+1].RawMatrix().Data
 			b := net.Bvec[l]
 			for j := 0; j < fanOut3; j++ {
@@ -428,9 +432,8 @@ func Treinar(ctx context.Context, cfg Config, progressCh chan<- Step) Net {
 				for row := 0; row < 256; row++ {
 					sum += dzColRaw[row*fanOut3+j]
 				}
-				b[j] += lr256 * sum
+				b[j] += lr * sum
 			}
-			_ = fanIn3
 		}
 
 		epochMs := time.Since(epochStart).Milliseconds()
