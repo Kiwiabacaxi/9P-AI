@@ -32,32 +32,34 @@ O Image Regression tem 4 implementacoes que demonstram diferentes estrategias de
 ## Estrutura do projeto
 
 ```
-├── Trab 01/cli/              Hebb — TUI interativa
-├── Trab 02 - PT 1/cli/       Perceptron Letras — TUI
-├── Trab 02 - PT 2/cli/       Perceptron Portas — TUI
-├── Trab 03/cli/               MADALINE — TUI
-├── Desafios MLP/
-│   ├── Desafio .../cli/       MLP Desafio — TUI
-│   └── MLP Letras/cli/        MLP Letras — TUI
-├── slides/                    PDFs das aulas
+├── cli/                          Programas TUI interativos (Go + Charm)
+│   ├── trab01-hebb/              Regra de Hebb — portas logicas
+│   ├── trab02-perceptron-letras/ Perceptron — reconhecimento A/B
+│   ├── trab02-perceptron-portas/ Perceptron — portas logicas
+│   ├── trab03-madaline/          MADALINE — reconhecimento A-M
+│   ├── desafio-mlp/              MLP 3->2->3 — backpropagation
+│   └── desafio-mlp-letras/       MLP 35->15->26 — reconhecimento A-Z
+├── slides/                       PDFs das aulas
 └── web/
     ├── static/
-    │   └── index.html         Frontend (HTML/CSS/JS, sem frameworks)
+    │   └── index.html            Frontend (HTML/CSS/JS, sem frameworks)
     └── server/
-        ├── main.go            HTTP server + SSE handlers
-        ├── hebb/              package hebb
-        ├── perceptron_portas/ package perceptronportas
-        ├── perceptron_letras/ package perceptronletras
-        ├── madaline/          package madaline
-        ├── mlp/               package mlp
-        ├── letras/            package letras
-        ├── imgreg/            package imgreg (Standard)
-        ├── imgreg_goroutines/ package igoroutines
-        ├── imgreg_matrix/     package imatrix (gonum/mat)
-        ├── imgreg_minibatch/  package iminibatch
-        ├── imgreg_bench/      package ibench (benchmark)
-        └── wasm/              WebAssembly bridge (syscall/js)
+        ├── main.go               HTTP server + SSE handlers
+        ├── hebb/                  package hebb
+        ├── perceptron_portas/    package perceptronportas
+        ├── perceptron_letras/    package perceptronletras
+        ├── madaline/             package madaline
+        ├── mlp/                  package mlp
+        ├── letras/               package letras
+        ├── imgreg/               package imgreg (Standard)
+        ├── imgreg_goroutines/    package igoroutines
+        ├── imgreg_matrix/        package imatrix (gonum/mat)
+        ├── imgreg_minibatch/     package iminibatch
+        ├── imgreg_bench/         package ibench (benchmark)
+        └── wasm/                 WebAssembly bridge (syscall/js)
 ```
+
+Para detalhes sobre cada programa CLI, veja o [README da pasta cli](cli/README.md).
 
 ## Como usar
 
@@ -74,11 +76,15 @@ make run   # compila Go, inicia servidor na :8080 e abre o browser
 
 ### TUI (terminal interativo)
 
-Cada trabalho tem uma TUI em Go:
+Cada trabalho tem uma TUI em Go. A partir da pasta `cli/`:
 
 ```bash
-cd "Trab 01/cli"
-go run .
+go run ./trab01-hebb
+go run ./trab02-perceptron-letras
+go run ./trab02-perceptron-portas
+go run ./trab03-madaline
+go run ./desafio-mlp
+go run ./desafio-mlp-letras
 ```
 
 ## Arquitetura web

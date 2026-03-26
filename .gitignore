@@ -6,9 +6,12 @@
 *.dylib
 
 # Binários sem extensão (Go build output)
-/Trab*/trab*
-/Trab*/main
-appemrust
+/cli/trab01-hebb/trab01-hebb
+/cli/trab02-perceptron-letras/trab02-perceptron-letras
+/cli/trab02-perceptron-portas/trab02-perceptron-portas
+/cli/trab03-madaline/trab03-madaline
+/cli/desafio-mlp/desafio-mlp
+/cli/desafio-mlp-letras/desafio-mlp-letras
 
 # Diretórios de teste e debug
 *.test
