@@ -44,6 +44,11 @@ onmessage = function(e) {
       case 'imgregReset':      reply(id, wasmImgregReset()); break;
       case 'igorReset':        reply(id, wasmIgorReset()); break;
       case 'imbReset':         reply(id, wasmImbReset()); break;
+      case 'mlpFuncResult':    reply(id, wasmMlpFuncResult()); break;
+      case 'mlpFuncFuncoes':   reply(id, wasmMlpFuncFuncoes()); break;
+      case 'ortResult':        reply(id, wasmOrtResult()); break;
+      case 'ortClassify':      reply(id, wasmOrtClassify(args[0])); break;
+      case 'ortDataset':       reply(id, wasmOrtDataset()); break;
 
       // ── Promise-based (heavy sync): run in Go goroutine, reply when done ──
       case 'mlpTrain': {
@@ -79,6 +84,16 @@ onmessage = function(e) {
         break;
       case 'imbTrain':
         wasmImbTrain(args[0], (stepJSON) => {
+          postMessage({ id, type: 'step', data: stepJSON });
+        });
+        break;
+      case 'mlpFuncTrain':
+        wasmMlpFuncTrain((stepJSON) => {
+          postMessage({ id, type: 'step', data: stepJSON });
+        }, args[0] || 'sin(x)*sin(2x)');
+        break;
+      case 'ortTrain':
+        wasmOrtTrain((stepJSON) => {
           postMessage({ id, type: 'step', data: stepJSON });
         });
         break;

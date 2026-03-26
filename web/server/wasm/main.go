@@ -15,6 +15,8 @@ import (
 	"mlp-server/letras"
 	"mlp-server/madaline"
 	"mlp-server/mlp"
+	"mlp-server/mlpfunc"
+	"mlp-server/mlport"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -52,6 +54,13 @@ var (
 	imbRede     *iminibatch.Net
 	imbTraining bool
 	imbCancel   context.CancelFunc
+
+	mlpFuncRes      *mlpfunc.FuncResult
+	mlpFuncTraining bool
+
+	ortRede     *mlport.OrtMLP
+	ortRes      *mlport.OrtResult
+	ortTraining bool
 )
 
 func toJSON(v any) string {
@@ -75,8 +84,12 @@ func wasmStatus(_ js.Value, _ []js.Value) any {
 		"percLetrasDone": percLetrasRede != nil,
 		"madTrained":     madRede != nil,
 		"madTraining":    madTraining,
-		"imgregTrained":  imgregRede != nil,
-		"imgregTraining": imgregTraining,
+		"imgregTrained":   imgregRede != nil,
+		"imgregTraining":  imgregTraining,
+		"mlpFuncTrained":  mlpFuncRes != nil,
+		"mlpFuncTraining": mlpFuncTraining,
+		"ortTrained":      ortRede != nil,
+		"ortTraining":     ortTraining,
 	})
 }
 
@@ -555,6 +568,120 @@ func promiseGo(fn func() string) any {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// MLP Funcoes (aproximacao de funcao)
+// ═══════════════════════════════════════════════════════════════════════
+
+func wasmMlpFuncTrain(_ js.Value, args []js.Value) any {
+	onStep := args[0]
+	funcao := "sin(x)*sin(2x)"
+	if len(args) > 1 && args[1].String() != "" {
+		funcao = args[1].String()
+	}
+
+	mu.Lock()
+	if mlpFuncTraining {
+		mu.Unlock()
+		return nil
+	}
+	mlpFuncTraining = true
+	mu.Unlock()
+
+	go func() {
+		ch := make(chan mlpfunc.FuncStep, 64)
+		go func() {
+			res := mlpfunc.Treinar(ch, funcao)
+			mu.Lock()
+			mlpFuncRes = &res
+			mlpFuncTraining = false
+			mu.Unlock()
+			close(ch)
+		}()
+		for step := range ch {
+			onStep.Invoke(toJSON(step))
+		}
+		if mlpFuncRes != nil {
+			onStep.Invoke(toJSON(map[string]any{"done": true, "result": mlpFuncRes}))
+		}
+	}()
+	return nil
+}
+
+func wasmMlpFuncResult(_ js.Value, _ []js.Value) any {
+	mu.RLock()
+	res := mlpFuncRes
+	mu.RUnlock()
+	if res == nil {
+		return toJSON(map[string]string{"error": "rede não treinada"})
+	}
+	return toJSON(res)
+}
+
+func wasmMlpFuncFuncoes(_ js.Value, _ []js.Value) any {
+	return toJSON(mlpfunc.FuncoesDisponiveis())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MLP Ortogonal (vetores bipolares)
+// ═══════════════════════════════════════════════════════════════════════
+
+func wasmOrtTrain(_ js.Value, args []js.Value) any {
+	onStep := args[0]
+	mu.Lock()
+	if ortTraining {
+		mu.Unlock()
+		return nil
+	}
+	ortTraining = true
+	mu.Unlock()
+
+	go func() {
+		ch := make(chan mlport.OrtStep, 64)
+		go func() {
+			res, rede := mlport.Treinar(ch)
+			mu.Lock()
+			ortRes = &res
+			ortRede = &rede
+			ortTraining = false
+			mu.Unlock()
+			close(ch)
+		}()
+		for step := range ch {
+			onStep.Invoke(toJSON(step))
+		}
+		if ortRes != nil {
+			onStep.Invoke(toJSON(map[string]any{"done": true, "result": ortRes}))
+		}
+	}()
+	return nil
+}
+
+func wasmOrtResult(_ js.Value, _ []js.Value) any {
+	mu.RLock()
+	res := ortRes
+	mu.RUnlock()
+	if res == nil {
+		return toJSON(map[string]string{"error": "rede não treinada"})
+	}
+	return toJSON(res)
+}
+
+func wasmOrtClassify(_ js.Value, args []js.Value) any {
+	mu.RLock()
+	rede := ortRede
+	mu.RUnlock()
+	if rede == nil {
+		return toJSON(map[string]string{"error": "rede não treinada"})
+	}
+	var req mlport.ClassifyReq
+	json.Unmarshal([]byte(args[0].String()), &req)
+	return toJSON(mlport.Classificar(*rede, req.Grade))
+}
+
+func wasmOrtDataset(_ js.Value, _ []js.Value) any {
+	return toJSON(mlport.GetDatasetInfo())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // main — registers all functions and blocks forever
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -607,6 +734,17 @@ func main() {
 	// Image Regression — Minibatch
 	g.Set("wasmImbTrain", js.FuncOf(wasmImbTrain))
 	g.Set("wasmImbReset", js.FuncOf(wasmImbReset))
+
+	// MLP Funcoes
+	g.Set("wasmMlpFuncTrain", js.FuncOf(wasmMlpFuncTrain))
+	g.Set("wasmMlpFuncResult", js.FuncOf(wasmMlpFuncResult))
+	g.Set("wasmMlpFuncFuncoes", js.FuncOf(wasmMlpFuncFuncoes))
+
+	// MLP Ortogonal
+	g.Set("wasmOrtTrain", js.FuncOf(wasmOrtTrain))
+	g.Set("wasmOrtResult", js.FuncOf(wasmOrtResult))
+	g.Set("wasmOrtClassify", js.FuncOf(wasmOrtClassify))
+	g.Set("wasmOrtDataset", js.FuncOf(wasmOrtDataset))
 
 	// Signal ready — works in both main thread (document) and Web Worker (no document)
 	doc := g.Get("document")

@@ -17,6 +17,8 @@ import (
 	"mlp-server/letras"
 	"mlp-server/madaline"
 	"mlp-server/mlp"
+	"mlp-server/mlpfunc"
+	"mlp-server/mlport"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -79,6 +81,15 @@ var (
 	benchCfg     *ibench.BenchConfig
 	benchRunning bool
 	benchCancel  context.CancelFunc
+
+	// MLP Funcoes (aproximacao de funcao)
+	mlpFuncRes      *mlpfunc.FuncResult
+	mlpFuncTraining bool
+
+	// MLP Ortogonal (vetores bipolares)
+	ortRede     *mlport.OrtMLP
+	ortRes      *mlport.OrtResult
+	ortTraining bool
 )
 
 func init() {
@@ -129,20 +140,28 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		PercLetrasDone bool `json:"percLetrasDone"`
 		MadTrained     bool `json:"madTrained"`
 		MadTraining    bool `json:"madTraining"`
-		ImgregTrained  bool `json:"imgregTrained"`
-		ImgregTraining bool `json:"imgregTraining"`
+		ImgregTrained   bool `json:"imgregTrained"`
+		ImgregTraining  bool `json:"imgregTraining"`
+		MlpFuncTrained  bool `json:"mlpFuncTrained"`
+		MlpFuncTraining bool `json:"mlpFuncTraining"`
+		OrtTrained      bool `json:"ortTrained"`
+		OrtTraining     bool `json:"ortTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
-		MLPTrained:     mlpRede != nil,
-		LetrasTrained:  ltrRede != nil,
-		LtrTraining:    ltrTraining,
-		HebbCount:      len(hebbRedes),
-		PercPortaCount: len(percPortasRedes),
-		PercLetrasDone: percLetrasRede != nil,
-		MadTrained:     madRede != nil,
-		MadTraining:    madTraining,
-		ImgregTrained:  imgregRede != nil,
-		ImgregTraining: imgregTraining,
+		MLPTrained:      mlpRede != nil,
+		LetrasTrained:   ltrRede != nil,
+		LtrTraining:     ltrTraining,
+		HebbCount:       len(hebbRedes),
+		PercPortaCount:  len(percPortasRedes),
+		PercLetrasDone:  percLetrasRede != nil,
+		MadTrained:      madRede != nil,
+		MadTraining:     madTraining,
+		ImgregTrained:   imgregRede != nil,
+		ImgregTraining:  imgregTraining,
+		MlpFuncTrained:  mlpFuncRes != nil,
+		MlpFuncTraining: mlpFuncTraining,
+		OrtTrained:      ortRede != nil,
+		OrtTraining:     ortTraining,
 	})
 }
 
@@ -859,6 +878,160 @@ func handleBenchReset(w http.ResponseWriter, r *http.Request) {
 }
 
 // =============================================================================
+// MLP Funcoes (aproximacao de funcao)
+// =============================================================================
+
+func handleMlpFuncTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if mlpFuncTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento já em andamento")
+		return
+	}
+	mlpFuncTraining = true
+	mu.Unlock()
+
+	funcao := r.URL.Query().Get("funcao")
+	if funcao == "" {
+		funcao = "sin(x)*sin(2x)"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	progressCh := make(chan mlpfunc.FuncStep, 64)
+	go func() {
+		res := mlpfunc.Treinar(progressCh, funcao)
+		mu.Lock()
+		mlpFuncRes = &res
+		mlpFuncTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := mlpFuncRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleMlpFuncResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := mlpFuncRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "rede não treinada")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func handleMlpFuncFuncoes(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, mlpfunc.FuncoesDisponiveis())
+}
+
+// =============================================================================
+// MLP Ortogonal (vetores bipolares)
+// =============================================================================
+
+func handleOrtTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if ortTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento já em andamento")
+		return
+	}
+	ortTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	progressCh := make(chan mlport.OrtStep, 64)
+	go func() {
+		res, rede := mlport.Treinar(progressCh)
+		mu.Lock()
+		ortRes = &res
+		ortRede = &rede
+		ortTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := ortRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleOrtResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := ortRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "rede não treinada")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func handleOrtClassify(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	rede := ortRede
+	mu.RUnlock()
+	if rede == nil {
+		errJSON(w, http.StatusNotFound, "rede não treinada")
+		return
+	}
+	var req mlport.ClassifyReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, mlport.Classificar(*rede, req.Grade))
+}
+
+func handleOrtDataset(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, mlport.GetDatasetInfo())
+}
+
+// =============================================================================
 // main
 // =============================================================================
 
@@ -932,6 +1105,17 @@ func main() {
 	mux.HandleFunc("/api/imgreg-bench/config", cors(handleBenchConfig))
 	mux.HandleFunc("/api/imgreg-bench/train",  cors(handleBenchTrain))
 	mux.HandleFunc("/api/imgreg-bench/reset",  cors(handleBenchReset))
+
+	// MLP Funcoes (aproximacao de funcao)
+	mux.HandleFunc("/api/mlpfunc/train", cors(handleMlpFuncTrain))
+	mux.HandleFunc("/api/mlpfunc/result", cors(handleMlpFuncResult))
+	mux.HandleFunc("/api/mlpfunc/funcoes", cors(handleMlpFuncFuncoes))
+
+	// MLP Ortogonal (vetores bipolares)
+	mux.HandleFunc("/api/mlport/train", cors(handleOrtTrain))
+	mux.HandleFunc("/api/mlport/result", cors(handleOrtResult))
+	mux.HandleFunc("/api/mlport/classify", cors(handleOrtClassify))
+	mux.HandleFunc("/api/mlport/dataset", cors(handleOrtDataset))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
