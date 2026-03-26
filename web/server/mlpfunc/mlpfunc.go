@@ -12,7 +12,7 @@ import (
 // A rede aprende a aproximar uma funcao matematica (ex: sin(x)*sin(2x))
 // usando 50 pontos igualmente espacados no intervalo [-1, 1].
 //
-// Arquitetura: 1 entrada (x) -> N neuronios ocultos (tanh) -> 1 saida (tanh)
+// Arquitetura: 1 entrada (x) -> N camadas ocultas -> 1 saida
 //
 // Diferente dos MLPs anteriores que classificam padroes, este faz REGRESSAO:
 // a saida eh um valor continuo, nao uma classe.
@@ -26,29 +26,51 @@ const (
 
 // Config permite customizar hiperparametros via frontend
 type Config struct {
-	Funcao   string  `json:"funcao"`
-	NHid     int     `json:"nHid"`
-	Alfa     float64 `json:"alfa"`
-	MaxCiclo int     `json:"maxCiclo"`
+	Funcao       string  `json:"funcao"`
+	NHid         int     `json:"nHid"`                   // fallback: single hidden layer
+	HiddenLayers []int   `json:"hiddenLayers,omitempty"` // neuron counts per hidden layer
+	Alfa         float64 `json:"alfa"`
+	MaxCiclo     int     `json:"maxCiclo"`
+	Ativacao     string  `json:"ativacao"`
 }
 
 // DefaultConfig retorna a configuracao padrao (valores do slide)
 func DefaultConfig() Config {
 	return Config{
-		Funcao:   "sin(x)*sin(2x)",
-		NHid:     200,
-		Alfa:     0.005,
-		MaxCiclo: 100000,
+		Funcao:       "sin(x)*sin(2x)",
+		HiddenLayers: []int{200},
+		Alfa:         0.005,
+		MaxCiclo:     100000,
+		Ativacao:     "tanh",
 	}
 }
 
-// MLP armazena os pesos da rede com tamanho dinamico.
+// resolveHiddenLayers returns the hidden layer sizes from config,
+// falling back to NHid if HiddenLayers is empty.
+func resolveHiddenLayers(cfg Config) []int {
+	if len(cfg.HiddenLayers) > 0 {
+		return cfg.HiddenLayers
+	}
+	if cfg.NHid > 0 {
+		return []int{cfg.NHid}
+	}
+	return []int{200}
+}
+
+// MLP armazena os pesos da rede com suporte a N camadas ocultas.
+//
+// W[l][i][j] = peso da conexao do neuronio i na camada l para o neuronio j na camada l+1
+// B[l][j]    = bias do neuronio j na camada l+1
+//
+// Camada 0: entrada(1) -> oculta[0]
+// Camada 1: oculta[0]  -> oculta[1]   (se >1 camada oculta)
+// ...
+// Camada N: oculta[N-1] -> saida(1)
 type MLP struct {
-	nHid int
-	V    []float64 // [nIn * nHid] = [nHid] (nIn=1)
-	V0   []float64 // [nHid]
-	W    []float64 // [nHid * nOut] = [nHid] (nOut=1)
-	W0   []float64 // [nOut] = [1]
+	layers int           // numero de transicoes (len(hiddenLayers) + 1)
+	sizes  []int         // tamanho de cada camada: [1, h0, h1, ..., 1]
+	W      [][][]float64 // W[l][i][j]
+	B      [][]float64   // B[l][j]
 }
 
 // FuncPoint representa um ponto da funcao
@@ -96,6 +118,36 @@ func FuncoesDisponiveis() []string {
 	return []string{"sin(x)*sin(2x)", "sin(x)", "x^2", "x^3"}
 }
 
+// ----- Funcoes de ativacao -----
+
+func ativacao(nome string, x float64) float64 {
+	switch nome {
+	case "sigmoid":
+		return 1.0 / (1.0 + math.Exp(-x))
+	case "relu":
+		if x > 0 {
+			return x
+		}
+		return 0
+	default: // "tanh"
+		return math.Tanh(x)
+	}
+}
+
+func ativacaoDeriv(nome string, y float64) float64 {
+	switch nome {
+	case "sigmoid":
+		return y * (1 - y)
+	case "relu":
+		if y > 0 {
+			return 1
+		}
+		return 0
+	default: // "tanh"
+		return (1 + y) * (1 - y)
+	}
+}
+
 // ----- Geracao do dataset -----
 
 func gerarDataset(funcao string, xmin, xmax float64, n int) ([]float64, []float64) {
@@ -110,90 +162,152 @@ func gerarDataset(funcao string, xmin, xmax float64, n int) ([]float64, []float6
 
 // ----- Inicializacao de pesos -----
 
-func inicializar(nHid int) MLP {
+func inicializar(hiddenLayers []int) MLP {
 	rng := rand.New(rand.NewSource(42))
+
+	// Build sizes: [1, h0, h1, ..., 1]
+	sizes := make([]int, 0, len(hiddenLayers)+2)
+	sizes = append(sizes, nIn)
+	sizes = append(sizes, hiddenLayers...)
+	sizes = append(sizes, nOut)
+
+	nTransitions := len(sizes) - 1
+
 	m := MLP{
-		nHid: nHid,
-		V:    make([]float64, nHid),
-		V0:   make([]float64, nHid),
-		W:    make([]float64, nHid),
-		W0:   make([]float64, 1),
+		layers: nTransitions,
+		sizes:  sizes,
+		W:      make([][][]float64, nTransitions),
+		B:      make([][]float64, nTransitions),
 	}
 
-	// V: entrada -> oculta (aleatorio = 1)
-	for j := 0; j < nHid; j++ {
-		m.V[j] = rng.Float64()*2 - 1 // [-1, 1]
+	for l := 0; l < nTransitions; l++ {
+		fanIn := sizes[l]
+		fanOut := sizes[l+1]
+
+		// Determine random range based on layer position
+		var halfRange float64
+		if l == 0 {
+			// input -> first hidden: [-1, 1]
+			halfRange = 1.0
+		} else if l == nTransitions-1 {
+			// last hidden -> output: [-0.2, 0.2]
+			halfRange = 0.2
+		} else {
+			// middle hidden -> hidden: [-0.5, 0.5]
+			halfRange = 0.5
+		}
+
+		m.W[l] = make([][]float64, fanIn)
+		for i := 0; i < fanIn; i++ {
+			m.W[l][i] = make([]float64, fanOut)
+			for j := 0; j < fanOut; j++ {
+				m.W[l][i][j] = rng.Float64()*2*halfRange - halfRange
+			}
+		}
+
+		m.B[l] = make([]float64, fanOut)
+		for j := 0; j < fanOut; j++ {
+			m.B[l][j] = rng.Float64()*2*halfRange - halfRange
+		}
 	}
-	// Bias oculta V0
-	for j := 0; j < nHid; j++ {
-		m.V0[j] = rng.Float64()*2 - 1
-	}
-	// W: oculta -> saida (aleatorio = 0.2)
-	for j := 0; j < nHid; j++ {
-		m.W[j] = rng.Float64()*0.4 - 0.2 // [-0.2, 0.2]
-	}
-	// Bias saida W0
-	m.W0[0] = rng.Float64()*0.4 - 0.2
 
 	return m
 }
 
 // ----- Forward pass -----
+// Returns activations for all layers (including input and output).
+// a[0] = input (single value wrapped in slice)
+// a[1] = first hidden layer activations
+// ...
+// a[N] = output layer activations
 
-func forward(m MLP, x float64) (zj []float64, y float64) {
-	zj = make([]float64, m.nHid)
-	// Camada oculta
-	for j := 0; j < m.nHid; j++ {
-		zin := m.V0[j] + x*m.V[j]
-		zj[j] = math.Tanh(zin)
+func forward(m MLP, x float64, ativ string) (a [][]float64) {
+	a = make([][]float64, m.layers+1)
+
+	// Input layer
+	a[0] = []float64{x}
+
+	// Propagate through each layer transition
+	for l := 0; l < m.layers; l++ {
+		fanOut := m.sizes[l+1]
+		a[l+1] = make([]float64, fanOut)
+		for j := 0; j < fanOut; j++ {
+			sum := m.B[l][j]
+			for i := 0; i < m.sizes[l]; i++ {
+				sum += a[l][i] * m.W[l][i][j]
+			}
+			a[l+1][j] = ativacao(ativ, sum)
+		}
 	}
-	// Camada de saida
-	yin := m.W0[0]
-	for j := 0; j < m.nHid; j++ {
-		yin += zj[j] * m.W[j]
-	}
-	y = math.Tanh(yin)
+
 	return
 }
 
 // ----- Backward pass + atualizacao de pesos -----
 
-func backwardAndUpdate(m *MLP, zj []float64, y, x, t, alfa float64) {
-	tanhDerivY := (1 + y) * (1 - y)
-	deltaK := (t - y) * tanhDerivY
+func backwardAndUpdate(m *MLP, a [][]float64, t, alfa float64, ativ string) {
+	// Compute deltas for each layer (from output to first hidden)
+	deltas := make([][]float64, m.layers)
 
-	deltaJ := make([]float64, m.nHid)
-	for j := 0; j < m.nHid; j++ {
-		deltaInJ := deltaK * m.W[j]
-		tanhDerivZ := (1 + zj[j]) * (1 - zj[j])
-		deltaJ[j] = deltaInJ * tanhDerivZ
+	// Output layer delta
+	outIdx := m.layers
+	outSize := m.sizes[outIdx]
+	deltas[m.layers-1] = make([]float64, outSize)
+	for j := 0; j < outSize; j++ {
+		deriv := ativacaoDeriv(ativ, a[outIdx][j])
+		deltas[m.layers-1][j] = (t - a[outIdx][j]) * deriv
 	}
 
-	// Atualiza W (oculta -> saida)
-	for j := 0; j < m.nHid; j++ {
-		m.W[j] += alfa * deltaK * zj[j]
+	// Hidden layer deltas (backpropagate)
+	for l := m.layers - 2; l >= 0; l-- {
+		curSize := m.sizes[l+1]
+		nextSize := m.sizes[l+2]
+		deltas[l] = make([]float64, curSize)
+		for i := 0; i < curSize; i++ {
+			sum := 0.0
+			for j := 0; j < nextSize; j++ {
+				sum += deltas[l+1][j] * m.W[l+1][i][j]
+			}
+			deriv := ativacaoDeriv(ativ, a[l+1][i])
+			deltas[l][i] = sum * deriv
+		}
 	}
-	m.W0[0] += alfa * deltaK
 
-	// Atualiza V (entrada -> oculta)
-	for j := 0; j < m.nHid; j++ {
-		m.V[j] += alfa * deltaJ[j] * x
-	}
-	for j := 0; j < m.nHid; j++ {
-		m.V0[j] += alfa * deltaJ[j]
+	// Update weights and biases for each layer
+	for l := 0; l < m.layers; l++ {
+		fanIn := m.sizes[l]
+		fanOut := m.sizes[l+1]
+		for i := 0; i < fanIn; i++ {
+			for j := 0; j < fanOut; j++ {
+				m.W[l][i][j] += alfa * deltas[l][j] * a[l][i]
+			}
+		}
+		for j := 0; j < fanOut; j++ {
+			m.B[l][j] += alfa * deltas[l][j]
+		}
 	}
 }
 
 // ----- Treinamento -----
 
 func Treinar(progressCh chan<- FuncStep, cfg Config) FuncResult {
-	if cfg.NHid <= 0 {
-		cfg = DefaultConfig()
-		cfg.Funcao = cfg.Funcao
+	hiddenLayers := resolveHiddenLayers(cfg)
+	if cfg.Alfa <= 0 {
+		cfg.Alfa = 0.005
+	}
+	if cfg.MaxCiclo <= 0 {
+		cfg.MaxCiclo = 100000
+	}
+	if cfg.Ativacao == "" {
+		cfg.Ativacao = "tanh"
+	}
+	if cfg.Funcao == "" {
+		cfg.Funcao = "sin(x)*sin(2x)"
 	}
 
 	xs, ts := gerarDataset(cfg.Funcao, -1, 1, nPontos)
-	m := inicializar(cfg.NHid)
+	m := inicializar(hiddenLayers)
+	ativ := cfg.Ativacao
 
 	var res FuncResult
 	res.Funcao = cfg.Funcao
@@ -204,16 +318,17 @@ func Treinar(progressCh chan<- FuncStep, cfg Config) FuncResult {
 		erroTotal := 0.0
 
 		for padrao := 0; padrao < nPontos; padrao++ {
-			zj, y := forward(m, xs[padrao])
+			a := forward(m, xs[padrao], ativ)
+			y := a[m.layers][0]
 			d := ts[padrao] - y
 			erroTotal += 0.5 * d * d
-			backwardAndUpdate(&m, zj, y, xs[padrao], ts[padrao], cfg.Alfa)
+			backwardAndUpdate(&m, a, ts[padrao], cfg.Alfa, ativ)
 		}
 
 		res.ErroHistorico = append(res.ErroHistorico, erroTotal)
 
 		if progressCh != nil && ciclo%100 == 0 {
-			pontos := predizer(m, xs, ts)
+			pontos := predizer(m, xs, ts, ativ)
 			step := FuncStep{
 				Ciclo:     ciclo,
 				ErroTotal: erroTotal,
@@ -229,7 +344,7 @@ func Treinar(progressCh chan<- FuncStep, cfg Config) FuncResult {
 			res.Convergiu = true
 			res.Ciclos = ciclo
 			res.ErroFinal = erroTotal
-			res.Pontos = predizer(m, xs, ts)
+			res.Pontos = predizer(m, xs, ts, ativ)
 			return res
 		}
 	}
@@ -237,14 +352,15 @@ func Treinar(progressCh chan<- FuncStep, cfg Config) FuncResult {
 	res.Convergiu = false
 	res.Ciclos = cfg.MaxCiclo
 	res.ErroFinal = res.ErroHistorico[len(res.ErroHistorico)-1]
-	res.Pontos = predizer(m, xs, ts)
+	res.Pontos = predizer(m, xs, ts, ativ)
 	return res
 }
 
-func predizer(m MLP, xs, ts []float64) []FuncPoint {
+func predizer(m MLP, xs, ts []float64, ativ string) []FuncPoint {
 	pontos := make([]FuncPoint, len(xs))
 	for i := range xs {
-		_, y := forward(m, xs[i])
+		a := forward(m, xs[i], ativ)
+		y := a[m.layers][0]
 		pontos[i] = FuncPoint{X: xs[i], Y: ts[i], YPred: y}
 	}
 	return pontos
