@@ -12,42 +12,53 @@ import (
 // A rede aprende a aproximar uma funcao matematica (ex: sin(x)*sin(2x))
 // usando 50 pontos igualmente espacados no intervalo [-1, 1].
 //
-// Arquitetura: 1 entrada (x) -> 200 neuronios ocultos (tanh) -> 1 saida (tanh)
+// Arquitetura: 1 entrada (x) -> N neuronios ocultos (tanh) -> 1 saida (tanh)
 //
 // Diferente dos MLPs anteriores que classificam padroes, este faz REGRESSAO:
-// a saida eh um valor continuo, nao uma classe. O erro eh medido como
-// 0.5 * sum((target - saida)^2) sobre todos os pontos.
+// a saida eh um valor continuo, nao uma classe.
 // =============================================================================
 
-// Hiperparametros do slide
 const (
-	NIn      = 1   // uma entrada: o valor x
-	NHid     = 200 // 200 neuronios ocultos (slide usa neur = 200)
-	NOut     = 1   // uma saida: o valor y aproximado
-	alfa     = 0.005
-	maxCiclo = 100000
-	erroAlvo = 0.02
-	nPontos  = 50 // 50 pontos igualmente espacados
+	nIn     = 1  // uma entrada: o valor x
+	nOut    = 1  // uma saida: o valor y aproximado
+	nPontos = 50 // 50 pontos igualmente espacados
 )
 
-// MLP armazena os pesos da rede.
-// V: pesos entrada->oculta, V0: bias oculta
-// W: pesos oculta->saida, W0: bias saida
-type MLP struct {
-	V  [NIn][NHid]float64  `json:"v"`
-	V0 [NHid]float64       `json:"v0"`
-	W  [NHid][NOut]float64 `json:"w"`
-	W0 [NOut]float64       `json:"w0"`
+// Config permite customizar hiperparametros via frontend
+type Config struct {
+	Funcao   string  `json:"funcao"`
+	NHid     int     `json:"nHid"`
+	Alfa     float64 `json:"alfa"`
+	MaxCiclo int     `json:"maxCiclo"`
 }
 
-// FuncPoint representa um ponto da funcao: x -> y (original) e yPred (predito pela rede)
+// DefaultConfig retorna a configuracao padrao (valores do slide)
+func DefaultConfig() Config {
+	return Config{
+		Funcao:   "sin(x)*sin(2x)",
+		NHid:     200,
+		Alfa:     0.005,
+		MaxCiclo: 100000,
+	}
+}
+
+// MLP armazena os pesos da rede com tamanho dinamico.
+type MLP struct {
+	nHid int
+	V    []float64 // [nIn * nHid] = [nHid] (nIn=1)
+	V0   []float64 // [nHid]
+	W    []float64 // [nHid * nOut] = [nHid] (nOut=1)
+	W0   []float64 // [nOut] = [1]
+}
+
+// FuncPoint representa um ponto da funcao
 type FuncPoint struct {
 	X     float64 `json:"x"`
 	Y     float64 `json:"y"`
 	YPred float64 `json:"yPred"`
 }
 
-// FuncStep eh enviado via SSE a cada N ciclos para atualizar o grafico
+// FuncStep eh enviado via SSE a cada N ciclos
 type FuncStep struct {
 	Ciclo     int         `json:"ciclo"`
 	ErroTotal float64     `json:"erroTotal"`
@@ -64,20 +75,8 @@ type FuncResult struct {
 	Funcao        string      `json:"funcao"`
 }
 
-// PredictReq permite prever um ponto arbitrario
-type PredictReq struct {
-	X float64 `json:"x"`
-}
-
-// PredictResp retorna a predicao
-type PredictResp struct {
-	X     float64 `json:"x"`
-	YPred float64 `json:"yPred"`
-}
-
 // ----- Funcoes matematicas disponiveis -----
 
-// Funcao avalia a funcao alvo dado um nome
 func Funcao(nome string, x float64) float64 {
 	switch nome {
 	case "sin(x)*sin(2x)":
@@ -93,23 +92,16 @@ func Funcao(nome string, x float64) float64 {
 	}
 }
 
-// FuncoesDisponiveis retorna a lista de funcoes que a rede pode aproximar
 func FuncoesDisponiveis() []string {
 	return []string{"sin(x)*sin(2x)", "sin(x)", "x^2", "x^3"}
 }
 
 // ----- Geracao do dataset -----
 
-// gerarDataset cria N pontos igualmente espacados no intervalo [xmin, xmax]
-// e calcula o valor da funcao para cada ponto.
-// Corresponde ao trecho do slide:
-//   x_orig = np.linspace(xmin, xmax, npontos)
-//   t_orig = (np.sin(x)) * (np.sin(2*x))
 func gerarDataset(funcao string, xmin, xmax float64, n int) ([]float64, []float64) {
 	xs := make([]float64, n)
 	ts := make([]float64, n)
 	for i := 0; i < n; i++ {
-		// linspace: pontos igualmente espacados
 		xs[i] = xmin + float64(i)*(xmax-xmin)/float64(n-1)
 		ts[i] = Funcao(funcao, xs[i])
 	}
@@ -118,53 +110,47 @@ func gerarDataset(funcao string, xmin, xmax float64, n int) ([]float64, []float6
 
 // ----- Inicializacao de pesos -----
 
-// inicializar cria a rede com pesos aleatorios.
-// V em [-1, 1] (aleatorio=1 no slide), W em [-0.2, 0.2] (aleatorio=0.2 no slide)
-func inicializar() MLP {
+func inicializar(nHid int) MLP {
 	rng := rand.New(rand.NewSource(42))
-	var m MLP
+	m := MLP{
+		nHid: nHid,
+		V:    make([]float64, nHid),
+		V0:   make([]float64, nHid),
+		W:    make([]float64, nHid),
+		W0:   make([]float64, 1),
+	}
 
-	// Pesos V: entrada -> oculta (aleatorio = 1)
-	for i := 0; i < NIn; i++ {
-		for j := 0; j < NHid; j++ {
-			m.V[i][j] = rng.Float64()*2 - 1 // [-1, 1]
-		}
+	// V: entrada -> oculta (aleatorio = 1)
+	for j := 0; j < nHid; j++ {
+		m.V[j] = rng.Float64()*2 - 1 // [-1, 1]
 	}
 	// Bias oculta V0
-	for j := 0; j < NHid; j++ {
-		m.V0[j] = rng.Float64()*2 - 1 // [-1, 1]
+	for j := 0; j < nHid; j++ {
+		m.V0[j] = rng.Float64()*2 - 1
 	}
-	// Pesos W: oculta -> saida (aleatorio = 0.2)
-	for j := 0; j < NHid; j++ {
-		for k := 0; k < NOut; k++ {
-			m.W[j][k] = rng.Float64()*0.4 - 0.2 // [-0.2, 0.2]
-		}
+	// W: oculta -> saida (aleatorio = 0.2)
+	for j := 0; j < nHid; j++ {
+		m.W[j] = rng.Float64()*0.4 - 0.2 // [-0.2, 0.2]
 	}
 	// Bias saida W0
-	for k := 0; k < NOut; k++ {
-		m.W0[k] = rng.Float64()*0.4 - 0.2 // [-0.2, 0.2]
-	}
+	m.W0[0] = rng.Float64()*0.4 - 0.2
+
 	return m
 }
 
 // ----- Forward pass -----
 
-// forward calcula a saida da rede para uma entrada x.
-// Corresponde ao trecho do slide:
-//   zin_j = np.dot(x[padrao,:], v[:,j]) + v0[0][j]
-//   z_j = np.tanh(zin_j)
-//   yin = np.dot(z_j, w) + w0
-//   y = np.tanh(yin)
-func forward(m MLP, x float64) (zj [NHid]float64, y float64) {
-	// Camada oculta: zin_j = v0_j + x * v[0][j]
-	for j := 0; j < NHid; j++ {
-		zin := m.V0[j] + x*m.V[0][j]
+func forward(m MLP, x float64) (zj []float64, y float64) {
+	zj = make([]float64, m.nHid)
+	// Camada oculta
+	for j := 0; j < m.nHid; j++ {
+		zin := m.V0[j] + x*m.V[j]
 		zj[j] = math.Tanh(zin)
 	}
-	// Camada de saida: yin = w0 + sum(z_j * w[j][0])
+	// Camada de saida
 	yin := m.W0[0]
-	for j := 0; j < NHid; j++ {
-		yin += zj[j] * m.W[j][0]
+	for j := 0; j < m.nHid; j++ {
+		yin += zj[j] * m.W[j]
 	}
 	y = math.Tanh(yin)
 	return
@@ -172,76 +158,60 @@ func forward(m MLP, x float64) (zj [NHid]float64, y float64) {
 
 // ----- Backward pass + atualizacao de pesos -----
 
-// backwardAndUpdate calcula os deltas e atualiza os pesos in-place.
-// Corresponde ao trecho do slide:
-//   deltinha_k = (t_transp - y_transp) * (1 + y_transp) * (1 - y_transp)
-//   deltaw = alfa * (np.dot(deltinha_k, z_j))
-//   deltaw0 = alfa * deltinha_k
-//   deltinhain_j = np.dot(np.transpose(deltinha_k), np.transpose(w))
-//   deltinha_j = deltinhain_j * (1 + z_j) * (1 - z_j)
-//   deltav = alfa * np.dot(np.transpose(deltinha_j), x_linhaTransp)
-//   deltav0 = alfa * deltinha_j
-func backwardAndUpdate(m *MLP, zj [NHid]float64, y, x, t float64) {
-	// Derivada da tanh: f'(y) = (1+y)*(1-y)
+func backwardAndUpdate(m *MLP, zj []float64, y, x, t, alfa float64) {
 	tanhDerivY := (1 + y) * (1 - y)
-
-	// Delta da camada de saida
 	deltaK := (t - y) * tanhDerivY
 
-	// Propaga delta para camada oculta
-	var deltaJ [NHid]float64
-	for j := 0; j < NHid; j++ {
-		deltaInJ := deltaK * m.W[j][0]
+	deltaJ := make([]float64, m.nHid)
+	for j := 0; j < m.nHid; j++ {
+		deltaInJ := deltaK * m.W[j]
 		tanhDerivZ := (1 + zj[j]) * (1 - zj[j])
 		deltaJ[j] = deltaInJ * tanhDerivZ
 	}
 
-	// Atualiza pesos W (oculta -> saida)
-	for j := 0; j < NHid; j++ {
-		m.W[j][0] += alfa * deltaK * zj[j]
+	// Atualiza W (oculta -> saida)
+	for j := 0; j < m.nHid; j++ {
+		m.W[j] += alfa * deltaK * zj[j]
 	}
 	m.W0[0] += alfa * deltaK
 
-	// Atualiza pesos V (entrada -> oculta)
-	for j := 0; j < NHid; j++ {
-		m.V[0][j] += alfa * deltaJ[j] * x
+	// Atualiza V (entrada -> oculta)
+	for j := 0; j < m.nHid; j++ {
+		m.V[j] += alfa * deltaJ[j] * x
 	}
-	for j := 0; j < NHid; j++ {
+	for j := 0; j < m.nHid; j++ {
 		m.V0[j] += alfa * deltaJ[j]
 	}
 }
 
 // ----- Treinamento -----
 
-// Treinar executa o loop de treinamento e envia progresso via canal.
-// A cada 100 ciclos, envia um FuncStep com os pontos preditos para visualizacao.
-func Treinar(progressCh chan<- FuncStep, funcao string) FuncResult {
-	xs, ts := gerarDataset(funcao, -1, 1, nPontos)
-	m := inicializar()
+func Treinar(progressCh chan<- FuncStep, cfg Config) FuncResult {
+	if cfg.NHid <= 0 {
+		cfg = DefaultConfig()
+		cfg.Funcao = cfg.Funcao
+	}
+
+	xs, ts := gerarDataset(cfg.Funcao, -1, 1, nPontos)
+	m := inicializar(cfg.NHid)
 
 	var res FuncResult
-	res.Funcao = funcao
+	res.Funcao = cfg.Funcao
 
-	// Loop principal — identico ao "while errotolerado < errototal" do slide
-	for ciclo := 1; ciclo <= maxCiclo; ciclo++ {
+	erroAlvo := 0.02
+
+	for ciclo := 1; ciclo <= cfg.MaxCiclo; ciclo++ {
 		erroTotal := 0.0
 
-		// Para cada padrao (ponto da funcao)
 		for padrao := 0; padrao < nPontos; padrao++ {
-			// Forward
 			zj, y := forward(m, xs[padrao])
-
-			// Erro deste padrao: 0.5 * (t - y)^2
 			d := ts[padrao] - y
 			erroTotal += 0.5 * d * d
-
-			// Backward + atualiza pesos
-			backwardAndUpdate(&m, zj, y, xs[padrao], ts[padrao])
+			backwardAndUpdate(&m, zj, y, xs[padrao], ts[padrao], cfg.Alfa)
 		}
 
 		res.ErroHistorico = append(res.ErroHistorico, erroTotal)
 
-		// Envia progresso a cada 100 ciclos para nao sobrecarregar o SSE
 		if progressCh != nil && ciclo%100 == 0 {
 			pontos := predizer(m, xs, ts)
 			step := FuncStep{
@@ -255,7 +225,6 @@ func Treinar(progressCh chan<- FuncStep, funcao string) FuncResult {
 			}
 		}
 
-		// Criterio de parada
 		if erroTotal <= erroAlvo {
 			res.Convergiu = true
 			res.Ciclos = ciclo
@@ -266,13 +235,12 @@ func Treinar(progressCh chan<- FuncStep, funcao string) FuncResult {
 	}
 
 	res.Convergiu = false
-	res.Ciclos = maxCiclo
+	res.Ciclos = cfg.MaxCiclo
 	res.ErroFinal = res.ErroHistorico[len(res.ErroHistorico)-1]
 	res.Pontos = predizer(m, xs, ts)
 	return res
 }
 
-// predizer calcula a saida da rede para todos os pontos
 func predizer(m MLP, xs, ts []float64) []FuncPoint {
 	pontos := make([]FuncPoint, len(xs))
 	for i := range xs {
@@ -280,10 +248,4 @@ func predizer(m MLP, xs, ts []float64) []FuncPoint {
 		pontos[i] = FuncPoint{X: xs[i], Y: ts[i], YPred: y}
 	}
 	return pontos
-}
-
-// Predizer calcula a saida para um x arbitrario
-func Predizer(m MLP, x float64) float64 {
-	_, y := forward(m, x)
-	return y
 }

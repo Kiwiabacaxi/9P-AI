@@ -8,32 +8,35 @@ import "math"
 // Baseado na Aula 06: "Nao usaremos o limiar... usaremos a distancia
 // Euclidiana para identificar cada elemento."
 //
-// Diferenca em relacao ao MLP Letras (package letras):
-// - Targets: vetores bipolares ortogonais (32 dims) em vez de one-hot (26 dims)
-// - Classificacao: menor distancia euclidiana em vez de argmax
-// - Saida: tanh puro (sem limiar/threshold)
-// - NOut: 32 (dimensao dos vetores ortogonais)
-//
 // Formula da distancia euclidiana (do slide):
 //   D = sqrt( sum_k (t_k - y_k)^2 )
 //
 // "Ao reconhecer um padrao, usamos a MENOR distancia euclidiana"
 // =============================================================================
 
-const (
-	NHid     = 15
-	alfa     = 0.01
-	maxCiclo = 50000
-	erroAlvo = 0.5
-)
+// Config permite customizar hiperparametros via frontend
+type Config struct {
+	NHid     int     `json:"nHid"`
+	Alfa     float64 `json:"alfa"`
+	MaxCiclo int     `json:"maxCiclo"`
+}
 
-// OrtMLP armazena os pesos da rede.
-// Note que a camada de saida tem NOrt (32) neuronios, nao NClasses (26).
+// DefaultConfig retorna a configuracao padrao
+func DefaultConfig() Config {
+	return Config{
+		NHid:     15,
+		Alfa:     0.01,
+		MaxCiclo: 50000,
+	}
+}
+
+// OrtMLP armazena os pesos da rede com tamanho dinamico.
 type OrtMLP struct {
-	V  [NIn][NHid]float64  `json:"v"`
-	V0 [NHid]float64       `json:"v0"`
-	W  [NHid][NOrt]float64 `json:"w"`
-	W0 [NOrt]float64       `json:"w0"`
+	nHid int
+	V    [][]float64 // [NIn][nHid]
+	V0   []float64   // [nHid]
+	W    [][]float64 // [nHid][NOrt]
+	W0   []float64   // [NOrt]
 }
 
 type OrtStep struct {
@@ -44,13 +47,13 @@ type OrtStep struct {
 }
 
 type OrtResult struct {
-	Convergiu     bool        `json:"convergiu"`
-	Ciclos        int         `json:"ciclos"`
-	ErroFinal     float64     `json:"erroFinal"`
-	ErroHistorico []float64   `json:"erroHistorico"`
-	Acertos       int         `json:"acertos"`
-	Total         int         `json:"total"`
-	Acuracia      float64     `json:"acuracia"`
+	Convergiu     bool              `json:"convergiu"`
+	Ciclos        int               `json:"ciclos"`
+	ErroFinal     float64           `json:"erroFinal"`
+	ErroHistorico []float64         `json:"erroHistorico"`
+	Acertos       int               `json:"acertos"`
+	Total         int               `json:"total"`
+	Acuracia      float64           `json:"acuracia"`
 	Vetores       [NOrt][NOrt]float64 `json:"vetores"`
 }
 
@@ -69,14 +72,12 @@ type ClassifyResp struct {
 	Letra      string           `json:"letra"`
 	Distancias [NClasses]float64 `json:"distancias"`
 	Top5       []OrtCandidate   `json:"top5"`
+	SaidaRede  []float64        `json:"saidaRede"`
 }
 
 // ----- Distancia Euclidiana -----
 
-// distanciaEuclidiana calcula D = sqrt( sum_k (t_k - y_k)^2 )
-// Esta eh a formula central da Aula 06 (slide "Um pequeno detalhe"):
-// "Se a distancia euclidiana diminui, o erro tambem diminui."
-func distanciaEuclidiana(y, t [NOrt]float64) float64 {
+func distanciaEuclidiana(y []float64, t [NOrt]float64) float64 {
 	var soma float64
 	for k := 0; k < NOrt; k++ {
 		d := t[k] - y[k]
@@ -87,11 +88,11 @@ func distanciaEuclidiana(y, t [NOrt]float64) float64 {
 
 // ----- Forward pass -----
 
-// forward calcula a saida da rede: tanh puro, SEM limiar.
-// Slide: "Nao usaremos o limiar... sugestao: tanh(yin)"
-func forward(m OrtMLP, x [NIn]float64) (z [NHid]float64, y [NOrt]float64) {
+func forward(m OrtMLP, x [NIn]float64) (z []float64, y []float64) {
+	z = make([]float64, m.nHid)
+	y = make([]float64, NOrt)
 	// Camada oculta
-	for j := 0; j < NHid; j++ {
+	for j := 0; j < m.nHid; j++ {
 		zin := m.V0[j]
 		for i := 0; i < NIn; i++ {
 			zin += x[i] * m.V[i][j]
@@ -101,7 +102,7 @@ func forward(m OrtMLP, x [NIn]float64) (z [NHid]float64, y [NOrt]float64) {
 	// Camada de saida — tanh puro, sem limiar
 	for k := 0; k < NOrt; k++ {
 		yin := m.W0[k]
-		for j := 0; j < NHid; j++ {
+		for j := 0; j < m.nHid; j++ {
 			yin += z[j] * m.W[j][k]
 		}
 		y[k] = math.Tanh(yin)
@@ -113,16 +114,16 @@ func forward(m OrtMLP, x [NIn]float64) (z [NHid]float64, y [NOrt]float64) {
 
 func tanhDeriv(y float64) float64 { return (1 + y) * (1 - y) }
 
-func backwardAndUpdate(m *OrtMLP, z [NHid]float64, y [NOrt]float64, target [NOrt]float64, x [NIn]float64) {
+func backwardAndUpdate(m *OrtMLP, z []float64, y []float64, target [NOrt]float64, x [NIn]float64, alfa float64) {
 	// Delta camada de saida
-	var deltaK [NOrt]float64
+	deltaK := make([]float64, NOrt)
 	for k := 0; k < NOrt; k++ {
 		deltaK[k] = (target[k] - y[k]) * tanhDeriv(y[k])
 	}
 
 	// Propaga para oculta
-	var deltaJ [NHid]float64
-	for j := 0; j < NHid; j++ {
+	deltaJ := make([]float64, m.nHid)
+	for j := 0; j < m.nHid; j++ {
 		var s float64
 		for k := 0; k < NOrt; k++ {
 			s += deltaK[k] * m.W[j][k]
@@ -131,7 +132,7 @@ func backwardAndUpdate(m *OrtMLP, z [NHid]float64, y [NOrt]float64, target [NOrt
 	}
 
 	// Atualiza W
-	for j := 0; j < NHid; j++ {
+	for j := 0; j < m.nHid; j++ {
 		for k := 0; k < NOrt; k++ {
 			m.W[j][k] += alfa * deltaK[k] * z[j]
 		}
@@ -142,18 +143,18 @@ func backwardAndUpdate(m *OrtMLP, z [NHid]float64, y [NOrt]float64, target [NOrt
 
 	// Atualiza V
 	for i := 0; i < NIn; i++ {
-		for j := 0; j < NHid; j++ {
+		for j := 0; j < m.nHid; j++ {
 			m.V[i][j] += alfa * deltaJ[j] * x[i]
 		}
 	}
-	for j := 0; j < NHid; j++ {
+	for j := 0; j < m.nHid; j++ {
 		m.V0[j] += alfa * deltaJ[j]
 	}
 }
 
 // ----- Erro -----
 
-func calcErro(y, t [NOrt]float64) float64 {
+func calcErro(y []float64, t [NOrt]float64) float64 {
 	var e float64
 	for k := 0; k < NOrt; k++ {
 		d := t[k] - y[k]
@@ -164,10 +165,7 @@ func calcErro(y, t [NOrt]float64) float64 {
 
 // ----- Classificacao por distancia euclidiana -----
 
-// classificar encontra a letra cuja distancia euclidiana entre
-// a saida da rede e o vetor ortogonal target eh a MENOR.
-// Slide: "Ao reconhecer um padrao, usamos a menor distancia euclidiana"
-func classificar(y [NOrt]float64, vetores [NOrt][NOrt]float64) (int, [NClasses]float64) {
+func classificar(y []float64, vetores [NOrt][NOrt]float64) (int, [NClasses]float64) {
 	var distancias [NClasses]float64
 	best := 0
 	bestDist := math.MaxFloat64
@@ -183,27 +181,31 @@ func classificar(y [NOrt]float64, vetores [NOrt][NOrt]float64) (int, [NClasses]f
 
 // ----- Treinamento -----
 
-// Treinar treina a rede com vetores ortogonais e envia progresso via SSE.
-func Treinar(progressCh chan<- OrtStep) (OrtResult, OrtMLP) {
+func Treinar(progressCh chan<- OrtStep, cfg Config) (OrtResult, OrtMLP) {
+	if cfg.NHid <= 0 {
+		cfg = DefaultConfig()
+	}
+
 	dataset := Dataset()
 	vetores := GerarVetoresOrtogonais()
-	m := Inicializar()
+	m := Inicializar(cfg.NHid)
 
 	var res OrtResult
 	res.Vetores = vetores
 	const maxSteps = 200
 
 	var steps []OrtStep
+	erroAlvo := 0.5
 
-	for ciclo := 1; ciclo <= maxCiclo; ciclo++ {
+	for ciclo := 1; ciclo <= cfg.MaxCiclo; ciclo++ {
 		erroTotal := 0.0
 		for letraIdx := 0; letraIdx < NClasses; letraIdx++ {
 			x := dataset[letraIdx]
-			target := vetores[letraIdx] // vetor ortogonal como target
+			target := vetores[letraIdx]
 
 			z, y := forward(m, x)
 			erroTotal += calcErro(y, target)
-			backwardAndUpdate(&m, z, y, target, x)
+			backwardAndUpdate(&m, z, y, target, x, cfg.Alfa)
 
 			if len(steps) < maxSteps {
 				step := OrtStep{
@@ -232,7 +234,7 @@ func Treinar(progressCh chan<- OrtStep) (OrtResult, OrtMLP) {
 	}
 
 	if !res.Convergiu {
-		res.Ciclos = maxCiclo
+		res.Ciclos = cfg.MaxCiclo
 		res.ErroFinal = res.ErroHistorico[len(res.ErroHistorico)-1]
 	}
 
@@ -250,7 +252,7 @@ func Treinar(progressCh chan<- OrtStep) (OrtResult, OrtMLP) {
 	return res, m
 }
 
-// Classificar classifica uma entrada e retorna a resposta com distancias.
+// Classificar classifica uma entrada e retorna a resposta com distancias e saida bruta.
 func Classificar(m OrtMLP, x [NIn]float64) ClassifyResp {
 	vetores := GerarVetoresOrtogonais()
 	_, y := forward(m, x)
@@ -265,7 +267,6 @@ func Classificar(m OrtMLP, x [NIn]float64) ClassifyResp {
 	for i := 0; i < NClasses; i++ {
 		items[i] = distIdx{distancias[i], i}
 	}
-	// Selection sort dos 5 menores
 	var top5 []OrtCandidate
 	for i := 0; i < 5; i++ {
 		minJ := i
@@ -287,19 +288,20 @@ func Classificar(m OrtMLP, x [NIn]float64) ClassifyResp {
 		Letra:      Nomes[best],
 		Distancias: distancias,
 		Top5:       top5,
+		SaidaRede:  y,
 	}
 }
 
 // DatasetInfo retorna o dataset formatado + vetores ortogonais para o frontend
 type DatasetInfo struct {
-	Letras  []LetraInfo         `json:"letras"`
-	Vetores [NOrt][NOrt]float64 `json:"vetores"`
+	Letras  []LetraInfo           `json:"letras"`
+	Vetores [NOrt][NOrt]float64   `json:"vetores"`
 }
 
 type LetraInfo struct {
-	Nome   string          `json:"nome"`
-	Grade  [NIn]float64    `json:"grade"`
-	Vetor  [NOrt]float64   `json:"vetor"`
+	Nome  string        `json:"nome"`
+	Grade [NIn]float64  `json:"grade"`
+	Vetor [NOrt]float64 `json:"vetor"`
 }
 
 func GetDatasetInfo() DatasetInfo {

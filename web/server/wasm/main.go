@@ -55,9 +55,11 @@ var (
 	imbTraining bool
 	imbCancel   context.CancelFunc
 
+	mlpFuncCfg      *mlpfunc.Config
 	mlpFuncRes      *mlpfunc.FuncResult
 	mlpFuncTraining bool
 
+	ortCfg      *mlport.Config
 	ortRede     *mlport.OrtMLP
 	ortRes      *mlport.OrtResult
 	ortTraining bool
@@ -571,25 +573,36 @@ func promiseGo(fn func() string) any {
 // MLP Funcoes (aproximacao de funcao)
 // ═══════════════════════════════════════════════════════════════════════
 
+func wasmMlpFuncConfig(_ js.Value, args []js.Value) any {
+	var cfg mlpfunc.Config
+	json.Unmarshal([]byte(args[0].String()), &cfg)
+	mu.Lock()
+	mlpFuncCfg = &cfg
+	mu.Unlock()
+	return toJSON(map[string]string{"ok": "config salva"})
+}
+
 func wasmMlpFuncTrain(_ js.Value, args []js.Value) any {
 	onStep := args[0]
-	funcao := "sin(x)*sin(2x)"
-	if len(args) > 1 && args[1].String() != "" {
-		funcao = args[1].String()
-	}
 
 	mu.Lock()
 	if mlpFuncTraining {
 		mu.Unlock()
 		return nil
 	}
+	cfg := mlpFuncCfg
+	if cfg == nil {
+		def := mlpfunc.DefaultConfig()
+		cfg = &def
+	}
 	mlpFuncTraining = true
+	useCfg := *cfg
 	mu.Unlock()
 
 	go func() {
 		ch := make(chan mlpfunc.FuncStep, 64)
 		go func() {
-			res := mlpfunc.Treinar(ch, funcao)
+			res := mlpfunc.Treinar(ch, useCfg)
 			mu.Lock()
 			mlpFuncRes = &res
 			mlpFuncTraining = false
@@ -604,6 +617,15 @@ func wasmMlpFuncTrain(_ js.Value, args []js.Value) any {
 		}
 	}()
 	return nil
+}
+
+func wasmMlpFuncReset(_ js.Value, _ []js.Value) any {
+	mu.Lock()
+	mlpFuncRes = nil
+	mlpFuncCfg = nil
+	mlpFuncTraining = false
+	mu.Unlock()
+	return toJSON(map[string]string{"ok": "resetado"})
 }
 
 func wasmMlpFuncResult(_ js.Value, _ []js.Value) any {
@@ -624,6 +646,15 @@ func wasmMlpFuncFuncoes(_ js.Value, _ []js.Value) any {
 // MLP Ortogonal (vetores bipolares)
 // ═══════════════════════════════════════════════════════════════════════
 
+func wasmOrtConfig(_ js.Value, args []js.Value) any {
+	var cfg mlport.Config
+	json.Unmarshal([]byte(args[0].String()), &cfg)
+	mu.Lock()
+	ortCfg = &cfg
+	mu.Unlock()
+	return toJSON(map[string]string{"ok": "config salva"})
+}
+
 func wasmOrtTrain(_ js.Value, args []js.Value) any {
 	onStep := args[0]
 	mu.Lock()
@@ -631,13 +662,19 @@ func wasmOrtTrain(_ js.Value, args []js.Value) any {
 		mu.Unlock()
 		return nil
 	}
+	cfg := ortCfg
+	if cfg == nil {
+		def := mlport.DefaultConfig()
+		cfg = &def
+	}
 	ortTraining = true
+	useCfg := *cfg
 	mu.Unlock()
 
 	go func() {
 		ch := make(chan mlport.OrtStep, 64)
 		go func() {
-			res, rede := mlport.Treinar(ch)
+			res, rede := mlport.Treinar(ch, useCfg)
 			mu.Lock()
 			ortRes = &res
 			ortRede = &rede
@@ -653,6 +690,16 @@ func wasmOrtTrain(_ js.Value, args []js.Value) any {
 		}
 	}()
 	return nil
+}
+
+func wasmOrtReset(_ js.Value, _ []js.Value) any {
+	mu.Lock()
+	ortRede = nil
+	ortRes = nil
+	ortCfg = nil
+	ortTraining = false
+	mu.Unlock()
+	return toJSON(map[string]string{"ok": "resetado"})
 }
 
 func wasmOrtResult(_ js.Value, _ []js.Value) any {
@@ -736,12 +783,16 @@ func main() {
 	g.Set("wasmImbReset", js.FuncOf(wasmImbReset))
 
 	// MLP Funcoes
+	g.Set("wasmMlpFuncConfig", js.FuncOf(wasmMlpFuncConfig))
 	g.Set("wasmMlpFuncTrain", js.FuncOf(wasmMlpFuncTrain))
+	g.Set("wasmMlpFuncReset", js.FuncOf(wasmMlpFuncReset))
 	g.Set("wasmMlpFuncResult", js.FuncOf(wasmMlpFuncResult))
 	g.Set("wasmMlpFuncFuncoes", js.FuncOf(wasmMlpFuncFuncoes))
 
 	// MLP Ortogonal
+	g.Set("wasmOrtConfig", js.FuncOf(wasmOrtConfig))
 	g.Set("wasmOrtTrain", js.FuncOf(wasmOrtTrain))
+	g.Set("wasmOrtReset", js.FuncOf(wasmOrtReset))
 	g.Set("wasmOrtResult", js.FuncOf(wasmOrtResult))
 	g.Set("wasmOrtClassify", js.FuncOf(wasmOrtClassify))
 	g.Set("wasmOrtDataset", js.FuncOf(wasmOrtDataset))

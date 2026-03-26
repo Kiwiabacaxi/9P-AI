@@ -148,16 +148,24 @@ func GerarVetoresOrtogonais() [NOrt][NOrt]float64 {
 }
 
 // Inicializar cria a rede com pesos aleatorios em [-0.5, +0.5]
-func Inicializar() OrtMLP {
+func Inicializar(nHid int) OrtMLP {
 	rng := rand.New(rand.NewSource(42))
-	var m OrtMLP
+	m := OrtMLP{
+		nHid: nHid,
+		V:    make([][]float64, NIn),
+		V0:   make([]float64, nHid),
+		W:    make([][]float64, nHid),
+		W0:   make([]float64, NOrt),
+	}
 	for i := 0; i < NIn; i++ {
-		for j := 0; j < NHid; j++ {
+		m.V[i] = make([]float64, nHid)
+		for j := 0; j < nHid; j++ {
 			m.V[i][j] = rng.Float64() - 0.5
 		}
 	}
-	for j := 0; j < NHid; j++ {
+	for j := 0; j < nHid; j++ {
 		m.V0[j] = rng.Float64() - 0.5
+		m.W[j] = make([]float64, NOrt)
 		for k := 0; k < NOrt; k++ {
 			m.W[j][k] = rng.Float64() - 0.5
 		}

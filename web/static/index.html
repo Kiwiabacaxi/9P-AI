@@ -1415,15 +1415,10 @@ canvas { width: 100%; height: 160px; display: block; }
       <div class="page-header">
         <div>
           <div class="page-title">MLP <span>Funcoes</span></div>
-          <div class="page-sub">Aproximacao de funcoes com backpropagation — 1 entrada, 200 ocultos, 1 saida, tanh</div>
+          <div class="page-sub">Aproximacao de funcoes com backpropagation — Aula 06</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <select id="mlpfunc-select" style="background:var(--surface);color:var(--on-surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:var(--font-mono);font-size:13px">
-            <option value="sin(x)*sin(2x)">sin(x)*sin(2x)</option>
-            <option value="sin(x)">sin(x)</option>
-            <option value="x^2">x^2</option>
-            <option value="x^3">x^3</option>
-          </select>
+          <button class="btn" id="btn-mlpfunc-reset" style="font-size:11px;padding:6px 12px">RESETAR</button>
           <button class="btn btn-primary" id="btn-mlpfunc-train">
             <span class="spin" id="spin-mlpfunc" style="display:none"></span>
             TREINAR
@@ -1431,6 +1426,45 @@ canvas { width: 100%; height: 160px; display: block; }
         </div>
       </div>
 
+      <!-- Config panel (estilo img_regression) -->
+      <div class="grid-3" style="margin-bottom:16px">
+        <div class="card" style="padding:16px 20px">
+          <div class="imgreg-select-label">Funcao</div>
+          <select class="imgreg-select" id="mlpfunc-select" style="width:100%">
+            <option value="sin(x)*sin(2x)">sin(x)*sin(2x)</option>
+            <option value="sin(x)">sin(x)</option>
+            <option value="x^2">x²</option>
+            <option value="x^3">x³</option>
+          </select>
+        </div>
+        <div class="card" style="padding:16px 20px">
+          <div class="imgreg-select-label">Neuronios Ocultos</div>
+          <select class="imgreg-select" id="sel-mlpfunc-neurons" style="width:100%">
+            <option value="50">50 neuronios</option>
+            <option value="100">100 neuronios</option>
+            <option value="200" selected>200 neuronios</option>
+            <option value="300">300 neuronios</option>
+          </select>
+        </div>
+        <div class="card" style="padding:16px 20px">
+          <div class="imgreg-select-label">Learning Rate · Epocas</div>
+          <div style="display:flex;gap:8px">
+            <select class="imgreg-select" id="sel-mlpfunc-lr" style="flex:1">
+              <option value="0.001">α 0.001</option>
+              <option value="0.005" selected>α 0.005</option>
+              <option value="0.01">α 0.01</option>
+              <option value="0.02">α 0.02</option>
+            </select>
+            <select class="imgreg-select" id="sel-mlpfunc-epocas" style="flex:1">
+              <option value="10000">10k</option>
+              <option value="50000">50k</option>
+              <option value="100000" selected>100k</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metricas -->
       <div class="grid-3" style="margin-bottom:16px">
         <div class="card">
           <div class="card-pulse"></div>
@@ -1441,7 +1475,7 @@ canvas { width: 100%; height: 160px; display: block; }
         <div class="card">
           <div class="card-title">Erro</div>
           <div class="metric-val cyan" id="mlpfunc-erro">—</div>
-          <div class="metric-label">0.5 * sum((t-y)^2)</div>
+          <div class="metric-label">0.5 * sum((t-y)²)</div>
         </div>
         <div class="card">
           <div class="card-title">Status</div>
@@ -1450,24 +1484,24 @@ canvas { width: 100%; height: 160px; display: block; }
         </div>
       </div>
 
-      <div class="grid-2" style="margin-bottom:16px">
-        <div class="card">
-          <div class="card-title">Funcao Original vs Aproximacao</div>
-          <div class="chart-wrap"><canvas id="mlpfunc-chart"></canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Curva de Erro — escala log</div>
-          <div class="chart-wrap"><canvas id="mlpfunc-errchart"></canvas></div>
-        </div>
+      <!-- Graficos empilhados (largura total) -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Funcao Original vs Aproximacao da Rede</div>
+        <div class="chart-wrap" style="height:300px"><canvas id="mlpfunc-chart"></canvas></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Curva de Erro — escala log</div>
+        <div class="chart-wrap"><canvas id="mlpfunc-errchart"></canvas></div>
       </div>
 
       <div class="card">
         <div class="card-title">Detalhes</div>
         <div style="padding:12px;font-size:14px;color:var(--muted);line-height:1.6">
-          Baseado no codigo Python da Aula 06 (MLPfuncaoBase.py). A rede usa <b>200 neuronios ocultos</b> com ativacao <b>tanh</b>
+          Baseado no codigo Python da Aula 06 (MLPfuncaoBase.py). A rede usa <b>tanh</b> como ativacao
           para aproximar uma funcao matematica usando 50 pontos igualmente espacados no intervalo [-1, 1].
           <br><br>
-          <b>Hiperparametros:</b> alfa = 0.005 · erro alvo = 0.02 · max 100.000 ciclos
+          <b>Arquitetura:</b> 1 entrada (x) · N ocultos (tanh) · 1 saida (tanh) · erro alvo = 0.02
         </div>
       </div>
     </div>
@@ -1477,14 +1511,73 @@ canvas { width: 100%; height: 160px; display: block; }
       <div class="page-header">
         <div>
           <div class="page-title">MLP <span>Ortogonal</span></div>
-          <div class="page-sub">Classificacao A-Z com vetores bipolares ortogonais e distancia euclidiana</div>
+          <div class="page-sub">Classificacao A-Z com vetores bipolares ortogonais e distancia euclidiana — Aula 06</div>
         </div>
-        <button class="btn btn-primary" id="btn-ort-train">
-          <span class="spin" id="spin-ort" style="display:none"></span>
-          TREINAR REDE
-        </button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="btn-ort-reset" style="font-size:11px;padding:6px 12px">RESETAR</button>
+          <button class="btn btn-primary" id="btn-ort-train">
+            <span class="spin" id="spin-ort" style="display:none"></span>
+            TREINAR REDE
+          </button>
+        </div>
       </div>
 
+      <!-- Config panel -->
+      <div class="grid-3" style="margin-bottom:16px">
+        <div class="card" style="padding:16px 20px">
+          <div class="imgreg-select-label">Neuronios Ocultos</div>
+          <select class="imgreg-select" id="sel-ort-neurons" style="width:100%">
+            <option value="10">10 neuronios</option>
+            <option value="15" selected>15 neuronios</option>
+            <option value="20">20 neuronios</option>
+            <option value="30">30 neuronios</option>
+          </select>
+        </div>
+        <div class="card" style="padding:16px 20px">
+          <div class="imgreg-select-label">Learning Rate</div>
+          <select class="imgreg-select" id="sel-ort-lr" style="width:100%">
+            <option value="0.005">α 0.005</option>
+            <option value="0.01" selected>α 0.01</option>
+            <option value="0.02">α 0.02</option>
+            <option value="0.05">α 0.05</option>
+          </select>
+        </div>
+        <div class="card" style="padding:16px 20px">
+          <div class="imgreg-select-label">Max Epocas</div>
+          <select class="imgreg-select" id="sel-ort-epocas" style="width:100%">
+            <option value="10000">10k</option>
+            <option value="50000" selected>50k</option>
+            <option value="100000">100k</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Secao 1: Construcao dos Vetores Bipolares Ortogonais -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Construcao dos Vetores Bipolares Ortogonais (Fausett 1994)</div>
+        <div style="padding:12px">
+          <div style="display:flex;gap:6px;margin-bottom:12px">
+            <button class="btn ort-step-btn active" data-step="0" style="font-size:11px;padding:4px 10px">Passo 0 (2×2)</button>
+            <button class="btn ort-step-btn" data-step="1" style="font-size:11px;padding:4px 10px">Passo 1 (4×4)</button>
+            <button class="btn ort-step-btn" data-step="2" style="font-size:11px;padding:4px 10px">Passo 2 (8×8)</button>
+            <button class="btn ort-step-btn" data-step="3" style="font-size:11px;padding:4px 10px">Passo 3 (16×16)</button>
+            <button class="btn ort-step-btn" data-step="4" style="font-size:11px;padding:4px 10px">Passo 4 (32×32)</button>
+          </div>
+          <div id="ort-vectors-table" style="overflow-x:auto;font-family:var(--font-mono);font-size:12px"></div>
+          <div style="margin-top:8px;font-size:11px;color:var(--muted)">
+            Cada vetor <b>v</b> gera dois novos: <span style="color:#d4a017">(v, v)</span> e <span style="color:#4caf50">(v, -v)</span>.
+            Base: a=[1,1], b=[1,-1]. Expansao recursiva ate 32 vetores de 32 dimensoes.
+          </div>
+        </div>
+      </div>
+
+      <!-- Secao 2: Mapa Letra → Vetor Ortogonal -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Mapa Letra → Vetor Ortogonal (26 de 32)</div>
+        <div id="ort-letra-mapa" style="padding:12px;overflow-x:auto"></div>
+      </div>
+
+      <!-- Metricas -->
       <div class="grid-3" style="margin-bottom:16px">
         <div class="card">
           <div class="card-pulse"></div>
@@ -1504,30 +1597,46 @@ canvas { width: 100%; height: 160px; display: block; }
         </div>
       </div>
 
-      <div class="grid-2" style="margin-bottom:16px">
-        <div class="card">
-          <div class="card-title">Curva de Erro — escala log</div>
-          <div class="chart-wrap"><canvas id="ort-errchart"></canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Teste Interativo</div>
-          <div id="ort-test-empty" class="empty" style="padding:24px 0">
-            <div class="empty-icon">◈</div>
-            <div>Treine a rede para testar</div>
+      <!-- Curva de erro -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Curva de Erro — escala log</div>
+        <div class="chart-wrap"><canvas id="ort-errchart"></canvas></div>
+      </div>
+
+      <!-- Secao 3: Demo Distancia Euclidiana (aparece apos treinar) -->
+      <div class="card" style="margin-bottom:16px;display:none" id="ort-dist-demo">
+        <div class="card-title">Classificacao por Distancia Euclidiana</div>
+        <div style="padding:12px">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+            <span style="font-size:12px;color:var(--muted)">Letra de exemplo:</span>
+            <select class="imgreg-select" id="sel-ort-demo-letra" style="width:80px"></select>
           </div>
-          <div id="ort-test-content" style="display:none">
-            <div style="display:flex;gap:16px;align-items:flex-start;padding:8px">
-              <div>
-                <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Desenhe uma letra (clique para pintar)</div>
-                <div id="ort-grid" style="display:grid;grid-template-columns:repeat(5,28px);gap:1px;cursor:crosshair"></div>
-                <div style="margin-top:6px;display:flex;gap:6px">
-                  <button class="btn" id="btn-ort-clear" style="font-size:11px;padding:3px 8px">LIMPAR</button>
-                  <button class="btn btn-primary" id="btn-ort-classify" style="font-size:11px;padding:3px 8px">CLASSIFICAR</button>
-                </div>
+          <div id="ort-dist-table" style="overflow-x:auto;font-family:var(--font-mono);font-size:11px"></div>
+          <div style="margin-top:8px;font-size:11px;color:var(--muted)">
+            <b>Formula:</b> D = sqrt( Σ<sub>k</sub> (t<sub>k</sub> - y<sub>k</sub>)² ) — a letra reconhecida eh aquela com <b style="color:#d4a017">menor distancia</b>.
+          </div>
+        </div>
+      </div>
+
+      <!-- Teste Interativo -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Teste Interativo</div>
+        <div id="ort-test-empty" class="empty" style="padding:24px 0">
+          <div class="empty-icon">◈</div>
+          <div>Treine a rede para testar</div>
+        </div>
+        <div id="ort-test-content" style="display:none">
+          <div style="display:flex;gap:16px;align-items:flex-start;padding:12px">
+            <div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Desenhe uma letra (clique para pintar)</div>
+              <div id="ort-grid" style="display:grid;grid-template-columns:repeat(5,28px);gap:1px;cursor:crosshair"></div>
+              <div style="margin-top:6px;display:flex;gap:6px">
+                <button class="btn" id="btn-ort-clear" style="font-size:11px;padding:3px 8px">LIMPAR</button>
+                <button class="btn btn-primary" id="btn-ort-classify" style="font-size:11px;padding:3px 8px">CLASSIFICAR</button>
               </div>
-              <div id="ort-result-panel" style="flex:1;font-family:var(--font-mono);font-size:13px">
-                <div style="color:var(--muted)">Resultado aparece aqui</div>
-              </div>
+            </div>
+            <div id="ort-result-panel" style="flex:1;font-family:var(--font-mono);font-size:13px">
+              <div style="color:var(--muted)">Resultado aparece aqui</div>
             </div>
           </div>
         </div>
@@ -1540,9 +1649,9 @@ canvas { width: 100%; height: 160px; display: block; }
           <b>distancia euclidiana</b> para classificacao. Os targets sao <b>vetores bipolares ortogonais</b>
           (Fausett 1994, Manzan 2016) de 32 dimensoes, em vez de vetores one-hot.
           <br><br>
-          <b>Formula:</b> D = sqrt( sum_k (t_k - y_k)^2 ) — a letra reconhecida eh aquela com <b>menor distancia</b>.
+          <b>Formula:</b> D = sqrt( Σ<sub>k</sub> (t<sub>k</sub> - y<sub>k</sub>)² ) — a letra reconhecida eh aquela com <b>menor distancia</b>.
           <br>
-          <b>Arquitetura:</b> 35 entradas (5x7) · 15 ocultos · 32 saidas · tanh · alfa = 0.01
+          <b>Arquitetura:</b> 35 entradas (5×7) · N ocultos · 32 saidas · tanh
         </div>
       </div>
     </div>
@@ -3660,11 +3769,11 @@ $id('btn-bench-reset').addEventListener('click', async () => {
 function drawFuncChart(canvasId, pontos) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || !pontos?.length) return;
-  const W = canvas.offsetWidth || 400, H = canvas.offsetHeight || 200;
+  const W = canvas.offsetWidth || 400, H = canvas.offsetHeight || 300;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
-  const pad = {t:16, r:16, b:24, l:16};
+  const pad = {t:20, r:20, b:30, l:40};
   const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
 
   const xs = pontos.map(p => p.x);
@@ -3676,12 +3785,31 @@ function drawFuncChart(canvasId, pontos) {
   const toX = x => pad.l + ((x - xMin) / xRange) * w;
   const toY = y => pad.t + h - ((y - yMin) / yRange) * h;
 
-  // Axis
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
-  ctx.strokeRect(pad.l, pad.t, w, h);
+  // Grid lines
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const gy = pad.t + (h * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(pad.l + w, gy); ctx.stroke();
+    const val = yMax - (yRange * i / 4);
+    ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(2), pad.l - 4, gy + 3);
+  }
 
-  // Original function (green)
-  ctx.beginPath(); ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2;
+  // Axis labels
+  ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('-1', toX(-1), pad.t + h + 14);
+  ctx.fillText('0', toX(0), pad.t + h + 14);
+  ctx.fillText('1', toX(1), pad.t + h + 14);
+
+  // Zero line
+  if (yMin < 0 && yMax > 0) {
+    ctx.strokeStyle = '#444'; ctx.lineWidth = 0.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, toY(0)); ctx.lineTo(pad.l + w, toY(0)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Original function (green, thicker)
+  ctx.beginPath(); ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 3;
   pontos.forEach((p, i) => i === 0 ? ctx.moveTo(toX(p.x), toY(p.y)) : ctx.lineTo(toX(p.x), toY(p.y)));
   ctx.stroke();
 
@@ -3691,42 +3819,59 @@ function drawFuncChart(canvasId, pontos) {
   ctx.stroke();
 
   // Legend
-  ctx.font = '11px monospace';
-  ctx.fillStyle = '#00ff88'; ctx.fillText('— original', pad.l + 4, pad.t + 12);
-  ctx.fillStyle = '#00ccff'; ctx.fillText('— rede', pad.l + 90, pad.t + 12);
+  ctx.font = '12px monospace'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#00ff88'; ctx.fillText('— funcao original', pad.l + 8, pad.t + 16);
+  ctx.fillStyle = '#00ccff'; ctx.fillText('— aproximacao da rede', pad.l + 8, pad.t + 30);
 }
 
-document.getElementById('btn-mlpfunc-train').addEventListener('click', () => {
+function getMlpFuncConfig() {
+  return {
+    funcao: document.getElementById('mlpfunc-select').value,
+    nHid: parseInt(document.getElementById('sel-mlpfunc-neurons').value),
+    alfa: parseFloat(document.getElementById('sel-mlpfunc-lr').value),
+    maxCiclo: parseInt(document.getElementById('sel-mlpfunc-epocas').value)
+  };
+}
+
+function mlpFuncDone(data) {
+  document.getElementById('mlpfunc-ciclos').textContent = data.ciclos.toLocaleString();
+  document.getElementById('mlpfunc-erro').textContent = data.erroFinal.toFixed(6);
+  const st = document.getElementById('mlpfunc-status');
+  st.textContent = data.convergiu ? 'convergiu' : 'nao convergiu';
+  st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
+  drawFuncChart('mlpfunc-chart', data.pontos);
+  drawLogChart('mlpfunc-errchart', data.erroHistorico, '#00ccff');
+  refreshStatus(); toast('MLP Funcoes treinado');
+  document.getElementById('btn-mlpfunc-train').disabled = false;
+  document.getElementById('spin-mlpfunc').style.display = 'none';
+}
+
+document.getElementById('btn-mlpfunc-train').addEventListener('click', async () => {
   const btn = document.getElementById('btn-mlpfunc-train');
   const spin = document.getElementById('spin-mlpfunc');
   btn.disabled = true; spin.style.display = 'inline-block';
   document.getElementById('mlpfunc-status').textContent = 'treinando...';
   document.getElementById('mlpfunc-status').style.color = 'var(--cyan)';
 
-  const funcao = document.getElementById('mlpfunc-select').value;
+  const cfg = getMlpFuncConfig();
 
-  if (typeof wasmMlpFuncTrain === 'function') {
+  if (typeof wasmMlpFuncConfig === 'function') {
+    wasmMlpFuncConfig(JSON.stringify(cfg));
     wasmMlpFuncTrain(function(raw) {
       const msg = JSON.parse(raw);
-      if (msg.done) {
-        const data = msg.result;
-        document.getElementById('mlpfunc-ciclos').textContent = data.ciclos.toLocaleString();
-        document.getElementById('mlpfunc-erro').textContent = data.erroFinal.toFixed(6);
-        const st = document.getElementById('mlpfunc-status');
-        st.textContent = data.convergiu ? 'convergiu' : 'nao convergiu';
-        st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
-        drawFuncChart('mlpfunc-chart', data.pontos);
-        drawLogChart('mlpfunc-errchart', data.erroHistorico, '#00ccff');
-        refreshStatus(); toast('MLP Funcoes treinado');
-        btn.disabled = false; spin.style.display = 'none';
-      } else if (msg.pontos) {
+      if (msg.done) { mlpFuncDone(msg.result); }
+      else if (msg.pontos) {
         document.getElementById('mlpfunc-ciclos').textContent = msg.ciclo.toLocaleString();
         document.getElementById('mlpfunc-erro').textContent = msg.erroTotal.toFixed(6);
         drawFuncChart('mlpfunc-chart', msg.pontos);
       }
-    }, funcao);
+    });
   } else {
-    const es = new EventSource(API + '/mlpfunc/train?funcao=' + encodeURIComponent(funcao));
+    await fetch(API + '/mlpfunc/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg)
+    });
+    const es = new EventSource(API + '/mlpfunc/train');
     es.onmessage = function(e) {
       const msg = JSON.parse(e.data);
       if (msg.pontos) {
@@ -3735,26 +3880,130 @@ document.getElementById('btn-mlpfunc-train').addEventListener('click', () => {
         drawFuncChart('mlpfunc-chart', msg.pontos);
       }
     };
-    es.addEventListener('done', function(e) {
-      const data = JSON.parse(e.data);
-      document.getElementById('mlpfunc-ciclos').textContent = data.ciclos.toLocaleString();
-      document.getElementById('mlpfunc-erro').textContent = data.erroFinal.toFixed(6);
-      const st = document.getElementById('mlpfunc-status');
-      st.textContent = data.convergiu ? 'convergiu' : 'nao convergiu';
-      st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
-      drawFuncChart('mlpfunc-chart', data.pontos);
-      drawLogChart('mlpfunc-errchart', data.erroHistorico, '#00ccff');
-      refreshStatus(); toast('MLP Funcoes treinado');
-      btn.disabled = false; spin.style.display = 'none';
-      es.close();
-    });
+    es.addEventListener('done', function(e) { mlpFuncDone(JSON.parse(e.data)); es.close(); });
     es.onerror = function() { es.close(); btn.disabled = false; spin.style.display = 'none'; };
   }
+});
+
+document.getElementById('btn-mlpfunc-reset').addEventListener('click', async () => {
+  if (typeof wasmMlpFuncReset === 'function') { wasmMlpFuncReset(); }
+  else { await fetch(API + '/mlpfunc/reset', {method:'POST'}); }
+  document.getElementById('mlpfunc-ciclos').textContent = '—';
+  document.getElementById('mlpfunc-erro').textContent = '—';
+  document.getElementById('mlpfunc-status').textContent = 'aguardando';
+  document.getElementById('mlpfunc-status').style.color = 'var(--on-surface)';
+  const c1 = document.getElementById('mlpfunc-chart'); if(c1){c1.getContext('2d').clearRect(0,0,c1.width,c1.height);}
+  const c2 = document.getElementById('mlpfunc-errchart'); if(c2){c2.getContext('2d').clearRect(0,0,c2.width,c2.height);}
+  refreshStatus(); toast('MLP Funcoes resetado');
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MLP ORTOGONAL — Vetores bipolares + distancia euclidiana
 // ══════════════════════════════════════════════════════════════════════════════
+
+// --- Secao 1: Construcao dos vetores ortogonais ---
+function gerarVetoresOrtogonais(maxStep) {
+  let vetores = [[1,1],[1,-1]];
+  const steps = [{ vetores: vetores.map(v => [...v]), dims: 2 }];
+  for (let p = 0; p < 4; p++) {
+    const novos = [];
+    for (const v of vetores) {
+      novos.push([...v, ...v]);           // (v,v)
+      novos.push([...v, ...v.map(x=>-x)]); // (v,-v)
+    }
+    vetores = novos;
+    steps.push({ vetores: vetores.map(v => [...v]), dims: vetores[0].length });
+  }
+  return steps;
+}
+
+const ortSteps = gerarVetoresOrtogonais();
+
+function renderOrtVectorsTable(stepIdx) {
+  const step = ortSteps[stepIdx];
+  const container = document.getElementById('ort-vectors-table');
+  if (!container) return;
+  const nVecs = step.vetores.length;
+  const dims = step.dims;
+
+  let html = '<table style="border-collapse:collapse;margin:0 auto">';
+  html += '<tr><th style="padding:4px 8px;color:var(--muted);font-size:10px">#</th>';
+  for (let d = 0; d < dims; d++) {
+    html += '<th style="padding:4px 6px;color:var(--muted);font-size:10px">' + (d+1) + '</th>';
+  }
+  html += '</tr>';
+
+  const parentCount = stepIdx > 0 ? ortSteps[stepIdx-1].vetores.length : 0;
+  const halfDims = dims / 2;
+
+  for (let i = 0; i < nVecs; i++) {
+    const isNew = stepIdx > 0 && (i % 2 === 1); // odd indices are (v,-v)
+    html += '<tr>';
+    html += '<td style="padding:3px 8px;color:var(--muted);font-size:10px;border-right:1px solid #333">' + (i+1) + '</td>';
+    for (let d = 0; d < dims; d++) {
+      const val = step.vetores[i][d];
+      const isSecondHalf = d >= halfDims;
+      let bg = '#3a3500'; // amarelo escuro (original)
+      if (isNew && isSecondHalf) bg = '#1a3a1a'; // verde escuro (invertido)
+      const color = val === 1 ? '#fff' : '#ff6b6b';
+      html += '<td style="padding:3px 6px;text-align:center;background:' + bg + ';color:' + color + ';border:1px solid #222;font-size:11px">' + val + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  container.innerHTML = html;
+}
+
+document.querySelectorAll('.ort-step-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ort-step-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderOrtVectorsTable(parseInt(btn.dataset.step));
+  });
+});
+renderOrtVectorsTable(0);
+
+// --- Secao 2: Mapa Letra → Vetor ---
+(async function loadOrtLetraMapa() {
+  let info;
+  if (typeof wasmOrtDataset === 'function') {
+    info = JSON.parse(wasmOrtDataset());
+  } else {
+    info = await fetch(API + '/mlport/dataset').then(r => r.json());
+  }
+  const container = document.getElementById('ort-letra-mapa');
+  if (!container || !info?.letras) return;
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">';
+  info.letras.forEach((l, idx) => {
+    html += '<div style="display:flex;gap:8px;align-items:center;padding:6px 8px;background:var(--surface);border-radius:4px;border:1px solid var(--border)">';
+    // Mini grid 5x7
+    html += '<div style="display:grid;grid-template-columns:repeat(5,6px);gap:1px;flex-shrink:0">';
+    for (let p = 0; p < 35; p++) {
+      const on = l.grade[p] === 1;
+      html += '<div style="width:6px;height:6px;background:' + (on ? 'var(--primary)' : 'var(--surface-low)') + '"></div>';
+    }
+    html += '</div>';
+    // Letter name
+    html += '<span style="font-size:16px;font-weight:bold;color:var(--primary);width:20px">' + l.nome + '</span>';
+    // Vetor ortogonal (compact)
+    html += '<div style="font-size:9px;color:var(--muted);line-height:1.3;word-break:break-all">';
+    html += l.vetor.map(v => '<span style="color:' + (v===1?'#aaa':'#ff6b6b') + '">' + (v===1?'+':'−') + '</span>').join('');
+    html += '</div></div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+
+  // Populate demo dropdown
+  const sel = document.getElementById('sel-ort-demo-letra');
+  if (sel) {
+    info.letras.forEach((l, i) => {
+      const opt = document.createElement('option');
+      opt.value = i; opt.textContent = l.nome;
+      sel.appendChild(opt);
+    });
+  }
+})();
 
 // Build the 5x7 interactive grid
 (function initOrtGrid() {
@@ -3797,7 +4046,7 @@ document.getElementById('btn-ort-classify')?.addEventListener('click', async () 
 
   if (resp.error) { toast(resp.error); return; }
   let html = '<div style="font-size:24px;color:var(--primary);margin-bottom:8px">' + resp.letra + '</div>';
-  html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Top 5 (menor distancia):</div>';
+  html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Top 5 (menor distancia euclidiana):</div>';
   resp.top5.forEach((c, i) => {
     const bar = Math.max(0, 100 - c.distancia * 10);
     html += '<div style="display:flex;align-items:center;gap:6px;margin:3px 0">';
@@ -3810,48 +4059,160 @@ document.getElementById('btn-ort-classify')?.addEventListener('click', async () 
   document.getElementById('ort-result-panel').innerHTML = html;
 });
 
-document.getElementById('btn-ort-train').addEventListener('click', () => {
+// --- Secao 3: Demo Distancia Euclidiana (apos treinar) ---
+let _ortLastResult = null;
+
+function renderDistDemo(letraIdx) {
+  if (!_ortLastResult) return;
+  const container = document.getElementById('ort-dist-table');
+  if (!container) return;
+
+  // Classify the selected letter from dataset
+  const cells = [];
+  for (let i = 0; i < 35; i++) cells.push(0); // placeholder
+
+  // We need to call classify for this letter
+  (async () => {
+    let info;
+    if (typeof wasmOrtDataset === 'function') {
+      info = JSON.parse(wasmOrtDataset());
+    } else {
+      info = await fetch(API + '/mlport/dataset').then(r => r.json());
+    }
+    const grade = info.letras[letraIdx].grade;
+
+    let resp;
+    if (typeof wasmOrtClassify === 'function') {
+      resp = JSON.parse(wasmOrtClassify(JSON.stringify({grade})));
+    } else {
+      resp = await fetch(API + '/mlport/classify', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({grade})
+      }).then(r => r.json());
+    }
+
+    if (!resp || resp.error) return;
+    const saida = resp.saidaRede || [];
+    const vetores = _ortLastResult.vetores;
+    const distancias = resp.distancias;
+    const nShow = 8; // Show first 8 letters like the slide
+    const bestIdx = resp.letraIdx;
+
+    // Build table like the slide
+    const nDims = Math.min(saida.length, 8); // show first 8 dims for readability
+    let html = '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+
+    // Left: saida da rede
+    html += '<div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-weight:bold">saida da rede</div><table style="border-collapse:collapse">';
+    for (let k = 0; k < nDims; k++) {
+      html += '<tr><td style="padding:2px 6px;border:1px solid #333;font-size:11px;text-align:right">' + saida[k].toFixed(2) + '</td></tr>';
+    }
+    html += '</table></div>';
+
+    // Right: target vectors + distances
+    html += '<div style="overflow-x:auto"><table style="border-collapse:collapse"><tr>';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let c = 0; c < nShow; c++) {
+      const isBest = c === bestIdx;
+      html += '<th style="padding:2px 6px;font-size:10px;color:' + (isBest ? '#d4a017' : 'var(--muted)') + ';font-weight:bold">' + letters[c] + '</th>';
+    }
+    html += '</tr>';
+    for (let k = 0; k < nDims; k++) {
+      html += '<tr>';
+      for (let c = 0; c < nShow; c++) {
+        const val = vetores[c][k];
+        const isBest = c === bestIdx;
+        const bg = isBest ? '#2a2a00' : 'transparent';
+        const color = val === 1 ? '#aaa' : '#ff6b6b';
+        html += '<td style="padding:2px 6px;border:1px solid #333;text-align:center;font-size:11px;color:' + color + ';background:' + bg + '">' + val + '</td>';
+      }
+      html += '</tr>';
+    }
+    // Distance row
+    html += '<tr>';
+    for (let c = 0; c < nShow; c++) {
+      const isBest = c === bestIdx;
+      const bg = isBest ? '#d4a017' : '#333';
+      const color = isBest ? '#000' : '#aaa';
+      html += '<td style="padding:3px 6px;border:1px solid #333;text-align:center;font-size:11px;font-weight:bold;background:' + bg + ';color:' + color + '">' + distancias[c].toFixed(2) + '</td>';
+    }
+    html += '</tr></table>';
+    html += '<div style="font-size:10px;color:var(--muted);margin-top:4px">distancia euclidiana (mostrando ' + nDims + ' de 32 dims, ' + nShow + ' de 26 letras)</div>';
+    html += '</div></div>';
+
+    container.innerHTML = html;
+  })();
+}
+
+document.getElementById('sel-ort-demo-letra')?.addEventListener('change', (e) => {
+  renderDistDemo(parseInt(e.target.value));
+});
+
+// --- Config + Train + Reset ---
+function getOrtConfig() {
+  return {
+    nHid: parseInt(document.getElementById('sel-ort-neurons').value),
+    alfa: parseFloat(document.getElementById('sel-ort-lr').value),
+    maxCiclo: parseInt(document.getElementById('sel-ort-epocas').value)
+  };
+}
+
+function ortDone(data) {
+  _ortLastResult = data;
+  document.getElementById('ort-ciclos').textContent = data.ciclos.toLocaleString();
+  document.getElementById('ort-acuracia').textContent = data.acuracia.toFixed(0) + '%';
+  const st = document.getElementById('ort-status');
+  st.textContent = data.convergiu ? 'convergiu' : 'nao convergiu';
+  st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
+  drawLogChart('ort-errchart', data.erroHistorico);
+  document.getElementById('ort-test-empty').style.display = 'none';
+  document.getElementById('ort-test-content').style.display = 'block';
+  document.getElementById('ort-dist-demo').style.display = 'block';
+  renderDistDemo(0);
+  refreshStatus(); toast('MLP Ortogonal treinado — ' + data.acuracia.toFixed(0) + '%');
+  document.getElementById('btn-ort-train').disabled = false;
+  document.getElementById('spin-ort').style.display = 'none';
+}
+
+document.getElementById('btn-ort-train').addEventListener('click', async () => {
   const btn = document.getElementById('btn-ort-train');
   const spin = document.getElementById('spin-ort');
   btn.disabled = true; spin.style.display = 'inline-block';
   document.getElementById('ort-status').textContent = 'treinando...';
   document.getElementById('ort-status').style.color = 'var(--cyan)';
 
-  if (typeof wasmOrtTrain === 'function') {
+  const cfg = getOrtConfig();
+
+  if (typeof wasmOrtConfig === 'function') {
+    wasmOrtConfig(JSON.stringify(cfg));
     wasmOrtTrain(function(raw) {
       const msg = JSON.parse(raw);
-      if (msg.done) {
-        const data = msg.result;
-        document.getElementById('ort-ciclos').textContent = data.ciclos.toLocaleString();
-        document.getElementById('ort-acuracia').textContent = data.acuracia.toFixed(0) + '%';
-        const st = document.getElementById('ort-status');
-        st.textContent = data.convergiu ? 'convergiu' : 'nao convergiu';
-        st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
-        drawLogChart('ort-errchart', data.erroHistorico);
-        document.getElementById('ort-test-empty').style.display = 'none';
-        document.getElementById('ort-test-content').style.display = 'block';
-        refreshStatus(); toast('MLP Ortogonal treinado — ' + data.acuracia.toFixed(0) + '%');
-        btn.disabled = false; spin.style.display = 'none';
-      }
+      if (msg.done) { ortDone(msg.result); }
     });
   } else {
-    const es = new EventSource(API + '/mlport/train');
-    es.addEventListener('done', function(e) {
-      const data = JSON.parse(e.data);
-      document.getElementById('ort-ciclos').textContent = data.ciclos.toLocaleString();
-      document.getElementById('ort-acuracia').textContent = data.acuracia.toFixed(0) + '%';
-      const st = document.getElementById('ort-status');
-      st.textContent = data.convergiu ? 'convergiu' : 'nao convergiu';
-      st.style.color = data.convergiu ? 'var(--primary-glow)' : 'var(--pink)';
-      drawLogChart('ort-errchart', data.erroHistorico);
-      document.getElementById('ort-test-empty').style.display = 'none';
-      document.getElementById('ort-test-content').style.display = 'block';
-      refreshStatus(); toast('MLP Ortogonal treinado — ' + data.acuracia.toFixed(0) + '%');
-      btn.disabled = false; spin.style.display = 'none';
-      es.close();
+    await fetch(API + '/mlport/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg)
     });
+    const es = new EventSource(API + '/mlport/train');
+    es.addEventListener('done', function(e) { ortDone(JSON.parse(e.data)); es.close(); });
     es.onerror = function() { es.close(); btn.disabled = false; spin.style.display = 'none'; };
   }
+});
+
+document.getElementById('btn-ort-reset').addEventListener('click', async () => {
+  if (typeof wasmOrtReset === 'function') { wasmOrtReset(); }
+  else { await fetch(API + '/mlport/reset', {method:'POST'}); }
+  _ortLastResult = null;
+  document.getElementById('ort-ciclos').textContent = '—';
+  document.getElementById('ort-acuracia').textContent = '—';
+  document.getElementById('ort-status').textContent = 'aguardando';
+  document.getElementById('ort-status').style.color = 'var(--on-surface)';
+  const c = document.getElementById('ort-errchart'); if(c){c.getContext('2d').clearRect(0,0,c.width,c.height);}
+  document.getElementById('ort-test-empty').style.display = 'block';
+  document.getElementById('ort-test-content').style.display = 'none';
+  document.getElementById('ort-dist-demo').style.display = 'none';
+  refreshStatus(); toast('MLP Ortogonal resetado');
 });
 </script>
 </body>

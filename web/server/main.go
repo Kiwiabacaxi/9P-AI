@@ -83,10 +83,12 @@ var (
 	benchCancel  context.CancelFunc
 
 	// MLP Funcoes (aproximacao de funcao)
+	mlpFuncCfg      *mlpfunc.Config
 	mlpFuncRes      *mlpfunc.FuncResult
 	mlpFuncTraining bool
 
 	// MLP Ortogonal (vetores bipolares)
+	ortCfg      *mlport.Config
 	ortRede     *mlport.OrtMLP
 	ortRes      *mlport.OrtResult
 	ortTraining bool
@@ -881,6 +883,18 @@ func handleBenchReset(w http.ResponseWriter, r *http.Request) {
 // MLP Funcoes (aproximacao de funcao)
 // =============================================================================
 
+func handleMlpFuncConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg mlpfunc.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	mlpFuncCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
 func handleMlpFuncTrain(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	if mlpFuncTraining {
@@ -888,13 +902,13 @@ func handleMlpFuncTrain(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusConflict, "treinamento já em andamento")
 		return
 	}
+	cfg := mlpFuncCfg
+	if cfg == nil {
+		def := mlpfunc.DefaultConfig()
+		cfg = &def
+	}
 	mlpFuncTraining = true
 	mu.Unlock()
-
-	funcao := r.URL.Query().Get("funcao")
-	if funcao == "" {
-		funcao = "sin(x)*sin(2x)"
-	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -903,13 +917,17 @@ func handleMlpFuncTrain(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		mu.Lock()
+		mlpFuncTraining = false
+		mu.Unlock()
 		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
 		return
 	}
 
+	useCfg := *cfg
 	progressCh := make(chan mlpfunc.FuncStep, 64)
 	go func() {
-		res := mlpfunc.Treinar(progressCh, funcao)
+		res := mlpfunc.Treinar(progressCh, useCfg)
 		mu.Lock()
 		mlpFuncRes = &res
 		mlpFuncTraining = false
@@ -933,6 +951,15 @@ func handleMlpFuncTrain(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleMlpFuncReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	mlpFuncRes = nil
+	mlpFuncCfg = nil
+	mlpFuncTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
 func handleMlpFuncResult(w http.ResponseWriter, r *http.Request) {
 	mu.RLock()
 	res := mlpFuncRes
@@ -952,12 +979,29 @@ func handleMlpFuncFuncoes(w http.ResponseWriter, r *http.Request) {
 // MLP Ortogonal (vetores bipolares)
 // =============================================================================
 
+func handleOrtConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg mlport.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	ortCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
 func handleOrtTrain(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	if ortTraining {
 		mu.Unlock()
 		errJSON(w, http.StatusConflict, "treinamento já em andamento")
 		return
+	}
+	cfg := ortCfg
+	if cfg == nil {
+		def := mlport.DefaultConfig()
+		cfg = &def
 	}
 	ortTraining = true
 	mu.Unlock()
@@ -969,13 +1013,17 @@ func handleOrtTrain(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		mu.Lock()
+		ortTraining = false
+		mu.Unlock()
 		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
 		return
 	}
 
+	useCfg := *cfg
 	progressCh := make(chan mlport.OrtStep, 64)
 	go func() {
-		res, rede := mlport.Treinar(progressCh)
+		res, rede := mlport.Treinar(progressCh, useCfg)
 		mu.Lock()
 		ortRes = &res
 		ortRede = &rede
@@ -998,6 +1046,16 @@ func handleOrtTrain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
 		flusher.Flush()
 	}
+}
+
+func handleOrtReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	ortRede = nil
+	ortRes = nil
+	ortCfg = nil
+	ortTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
 }
 
 func handleOrtResult(w http.ResponseWriter, r *http.Request) {
@@ -1107,12 +1165,16 @@ func main() {
 	mux.HandleFunc("/api/imgreg-bench/reset",  cors(handleBenchReset))
 
 	// MLP Funcoes (aproximacao de funcao)
+	mux.HandleFunc("/api/mlpfunc/config", cors(handleMlpFuncConfig))
 	mux.HandleFunc("/api/mlpfunc/train", cors(handleMlpFuncTrain))
+	mux.HandleFunc("/api/mlpfunc/reset", cors(handleMlpFuncReset))
 	mux.HandleFunc("/api/mlpfunc/result", cors(handleMlpFuncResult))
 	mux.HandleFunc("/api/mlpfunc/funcoes", cors(handleMlpFuncFuncoes))
 
 	// MLP Ortogonal (vetores bipolares)
+	mux.HandleFunc("/api/mlport/config", cors(handleOrtConfig))
 	mux.HandleFunc("/api/mlport/train", cors(handleOrtTrain))
+	mux.HandleFunc("/api/mlport/reset", cors(handleOrtReset))
 	mux.HandleFunc("/api/mlport/result", cors(handleOrtResult))
 	mux.HandleFunc("/api/mlport/classify", cors(handleOrtClassify))
 	mux.HandleFunc("/api/mlport/dataset", cors(handleOrtDataset))
