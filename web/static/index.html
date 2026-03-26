@@ -3509,7 +3509,7 @@ $id('btn-bench-run').addEventListener('click', async () => {
   $id('btn-bench-run').textContent = 'PARAR';
   $id('spin-bench').style.display = 'inline-block';
 
-  benchES = new EventSource(API + '/imgreg-bench/run');
+  benchES = new EventSource(API + '/imgreg-bench/train');
   benchES.onmessage = e => {
     const bs = JSON.parse(e.data);
     if (bs._wasmError) {
