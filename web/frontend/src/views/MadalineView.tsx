@@ -182,14 +182,22 @@ export default function MadalineView() {
 
   // ---------- Classify ----------
 
-  const handleClassify = useCallback(async () => {
-    try {
-      const resp = await apiPost<MadClassifyResp>('/madaline/classify', { grade: testPixels });
-      setClassifyResp(resp);
-    } catch {
-      show('Erro ao classificar (rede nao treinada?)');
+  const classifyTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const autoClassify = useCallback((pixels: number[]) => {
+    setTestPixels(pixels);
+    setActiveLetter(null);
+    if (classifyTimeout.current) clearTimeout(classifyTimeout.current);
+    if (result && pixels.some(v => v === 1)) {
+      classifyTimeout.current = setTimeout(async () => {
+        try {
+          const resp = await apiPost<MadClassifyResp>('/madaline/classify', { grade: pixels });
+          setClassifyResp(resp);
+        } catch { /* ignore */ }
+      }, 150);
+    } else {
+      setClassifyResp(null);
     }
-  }, [testPixels, show]);
+  }, [result]);
 
   // Load a letter from dataset into the test grid
   const handleLoadLetter = useCallback((entry: DatasetEntry) => {
@@ -325,7 +333,8 @@ export default function MadalineView() {
               cols={5}
               cellSize={28}
               values={testPixels}
-              onChange={(vals) => { setTestPixels(vals); setActiveLetter(null); setClassifyResp(null); }}
+              onChange={autoClassify}
+              showClear={false}
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
@@ -333,12 +342,6 @@ export default function MadalineView() {
                 style={{ fontSize: 10, padding: '6px 12px' }}
                 onClick={() => { setTestPixels(new Array(35).fill(-1)); setClassifyResp(null); setActiveLetter(null); }}
               >LIMPAR</button>
-              <button
-                className="btn btn-primary"
-                style={{ fontSize: 10, padding: '6px 12px' }}
-                onClick={handleClassify}
-                disabled={!trained}
-              >CLASSIFICAR</button>
             </div>
           </div>
 

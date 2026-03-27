@@ -160,14 +160,21 @@ export default function MlpLetrasView() {
 
   // ---------- Classify interactive grid ----------
 
-  const handleClassify = useCallback(async () => {
-    try {
-      const resp = await apiPost<LtrClassifyResp>('/letras/classify', { grade: testPixels });
-      setClassifyResult(resp);
-    } catch (e) {
-      show('Erro: ' + (e instanceof Error ? e.message : String(e)));
+  // Auto-classify when grid changes (real-time)
+  const classifyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const handleGridChange = useCallback((newValues: number[]) => {
+    setTestPixels(newValues);
+    // Debounce: classify 150ms after last change
+    if (classifyTimeoutRef.current) clearTimeout(classifyTimeoutRef.current);
+    if (newValues.some(v => v === 1)) {
+      classifyTimeoutRef.current = setTimeout(async () => {
+        try {
+          const resp = await apiPost<LtrClassifyResp>('/letras/classify', { grade: newValues });
+          setClassifyResult(resp);
+        } catch { /* ignore */ }
+      }, 150);
     }
-  }, [testPixels, show]);
+  }, []);
 
   const handleClear = useCallback(() => {
     setTestPixels(new Array(35).fill(-1));
@@ -315,7 +322,8 @@ export default function MlpLetrasView() {
                 cols={5}
                 cellSize={28}
                 values={testPixels}
-                onChange={setTestPixels}
+                onChange={handleGridChange}
+                showClear={false}
               />
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <button
@@ -323,11 +331,6 @@ export default function MlpLetrasView() {
                   style={{ padding: '6px 12px', fontSize: 10 }}
                   onClick={handleClear}
                 >LIMPAR</button>
-                <button
-                  className="btn btn-primary"
-                  style={{ padding: '6px 12px', fontSize: 10 }}
-                  onClick={handleClassify}
-                >CLASSIFICAR</button>
               </div>
             </div>
 

@@ -4,8 +4,11 @@ interface Props {
   layerSizes: number[];
   activeLayer?: number;
   hudText?: string;
-  animate?: boolean; // true = idle animation cycling layers
+  animate?: boolean;
 }
+
+// phase: 'forward' (0→N, green) or 'backward' (N→0, pink/red for backprop)
+type Phase = 'forward' | 'backward';
 
 export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, animate = true }: Props) {
   const MAX_SHOWN = 8;
@@ -13,29 +16,35 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
   const padX = 55, padY = 32;
   const R = 8;
 
-  // Idle animation: cycle through layers when no activeLayer is set
   const [idleLayer, setIdleLayer] = useState(0);
+  const [phase, setPhase] = useState<Phase>('forward');
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
     if (activeLayer >= 0 || !animate) {
-      // Training is active or animation disabled — stop idle
       if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
-    // Idle animation: sweep from layer 0 to last and back
     const nLayers = layerSizes.length;
     if (nLayers <= 1) return;
+    // Forward: 0→N-1, then Backward: N-1→0
+    const totalSteps = (nLayers - 1) * 2;
     let step = 0;
     intervalRef.current = setInterval(() => {
-      step = (step + 1) % (nLayers * 2 - 2);
-      const layer = step < nLayers ? step : (nLayers * 2 - 2 - step);
-      setIdleLayer(layer);
-    }, 600);
+      step = (step + 1) % totalSteps;
+      if (step < nLayers) {
+        setPhase('forward');
+        setIdleLayer(step);
+      } else {
+        setPhase('backward');
+        setIdleLayer(totalSteps - step);
+      }
+    }, 400);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [activeLayer, animate, layerSizes.length]);
 
   const currentActive = activeLayer >= 0 ? activeLayer : (animate ? idleLayer : -1);
+  const currentPhase: Phase = activeLayer >= 0 ? 'forward' : phase;
 
   const layout = useMemo(() => {
     if (!layerSizes || layerSizes.length === 0) return null;
@@ -112,12 +121,15 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
           l < nLayers - 1 && layer.map((from, i) =>
             positions[l + 1].map((to, j) => {
               const isActive = currentActive === l || currentActive === l + 1;
+              const edgeColor = isActive
+                ? (currentPhase === 'backward' ? '#ff6ec750' : '#00ff0050')
+                : '#ffffff10';
               return (
                 <line
                   key={`e-${l}-${i}-${j}`}
                   x1={from.x} y1={from.y}
                   x2={to.x} y2={to.y}
-                  stroke={isActive ? '#00ff0050' : '#ffffff10'}
+                  stroke={edgeColor}
                   strokeWidth={isActive ? 1.2 : 0.6}
                   className={isActive ? 'nv-edge-active' : undefined}
                 />
@@ -134,7 +146,11 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
           let fill = '#1c2026';
           let stroke = '#333';
           let filter: string | undefined;
-          if (isActive) {
+          if (isActive && currentPhase === 'backward') {
+            fill = '#220011';
+            stroke = '#ff6ec7';
+            filter = 'url(#glow-pink)';
+          } else if (isActive) {
             fill = '#002200';
             stroke = '#00ff00';
             filter = 'url(#glow-green)';
@@ -184,6 +200,16 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
           <text x={790} y={16} textAnchor="end" fill="#555"
             fontSize="9" fontFamily="JetBrains Mono" letterSpacing="0.05em">
             {hudText}
+          </text>
+        )}
+
+        {/* Phase label */}
+        {currentActive >= 0 && (
+          <text x={790} y={290} textAnchor="end"
+            fill={currentPhase === 'backward' ? '#ff6ec7' : '#00ff00'}
+            fontSize="9" fontFamily="JetBrains Mono" letterSpacing="0.1em"
+            opacity={0.7}>
+            {currentPhase === 'backward' ? '◄ BACKPROP' : 'FORWARD ►'}
           </text>
         )}
       </svg>

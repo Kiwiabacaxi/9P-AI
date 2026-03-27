@@ -154,14 +154,21 @@ export default function MlpOrtView() {
     }
   }, [dataset, toast]);
 
-  const handleClassify = useCallback(async () => {
-    try {
-      const resp = await apiPost<OrtClassifyResp>('/mlport/classify', { grade: testPixels });
-      setTestResp(resp);
-    } catch {
-      toast.show('Erro ao classificar');
+  const classifyTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const autoClassify = useCallback((pixels: number[]) => {
+    setTestPixels(pixels);
+    if (classifyTimeout.current) clearTimeout(classifyTimeout.current);
+    if (result && pixels.some(v => v === 1)) {
+      classifyTimeout.current = setTimeout(async () => {
+        try {
+          const resp = await apiPost<OrtClassifyResp>('/mlport/classify', { grade: pixels });
+          setTestResp(resp);
+        } catch { /* ignore */ }
+      }, 150);
+    } else {
+      setTestResp(null);
     }
-  }, [testPixels, toast]);
+  }, [result]);
 
   // ---------- Render helpers ----------
 
@@ -344,7 +351,8 @@ export default function MlpOrtView() {
                 cols={5}
                 cellSize={28}
                 values={testPixels}
-                onChange={setTestPixels}
+                onChange={autoClassify}
+                showClear={false}
               />
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button
@@ -352,11 +360,6 @@ export default function MlpOrtView() {
                   style={{ fontSize: 10, padding: '6px 12px' }}
                   onClick={() => { setTestPixels(new Array(35).fill(-1)); setTestResp(null); }}
                 >LIMPAR</button>
-                <button
-                  className="btn btn-primary"
-                  style={{ fontSize: 10, padding: '6px 12px' }}
-                  onClick={handleClassify}
-                >CLASSIFICAR</button>
               </div>
             </div>
 

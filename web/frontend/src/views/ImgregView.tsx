@@ -224,7 +224,7 @@ export default function ImgregView({ variant = 'standard' }: Props) {
           return;
         }
 
-        // Progress step
+        // Progress step — throttle chart updates to every 10 epochs
         setEpoca(step.epoca.toLocaleString());
         setLoss(step.loss.toFixed(6));
         setActiveLayer(step.activeLayer);
@@ -234,8 +234,13 @@ export default function ImgregView({ variant = 'standard' }: Props) {
         if (step.outputPixels) {
           setOutputPixels(step.outputPixels);
         }
-        setLossHistory(prev => [...prev, step.loss]);
-        addLog(`[ep ${step.epoca}] loss=${step.loss.toFixed(6)}`);
+        // Only update chart every 10 epochs to avoid lag
+        if (step.epoca % 10 === 0 || step.epoca <= 10) {
+          setLossHistory(prev => [...prev, step.loss]);
+        }
+        if (step.epoca % 50 === 0) {
+          addLog(`[ep ${step.epoca}] loss=${step.loss.toFixed(6)}`);
+        }
       },
       onDone(data) {
         // Some variants might send event: done

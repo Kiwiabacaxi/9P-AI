@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 interface Props {
   rows: number;
@@ -15,33 +15,39 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
   const total = rows * cols;
   const [internalValues, setInternalValues] = useState<number[]>(() => new Array(total).fill(-1));
   const values = externalValues ?? internalValues;
+
+  // Keep a mutable ref of current values so drag doesn't use stale closures
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; }, [values]);
+
   const painting = useRef(false);
   const paintVal = useRef(1);
 
-  const setVal = useCallback((idx: number, val: number) => {
-    const next = [...values];
-    next[idx] = val;
+  const emit = useCallback((next: number[]) => {
+    valuesRef.current = next;
     if (onChange) onChange(next);
     else setInternalValues(next);
-  }, [values, onChange]);
+  }, [onChange]);
 
-  const toggle = useCallback((idx: number) => {
+  const handleMouseDown = useCallback((idx: number, e: React.MouseEvent) => {
     if (readOnly) return;
-    const newVal = values[idx] === 1 ? -1 : 1;
-    paintVal.current = newVal;
-    setVal(idx, newVal);
-  }, [values, readOnly, setVal]);
-
-  const handleMouseDown = useCallback((idx: number) => {
-    if (readOnly) return;
+    e.preventDefault();
     painting.current = true;
-    toggle(idx);
-  }, [readOnly, toggle]);
+    const newVal = valuesRef.current[idx] === 1 ? -1 : 1;
+    paintVal.current = newVal;
+    const next = [...valuesRef.current];
+    next[idx] = newVal;
+    emit(next);
+  }, [readOnly, emit]);
 
   const handleMouseEnter = useCallback((idx: number) => {
     if (readOnly || !painting.current) return;
-    setVal(idx, paintVal.current);
-  }, [readOnly, setVal]);
+    const cur = valuesRef.current;
+    if (cur[idx] === paintVal.current) return; // already set
+    const next = [...cur];
+    next[idx] = paintVal.current;
+    emit(next);
+  }, [readOnly, emit]);
 
   const handleMouseUp = useCallback(() => {
     painting.current = false;
@@ -49,9 +55,8 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
 
   const clear = useCallback(() => {
     const next = new Array(total).fill(-1);
-    if (onChange) onChange(next);
-    else setInternalValues(next);
-  }, [total, onChange]);
+    emit(next);
+  }, [total, emit]);
 
   return (
     <div onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
@@ -69,7 +74,7 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
             key={i}
             className={`pixel${v === 1 ? ' on' : ''}`}
             style={{ width: cellSize, height: cellSize }}
-            onMouseDown={(e) => { e.preventDefault(); handleMouseDown(i); }}
+            onMouseDown={(e) => handleMouseDown(i, e)}
             onMouseEnter={() => handleMouseEnter(i)}
           />
         ))}
