@@ -113,6 +113,30 @@ export default function AboutView() {
               <td className="td-white">{'SGD estocastico — He init \u00B7 MSE loss'}</td>
               <td className="td-green">Aproximacao universal</td>
             </tr>
+            <tr>
+              <td className="td-cyan">MLP Funções</td>
+              <td>06</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>mlpfunc</td>
+              <td>
+                {'1 \u2192 [N] \u2192 1 '}
+                <span style={{ color: 'var(--surface-top)' }}>(regressão)</span>
+              </td>
+              <td>{'tanh \u00B7 sigmoid \u00B7 relu'}</td>
+              <td className="td-white">{'Backpropagation — \u03B4\u00B7\u03B1\u00B7a'}</td>
+              <td className="td-green">Geralmente sim</td>
+            </tr>
+            <tr>
+              <td className="td-cyan">MLP Ortogonal</td>
+              <td>06</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>mlport</td>
+              <td>
+                {'35 \u2192 nHid \u2192 32 '}
+                <span style={{ color: 'var(--surface-top)' }}>(5x7, A-Z)</span>
+              </td>
+              <td>tanh</td>
+              <td className="td-white">{'Backprop + dist. euclidiana (sem limiar)'}</td>
+              <td className="td-green">Geralmente sim</td>
+            </tr>
           </tbody>
         </table>
       </Card>
@@ -302,6 +326,70 @@ export default function AboutView() {
           </div>
         </Card>
 
+        <Card title="Aula 06 — MLP Funções">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Regressão — aproximação de funções:
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Input:</span>
+              {' \u00A0x \u2208 [\u22121, 1]'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Target:</span>
+              {' f(x) = sin(x)\u00B7sin(2x)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Saída:</span>
+              {' \u00A0y \u2248 f(x) — valor contínuo'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Erro:</span>
+              {' \u00A0 E = 0.5\u00B7(t\u2212y)\u00B2'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// 50 pontos \u00B7 N camadas configuráveis'}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Aula 06 — MLP Ortogonal">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Vetores bipolares ortogonais (Fausett 1994):
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Target:</span>
+              {' 32 vetores ortogonais de 32 dims'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Classif:</span>
+              {' D = \u221A\u03A3(t_k\u2212y_k)\u00B2'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Regra:</span>
+              {' \u00A0MENOR distância euclidiana'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// sem limiar \u00B7 tanh puro \u00B7 A-Z'}
+            </div>
+          </div>
+        </Card>
+
         <Card title="Estrutura de Pacotes">
           <div
             style={{
@@ -323,6 +411,8 @@ export default function AboutView() {
             <div>{'\u00A0\u251C\u2500 madaline/'}</div>
             <div>{'\u00A0\u251C\u2500 mlp/'}</div>
             <div>{'\u00A0\u251C\u2500 letras/'}</div>
+            <div>{'\u00A0\u251C\u2500 mlpfunc/'}</div>
+            <div>{'\u00A0\u251C\u2500 mlport/'}</div>
             <div>{'\u00A0\u2514\u2500 imgreg/'}</div>
           </div>
         </Card>

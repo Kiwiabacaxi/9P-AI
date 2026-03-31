@@ -105,7 +105,7 @@ type ClassifyResp struct {
 
 func distanciaEuclidiana(y []float64, t [NOrt]float64) float64 {
 	var soma float64
-	for k := 0; k < NOrt; k++ {
+	for k := range NOrt {
 		d := t[k] - y[k]
 		soma += d * d
 	}
@@ -133,18 +133,18 @@ func forward(m OrtMLP, x [NIn]float64) (z []float64, y []float64) {
 	y = make([]float64, NOrt)
 
 	// Camada oculta: z = tanh(V0 + x·V)
-	for j := 0; j < m.nHid; j++ {
+	for j := range m.nHid {
 		zin := m.V0[j] // bias
-		for i := 0; i < NIn; i++ {
+		for i := range NIn {
 			zin += x[i] * m.V[i][j] // soma ponderada
 		}
 		z[j] = math.Tanh(zin) // ativação tanh
 	}
 
 	// Camada de saída: y = tanh(W0 + z·W) — sem limiar!
-	for k := 0; k < NOrt; k++ {
+	for k := range NOrt {
 		yin := m.W0[k] // bias
-		for j := 0; j < m.nHid; j++ {
+		for j := range m.nHid {
 			yin += z[j] * m.W[j][k] // soma ponderada
 		}
 		y[k] = math.Tanh(yin) // ativação tanh
@@ -176,37 +176,37 @@ func tanhDeriv(y float64) float64 { return (1 + y) * (1 - y) }
 func backwardAndUpdate(m *OrtMLP, z []float64, y []float64, target [NOrt]float64, x [NIn]float64, alfa float64) {
 	// 1. Delta da camada de saída: δ_k = (target_k - y_k) * f'(y_k)
 	deltaK := make([]float64, NOrt)
-	for k := 0; k < NOrt; k++ {
+	for k := range NOrt {
 		deltaK[k] = (target[k] - y[k]) * tanhDeriv(y[k])
 	}
 
 	// 2. Propagar delta para camada oculta: δ_j = (Σ δ_k * W[j][k]) * f'(z_j)
 	deltaJ := make([]float64, m.nHid)
-	for j := 0; j < m.nHid; j++ {
+	for j := range m.nHid {
 		var s float64
-		for k := 0; k < NOrt; k++ {
+		for k := range NOrt {
 			s += deltaK[k] * m.W[j][k] // erro propagado da saída
 		}
 		deltaJ[j] = s * tanhDeriv(z[j])
 	}
 
 	// 3. Atualizar pesos W (oculta → saída): ΔW = α * δ_k * z_j
-	for j := 0; j < m.nHid; j++ {
-		for k := 0; k < NOrt; k++ {
+	for j := range m.nHid {
+		for k := range NOrt {
 			m.W[j][k] += alfa * deltaK[k] * z[j]
 		}
 	}
-	for k := 0; k < NOrt; k++ {
+	for k := range NOrt {
 		m.W0[k] += alfa * deltaK[k] // bias saída
 	}
 
 	// 4. Atualizar pesos V (entrada → oculta): ΔV = α * δ_j * x_i
-	for i := 0; i < NIn; i++ {
-		for j := 0; j < m.nHid; j++ {
+	for i := range NIn {
+		for j := range m.nHid {
 			m.V[i][j] += alfa * deltaJ[j] * x[i]
 		}
 	}
-	for j := 0; j < m.nHid; j++ {
+	for j := range m.nHid {
 		m.V0[j] += alfa * deltaJ[j] // bias oculta
 	}
 }
@@ -221,7 +221,7 @@ func backwardAndUpdate(m *OrtMLP, z []float64, y []float64, target [NOrt]float64
 
 func calcErro(y []float64, t [NOrt]float64) float64 {
 	var e float64
-	for k := 0; k < NOrt; k++ {
+	for k := range NOrt {
 		d := t[k] - y[k]
 		e += d * d
 	}
@@ -241,7 +241,7 @@ func classificar(y []float64, vetores [NOrt][NOrt]float64) (int, [NClasses]float
 	var distancias [NClasses]float64
 	best := 0
 	bestDist := math.MaxFloat64
-	for i := 0; i < NClasses; i++ {
+	for i := range NClasses {
 		distancias[i] = distanciaEuclidiana(y, vetores[i])
 		if distancias[i] < bestDist {
 			bestDist = distancias[i]
@@ -287,7 +287,7 @@ func Treinar(progressCh chan<- OrtStep, cfg Config) (OrtResult, OrtMLP) {
 		erroTotal := 0.0
 
 		// Apresentar todas as 26 letras à rede
-		for letraIdx := 0; letraIdx < NClasses; letraIdx++ {
+		for letraIdx := range NClasses {
 			x := dataset[letraIdx]      // entrada: grade 5×7 bipolar
 			target := vetores[letraIdx]  // target: vetor ortogonal da letra
 
@@ -330,7 +330,7 @@ func Treinar(progressCh chan<- OrtStep, cfg Config) (OrtResult, OrtMLP) {
 	}
 
 	// Testar acurácia: classificar cada letra usando distância euclidiana
-	for i := 0; i < NClasses; i++ {
+	for i := range NClasses {
 		_, y := forward(m, dataset[i])
 		best, _ := classificar(y, vetores)
 		if best == i {
@@ -356,11 +356,11 @@ func Classificar(m OrtMLP, x [NIn]float64) ClassifyResp {
 		idx  int
 	}
 	items := make([]distIdx, NClasses)
-	for i := 0; i < NClasses; i++ {
+	for i := range NClasses {
 		items[i] = distIdx{distancias[i], i}
 	}
 	var top5 []OrtCandidate
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		minJ := i
 		for j := i + 1; j < NClasses; j++ {
 			if items[j].dist < items[minJ].dist {
@@ -405,7 +405,7 @@ func GetDatasetInfo() DatasetInfo {
 	vetores := GerarVetoresOrtogonais()
 	var info DatasetInfo
 	info.Vetores = vetores
-	for i := 0; i < NClasses; i++ {
+	for i := range NClasses {
 		info.Letras = append(info.Letras, LetraInfo{
 			Nome:  Nomes[i],
 			Grade: dataset[i],
