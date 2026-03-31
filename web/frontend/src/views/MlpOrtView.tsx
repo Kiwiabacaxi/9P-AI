@@ -69,6 +69,9 @@ export default function MlpOrtView() {
   const [testPixels, setTestPixels] = useState<number[]>(new Array(35).fill(-1));
   const [testResp, setTestResp] = useState<OrtClassifyResp | null>(null);
 
+  // UI
+  const [showArch, setShowArch] = useState(false);
+
   // Fetch dataset on mount
   useEffect(() => {
     apiGet<OrtDatasetInfo>('/mlport/dataset').then(setDataset).catch(() => {});
@@ -155,6 +158,16 @@ export default function MlpOrtView() {
       toast.show('Erro ao classificar');
     }
   }, [dataset, toast]);
+
+  const handleLetterCardClick = useCallback((grade: number[]) => {
+    if (!result) return;
+    const pixels = grade.slice(0, 35);
+    setTestPixels(pixels);
+    // Classify immediately
+    apiPost<OrtClassifyResp>('/mlport/classify', { grade: pixels })
+      .then(setTestResp)
+      .catch(() => {});
+  }, [result]);
 
   const classifyTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
   const autoClassify = useCallback((pixels: number[]) => {
@@ -261,25 +274,108 @@ export default function MlpOrtView() {
         </div>
       </Card>
 
-      {/* ===== Letter Map ===== */}
+      {/* ===== Letter Map + Interactive Test side by side ===== */}
       {dataset && (
-        <Card title="Mapa Letra &rarr; Vetor Ortogonal" style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            {dataset.letras.map((l, i) => (
-              <LetterCard key={i} nome={l.nome} grade={l.grade} vetor={l.vetor} />
-            ))}
-          </div>
-        </Card>
+        <div className="grid-2" style={{ marginBottom: 24 }}>
+          <Card title="Mapa Letra &rarr; Vetor Ortogonal">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {dataset.letras.map((l, i) => (
+                <LetterCard
+                  key={i}
+                  nome={l.nome}
+                  grade={l.grade}
+                  vetor={l.vetor}
+                  clickable={trained}
+                  onClick={() => handleLetterCardClick(l.grade)}
+                />
+              ))}
+            </div>
+          </Card>
+
+          {/* Interactive Test (inline, always visible after training) */}
+          <Card title="Teste Interativo">
+            {trained ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 32, alignItems: 'start' }}>
+                <div>
+                  <PixelGrid
+                    rows={7}
+                    cols={5}
+                    cellSize={28}
+                    values={testPixels}
+                    onChange={autoClassify}
+                    showClear={false}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 10, padding: '6px 12px' }}
+                      onClick={() => { setTestPixels(new Array(35).fill(-1)); setTestResp(null); }}
+                    >LIMPAR</button>
+                  </div>
+                </div>
+                <div>
+                  {testResp ? (
+                    <>
+                      <div className="result-big">{testResp.letra}</div>
+                      <div className="result-label" style={{ marginBottom: 16 }}>
+                        distancia: {testResp.distancias[testResp.letraIdx].toFixed(4)}
+                      </div>
+                      <div className="conf-list">
+                        {testResp.top5.map((c, i) => {
+                          const maxDist = testResp.top5[testResp.top5.length - 1].distancia || 1;
+                          const pct = Math.max(0, 100 - (c.distancia / maxDist) * 100);
+                          return (
+                            <div className="conf-row" key={i}>
+                              <span className="conf-letter">{c.letra}</span>
+                              <div className="conf-bar-wrap">
+                                <div className="conf-bar-fill" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="conf-score">{c.distancia.toFixed(4)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty">
+                      <div className="empty-icon">?</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--on-surface)' }}>
+                        Desenhe ou clique uma letra ao lado
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="empty" style={{ padding: '24px 0' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--on-surface)' }}>
+                  Treine a rede para testar
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
       )}
 
-      {/* ===== Network Viz ===== */}
+      {/* ===== Network Viz (collapsible, hidden by default) ===== */}
       <Card title="Arquitetura" style={{ marginBottom: 24 }}>
-        <NetworkViz
-          layerSizes={[35, nHid, 32]}
-          activeLayer={activeLayer}
-          hudText={`35in \u00b7 tanh \u00b7 32out`}
-          animate={!training}
-        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 10, padding: '4px 10px' }}
+            onClick={() => setShowArch(prev => !prev)}
+          >
+            {showArch ? 'OCULTAR' : 'MOSTRAR'}
+          </button>
+        </div>
+        {showArch && (
+          <NetworkViz
+            layerSizes={[35, nHid, 32]}
+            activeLayer={activeLayer}
+            hudText={`35in · tanh · 32out`}
+            animate={!training}
+          />
+        )}
       </Card>
 
       {/* ===== Metrics ===== */}
@@ -345,63 +441,6 @@ export default function MlpOrtView() {
         </Card>
       )}
 
-      {/* ===== Interactive Test ===== */}
-      {trained && (
-        <Card title="Teste Interativo" style={{ marginBottom: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 32, alignItems: 'start' }}>
-            <div>
-              <PixelGrid
-                rows={7}
-                cols={5}
-                cellSize={28}
-                values={testPixels}
-                onChange={autoClassify}
-                showClear={false}
-              />
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button
-                  className="btn btn-ghost"
-                  style={{ fontSize: 10, padding: '6px 12px' }}
-                  onClick={() => { setTestPixels(new Array(35).fill(-1)); setTestResp(null); }}
-                >LIMPAR</button>
-              </div>
-            </div>
-
-            <div>
-              {testResp ? (
-                <>
-                  <div className="result-big">{testResp.letra}</div>
-                  <div className="result-label" style={{ marginBottom: 16 }}>
-                    distancia: {testResp.distancias[testResp.letraIdx].toFixed(4)}
-                  </div>
-                  <div className="conf-list">
-                    {testResp.top5.map((c, i) => {
-                      const maxDist = testResp.top5[testResp.top5.length - 1].distancia || 1;
-                      const pct = Math.max(0, 100 - (c.distancia / maxDist) * 100);
-                      return (
-                        <div className="conf-row" key={i}>
-                          <span className="conf-letter">{c.letra}</span>
-                          <div className="conf-bar-wrap">
-                            <div className="conf-bar-fill" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="conf-score">{c.distancia.toFixed(4)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : (
-                <div className="empty">
-                  <div className="empty-icon">?</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--on-surface)' }}>
-                    Desenhe uma letra e clique CLASSIFICAR
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* ===== Details Card ===== */}
       <Card title="Detalhes">
@@ -477,17 +516,25 @@ function OrtVectorTable({ step, stepIdx }: { step: OrtStep; stepIdx: number }) {
 // Letter Card (mini grid + ortogonal vector)
 // ---------------------------------------------------------------------------
 
-function LetterCard({ nome, grade, vetor }: { nome: string; grade: number[]; vetor: number[] }) {
+function LetterCard({ nome, grade, vetor, clickable, onClick }: { nome: string; grade: number[]; vetor: number[]; clickable?: boolean; onClick?: () => void }) {
   return (
-    <div style={{
-      background: 'var(--surface-low)',
-      padding: 8,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: 4,
-      minWidth: 52,
-    }}>
+    <div
+      onClick={clickable ? onClick : undefined}
+      style={{
+        background: 'var(--surface-low)',
+        padding: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4,
+        minWidth: 52,
+        cursor: clickable ? 'pointer' : 'default',
+        transition: 'box-shadow 100ms',
+        boxShadow: clickable ? undefined : 'none',
+      }}
+      onMouseEnter={clickable ? (e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 8px rgba(0,255,0,0.3)'; } : undefined}
+      onMouseLeave={clickable ? (e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'; } : undefined}
+    >
       {/* Mini 5x7 pixel grid */}
       <div style={{
         display: 'grid',
