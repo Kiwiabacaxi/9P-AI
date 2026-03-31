@@ -23,11 +23,34 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
   const painting = useRef(false);
   const paintVal = useRef(1);
 
+  // rAF batching refs to prevent excessive re-renders during drag
+  const pendingRef = useRef<number[] | null>(null);
+  const rafRef = useRef(0);
+
   const emit = useCallback((next: number[]) => {
     valuesRef.current = next;
     if (onChange) onChange(next);
     else setInternalValues(next);
   }, [onChange]);
+
+  // Flush any pending batched update
+  const flushPending = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    if (pendingRef.current) {
+      emit(pendingRef.current);
+      pendingRef.current = null;
+    }
+  }, [emit]);
+
+  // Cleanup rAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   const handleMouseDown = useCallback((idx: number, e: React.MouseEvent) => {
     if (readOnly) return;
@@ -46,12 +69,25 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
     if (cur[idx] === paintVal.current) return; // already set
     const next = [...cur];
     next[idx] = paintVal.current;
-    emit(next);
+    // Update ref immediately so subsequent events in the same frame read correct state
+    valuesRef.current = next;
+    // Batch the emit via requestAnimationFrame (1 re-render per frame max)
+    pendingRef.current = next;
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        if (pendingRef.current) {
+          emit(pendingRef.current);
+          pendingRef.current = null;
+        }
+      });
+    }
   }, [readOnly, emit]);
 
   const handleMouseUp = useCallback(() => {
     painting.current = false;
-  }, []);
+    flushPending();
+  }, [flushPending]);
 
   const clear = useCallback(() => {
     const next = new Array(total).fill(-1);

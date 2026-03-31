@@ -152,6 +152,7 @@ export interface FuncStep {
   ciclo: number;
   erroTotal: number;
   pontos: FuncPoint[];
+  activeLayer: number;
 }
 
 export interface FuncResult {
@@ -175,6 +176,7 @@ export interface OrtStep {
   letraIdx: number;
   letra: string;
   erroTotal: number;
+  activeLayer: number;
 }
 
 export interface OrtResult {

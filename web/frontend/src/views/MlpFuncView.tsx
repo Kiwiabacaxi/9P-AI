@@ -71,6 +71,9 @@ export default function MlpFuncView() {
   const [pontos, setPontos] = useState<FuncPoint[]>([]);
   const [erroHistorico, setErroHistorico] = useState<number[]>([]);
 
+  // Network viz
+  const [activeLayer, setActiveLayer] = useState(-1);
+
   // SSE cleanup ref
   const closeSSE = useRef<(() => void) | null>(null);
 
@@ -104,6 +107,7 @@ export default function MlpFuncView() {
         const step = data as FuncStep;
         setCiclos(step.ciclo.toLocaleString());
         setErro(step.erroTotal.toFixed(6));
+        setActiveLayer(step.activeLayer);
         if (step.pontos) {
           setPontos(step.pontos);
         }
@@ -117,11 +121,13 @@ export default function MlpFuncView() {
         setStatus(result.convergiu ? 'convergiu' : 'nao convergiu');
         setStatusColor(result.convergiu ? 'var(--primary-glow)' : 'var(--pink)');
         setTraining(false);
+        setActiveLayer(-1);
         closeSSE.current = null;
         show('MLP Funcoes treinado');
       },
       onError() {
         setTraining(false);
+        setActiveLayer(-1);
         setStatus('erro de conexao');
         setStatusColor('var(--pink)');
         closeSSE.current = null;
@@ -149,6 +155,7 @@ export default function MlpFuncView() {
     setPontos([]);
     setErroHistorico([]);
     setTraining(false);
+    setActiveLayer(-1);
     show('MLP Funcoes resetado');
   }
 
@@ -236,7 +243,9 @@ export default function MlpFuncView() {
       <Card title="Arquitetura da Rede" style={{ marginBottom: 16 }}>
         <NetworkViz
           layerSizes={layerSizes}
+          activeLayer={activeLayer}
           hudText={ativacao}
+          animate={!training}
         />
       </Card>
 

@@ -82,9 +82,10 @@ type FuncPoint struct {
 
 // FuncStep eh enviado via SSE a cada N ciclos
 type FuncStep struct {
-	Ciclo     int         `json:"ciclo"`
-	ErroTotal float64     `json:"erroTotal"`
-	Pontos    []FuncPoint `json:"pontos"`
+	Ciclo       int         `json:"ciclo"`
+	ErroTotal   float64     `json:"erroTotal"`
+	Pontos      []FuncPoint `json:"pontos"`
+	ActiveLayer int         `json:"activeLayer"`
 }
 
 // FuncResult eh o resultado final do treinamento
@@ -330,9 +331,10 @@ func Treinar(progressCh chan<- FuncStep, cfg Config) FuncResult {
 		if progressCh != nil && ciclo%100 == 0 {
 			pontos := predizer(m, xs, ts, ativ)
 			step := FuncStep{
-				Ciclo:     ciclo,
-				ErroTotal: erroTotal,
-				Pontos:    pontos,
+				Ciclo:       ciclo,
+				ErroTotal:   erroTotal,
+				Pontos:      pontos,
+				ActiveLayer: (ciclo / 100) % m.layers,
 			}
 			select {
 			case progressCh <- step:

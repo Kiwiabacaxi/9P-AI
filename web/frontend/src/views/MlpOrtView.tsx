@@ -52,6 +52,7 @@ export default function MlpOrtView() {
   const [result, setResult] = useState<OrtResult | null>(null);
   const [erroHist, setErroHist] = useState<number[]>([]);
   const sseCleanup = useRef<(() => void) | null>(null);
+  const [activeLayer, setActiveLayer] = useState(-1);
 
   // Dataset from server
   const [dataset, setDataset] = useState<OrtDatasetInfo | null>(null);
@@ -87,6 +88,7 @@ export default function MlpOrtView() {
       setResult(null);
       setErroHist([]);
       setTraining(false);
+      setActiveLayer(-1);
       setDemoLetter('');
       setDemoResp(null);
       setTestResp(null);
@@ -114,11 +116,9 @@ export default function MlpOrtView() {
 
     const cleanup = apiSSE('/mlport/train', {
       onMessage: (data) => {
-        const step = data as { erroTotal: number };
+        const step = data as { erroTotal: number; activeLayer: number };
+        setActiveLayer(step.activeLayer);
         setErroHist(prev => {
-          // SSE sends per-letter steps; we only care about error tracking
-          // The error histogram from the final result is more accurate,
-          // but we show live progress
           if (prev.length === 0 || step.erroTotal !== prev[prev.length - 1]) {
             return [...prev, step.erroTotal];
           }
@@ -130,10 +130,12 @@ export default function MlpOrtView() {
         setResult(res);
         setErroHist(res.erroHistorico || []);
         setTraining(false);
+        setActiveLayer(-1);
         toast.show(res.convergiu ? 'Convergiu!' : 'Limite de ciclos atingido');
       },
       onError: () => {
         setTraining(false);
+        setActiveLayer(-1);
         toast.show('Erro no treinamento');
       },
     });
@@ -274,7 +276,9 @@ export default function MlpOrtView() {
       <Card title="Arquitetura" style={{ marginBottom: 24 }}>
         <NetworkViz
           layerSizes={[35, nHid, 32]}
+          activeLayer={activeLayer}
           hudText={`35in \u00b7 tanh \u00b7 32out`}
+          animate={!training}
         />
       </Card>
 

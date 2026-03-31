@@ -40,10 +40,11 @@ type OrtMLP struct {
 }
 
 type OrtStep struct {
-	Ciclo     int     `json:"ciclo"`
-	LetraIdx  int     `json:"letraIdx"`
-	Letra     string  `json:"letra"`
-	ErroTotal float64 `json:"erroTotal"`
+	Ciclo       int     `json:"ciclo"`
+	LetraIdx    int     `json:"letraIdx"`
+	Letra       string  `json:"letra"`
+	ErroTotal   float64 `json:"erroTotal"`
+	ActiveLayer int     `json:"activeLayer"`
 }
 
 type OrtResult struct {
@@ -209,10 +210,11 @@ func Treinar(progressCh chan<- OrtStep, cfg Config) (OrtResult, OrtMLP) {
 
 			if len(steps) < maxSteps {
 				step := OrtStep{
-					Ciclo:     ciclo,
-					LetraIdx:  letraIdx,
-					Letra:     Nomes[letraIdx],
-					ErroTotal: erroTotal,
+					Ciclo:       ciclo,
+					LetraIdx:    letraIdx,
+					Letra:       Nomes[letraIdx],
+					ErroTotal:   erroTotal,
+					ActiveLayer: ciclo % 2,
 				}
 				steps = append(steps, step)
 				if progressCh != nil {

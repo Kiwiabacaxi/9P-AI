@@ -3,7 +3,7 @@ import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
 import PixelGrid from '../components/shared/PixelGrid';
 import LogChart from '../components/viz/LogChart';
-import NetworkViz from '../components/viz/NetworkViz';
+
 import { useToast } from '../components/shared/Toast';
 import { apiGet, apiPost, apiSSE } from '../api/client';
 
@@ -369,10 +369,6 @@ export default function MlpLetrasView() {
         </Card>
       </div>
 
-      {/* Network Visualization */}
-      <Card title="Arquitetura da Rede" style={{ marginTop: 16 }}>
-        <NetworkViz layerSizes={[35, 15, 26]} hudText="tanh" />
-      </Card>
     </div>
   );
 }
