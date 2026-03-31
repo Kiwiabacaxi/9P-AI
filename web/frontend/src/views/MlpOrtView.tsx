@@ -54,6 +54,19 @@ export default function MlpOrtView() {
   const sseCleanup = useRef<(() => void) | null>(null);
   const [activeLayer, setActiveLayer] = useState(-1);
 
+  // Log panel
+  const [logLines, setLogLines] = useState<{ msg: string; cls: string }[]>([
+    { msg: '// aguardando inicio do treinamento...', cls: 'dim' },
+  ]);
+  const [progress, setProgress] = useState(0);
+
+  const addLog = useCallback((msg: string, cls: string = '') => {
+    setLogLines(prev => {
+      const next = [{ msg, cls }, ...prev];
+      return next.length > 60 ? next.slice(0, 60) : next;
+    });
+  }, []);
+
   // Dataset from server
   const [dataset, setDataset] = useState<OrtDatasetInfo | null>(null);
 
@@ -92,6 +105,8 @@ export default function MlpOrtView() {
       setErroHist([]);
       setTraining(false);
       setActiveLayer(-1);
+      setLogLines([{ msg: '// aguardando inicio do treinamento...', cls: 'dim' }]);
+      setProgress(0);
       setDemoLetter('');
       setDemoResp(null);
       setTestResp(null);
@@ -116,11 +131,20 @@ export default function MlpOrtView() {
     setErroHist([]);
     setDemoResp(null);
     setTestResp(null);
+    setLogLines([]);
+    setProgress(0);
+    addLog('// iniciando treinamento MLP Ortogonal...', 'dim');
 
+    let stepCount = 0;
     const cleanup = apiSSE('/mlport/train', {
       onMessage: (data) => {
-        const step = data as { erroTotal: number; activeLayer: number };
+        const step = data as { ciclo: number; letraIdx: number; letra: string; erroTotal: number; activeLayer: number };
         setActiveLayer(step.activeLayer);
+        stepCount++;
+        setProgress(Math.min((step.ciclo / maxCiclo) * 100, 99));
+        if (stepCount % 5 === 1) {
+          addLog(`ciclo ${String(step.ciclo).padStart(5)} · letra ${step.letra} · erro ${step.erroTotal.toFixed(4)}`, 'ok');
+        }
         setErroHist(prev => {
           if (prev.length === 0 || step.erroTotal !== prev[prev.length - 1]) {
             return [...prev, step.erroTotal];
@@ -134,16 +158,19 @@ export default function MlpOrtView() {
         setErroHist(res.erroHistorico || []);
         setTraining(false);
         setActiveLayer(-1);
+        setProgress(100);
+        addLog(`✓ concluido: ${res.acertos}/${res.total} (${res.acuracia.toFixed(0)}%)`, 'ok');
         toast.show(res.convergiu ? 'Convergiu!' : 'Limite de ciclos atingido');
       },
       onError: () => {
         setTraining(false);
         setActiveLayer(-1);
+        addLog('// erro de conexao', 'err');
         toast.show('Erro no treinamento');
       },
     });
     sseCleanup.current = cleanup;
-  }, [training, nHid, alfa, maxCiclo, toast]);
+  }, [training, nHid, alfa, maxCiclo, toast, addLog]);
 
   const handleDemoSelect = useCallback(async (letter: string) => {
     setDemoLetter(letter);
@@ -272,12 +299,23 @@ export default function MlpOrtView() {
         />
       </div>
 
-      {/* ===== Error Chart ===== */}
-      {erroHist.length > 0 && (
-        <Card title="Curva de Erro (log)" style={{ marginBottom: 24 }}>
+      {/* ===== Log + Error Chart side by side ===== */}
+      <div className="grid-2" style={{ marginBottom: 24 }}>
+        <Card title="Log de Treinamento">
+          <div className="progress-wrap">
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="log-panel">
+            {logLines.map((line, i) => (
+              <div key={i} className={`log-line ${line.cls}`}>{line.msg}</div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Curva de Erro — escala log">
           <LogChart data={erroHist} />
         </Card>
-      )}
+      </div>
 
       {/* ===== Letter Map + Interactive Test side by side ===== */}
       {dataset && (
