@@ -243,7 +243,7 @@ export default function MlpLetrasView() {
       </Card>
 
       {/* Error Chart */}
-      <Card title="Curva de Erro \u2014 escala log" style={{ marginBottom: 16 }}>
+      <Card title="Curva de Erro — escala log" style={{ marginBottom: 16 }}>
         <LogChart data={erroHistorico} color="#00fbfb" />
       </Card>
 
@@ -314,7 +314,7 @@ export default function MlpLetrasView() {
         </Card>
 
         {/* Interactive Test */}
-        <Card title="Teste Manual \u2014 Grade 5x7">
+        <Card title="Teste Manual — Grade 5x7">
           <div className="letter-section">
             <div>
               <PixelGrid

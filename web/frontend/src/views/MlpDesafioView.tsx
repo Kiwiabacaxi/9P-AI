@@ -184,7 +184,7 @@ export default function MlpDesafioView() {
 
       {/* Error chart + Step explorer */}
       <div className="grid-2" style={{ marginBottom: 16 }}>
-        <Card title="Curva de Erro \u2014 escala log">
+        <Card title="Curva de Erro — escala log">
           <LogChart data={erroHistorico} />
         </Card>
 

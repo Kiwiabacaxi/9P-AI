@@ -277,7 +277,7 @@ export default function MlpFuncView() {
         <FuncChart pontos={pontos} height={300} />
       </Card>
 
-      <Card title="Curva de Erro \u2014 escala log" style={{ marginBottom: 16 }}>
+      <Card title="Curva de Erro — escala log" style={{ marginBottom: 16 }}>
         <LogChart data={erroHistorico} color="#00ccff" />
       </Card>
 

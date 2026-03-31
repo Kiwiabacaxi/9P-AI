@@ -13,44 +13,20 @@ interface Props {
 
 export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: externalValues, onChange, readOnly, showClear = true }: Props) {
   const total = rows * cols;
-  const [internalValues, setInternalValues] = useState<number[]>(() => new Array(total).fill(-1));
-  const values = externalValues ?? internalValues;
+  const [localValues, setLocalValues] = useState<number[]>(() => new Array(total).fill(-1));
 
-  // Keep a mutable ref of current values so drag doesn't use stale closures
-  const valuesRef = useRef(values);
-  useEffect(() => { valuesRef.current = values; }, [values]);
-
+  // Sync external values into local state when not painting
   const painting = useRef(false);
-  const paintVal = useRef(1);
-
-  // rAF batching refs to prevent excessive re-renders during drag
-  const pendingRef = useRef<number[] | null>(null);
-  const rafRef = useRef(0);
-
-  const emit = useCallback((next: number[]) => {
-    valuesRef.current = next;
-    if (onChange) onChange(next);
-    else setInternalValues(next);
-  }, [onChange]);
-
-  // Flush any pending batched update
-  const flushPending = useCallback(() => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
-    if (pendingRef.current) {
-      emit(pendingRef.current);
-      pendingRef.current = null;
-    }
-  }, [emit]);
-
-  // Cleanup rAF on unmount
   useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
+    if (externalValues && !painting.current) {
+      setLocalValues(externalValues);
+    }
+  }, [externalValues]);
+
+  const valuesRef = useRef(localValues);
+  useEffect(() => { valuesRef.current = localValues; }, [localValues]);
+
+  const paintVal = useRef(1);
 
   const handleMouseDown = useCallback((idx: number, e: React.MouseEvent) => {
     if (readOnly) return;
@@ -60,39 +36,34 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
     paintVal.current = newVal;
     const next = [...valuesRef.current];
     next[idx] = newVal;
-    emit(next);
-  }, [readOnly, emit]);
+    // Only update local state during paint — no parent notification yet
+    valuesRef.current = next;
+    setLocalValues(next);
+  }, [readOnly]);
 
   const handleMouseEnter = useCallback((idx: number) => {
     if (readOnly || !painting.current) return;
     const cur = valuesRef.current;
-    if (cur[idx] === paintVal.current) return; // already set
+    if (cur[idx] === paintVal.current) return;
     const next = [...cur];
     next[idx] = paintVal.current;
-    // Update ref immediately so subsequent events in the same frame read correct state
     valuesRef.current = next;
-    // Batch the emit via requestAnimationFrame (1 re-render per frame max)
-    pendingRef.current = next;
-    if (!rafRef.current) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = 0;
-        if (pendingRef.current) {
-          emit(pendingRef.current);
-          pendingRef.current = null;
-        }
-      });
-    }
-  }, [readOnly, emit]);
+    setLocalValues(next);
+  }, [readOnly]);
 
   const handleMouseUp = useCallback(() => {
+    if (!painting.current) return;
     painting.current = false;
-    flushPending();
-  }, [flushPending]);
+    // Notify parent ONCE with final state
+    if (onChange) onChange(valuesRef.current);
+  }, [onChange]);
 
   const clear = useCallback(() => {
     const next = new Array(total).fill(-1);
-    emit(next);
-  }, [total, emit]);
+    valuesRef.current = next;
+    setLocalValues(next);
+    if (onChange) onChange(next);
+  }, [total, onChange]);
 
   return (
     <div onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
@@ -105,7 +76,7 @@ export default function PixelGrid({ rows, cols, cellSize = 28, gap = 4, values: 
           userSelect: 'none',
         }}
       >
-        {values.slice(0, total).map((v, i) => (
+        {localValues.slice(0, total).map((v, i) => (
           <div
             key={i}
             className={`pixel${v === 1 ? ' on' : ''}`}
