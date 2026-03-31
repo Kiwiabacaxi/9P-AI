@@ -71,6 +71,9 @@ export default function MlpFuncView() {
   const [pontos, setPontos] = useState<FuncPoint[]>([]);
   const [erroHistorico, setErroHistorico] = useState<number[]>([]);
 
+  // UI
+  const [showArch, setShowArch] = useState(true);
+
   // Network viz
   const [activeLayer, setActiveLayer] = useState(-1);
 
@@ -241,14 +244,25 @@ export default function MlpFuncView() {
         </Card>
       </div>
 
-      {/* Network Visualization */}
+      {/* Network Visualization (collapsible) */}
       <Card title="Arquitetura da Rede" style={{ marginBottom: 16 }}>
-        <NetworkViz
-          layerSizes={layerSizes}
-          activeLayer={activeLayer}
-          hudText={ativacao}
-          animate={!training}
-        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 10, padding: '4px 10px' }}
+            onClick={() => setShowArch(prev => !prev)}
+          >
+            {showArch ? 'OCULTAR' : 'MOSTRAR'}
+          </button>
+        </div>
+        {showArch && (
+          <NetworkViz
+            layerSizes={layerSizes}
+            activeLayer={activeLayer}
+            hudText={ativacao}
+            animate={!training}
+          />
+        )}
       </Card>
 
       {/* Metrics */}

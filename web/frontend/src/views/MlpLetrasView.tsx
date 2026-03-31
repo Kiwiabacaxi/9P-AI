@@ -230,22 +230,23 @@ export default function MlpLetrasView() {
         />
       </div>
 
-      {/* Training Log */}
-      <Card title="Log de Treinamento" style={{ marginBottom: 16 }}>
-        <div className="progress-wrap">
-          <div className="progress-fill" style={{ width: `${progress}%` }} />
-        </div>
-        <div className="log-panel">
-          {logLines.map((line, i) => (
-            <div key={i} className={`log-line ${line.cls}`}>{line.msg}</div>
-          ))}
-        </div>
-      </Card>
+      {/* Training Log + Error Chart side by side */}
+      <div className="grid-2" style={{ marginBottom: 16 }}>
+        <Card title="Log de Treinamento">
+          <div className="progress-wrap">
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="log-panel">
+            {logLines.map((line, i) => (
+              <div key={i} className={`log-line ${line.cls}`}>{line.msg}</div>
+            ))}
+          </div>
+        </Card>
 
-      {/* Error Chart */}
-      <Card title="Curva de Erro — escala log" style={{ marginBottom: 16 }}>
-        <LogChart data={erroHistorico} color="#00fbfb" />
-      </Card>
+        <Card title="Curva de Erro — escala log">
+          <LogChart data={erroHistorico} color="#00fbfb" />
+        </Card>
+      </div>
 
       {/* Letter browser + Interactive test */}
       <div className="grid-2">
