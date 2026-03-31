@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
 import Select from '../components/shared/Select';
@@ -159,16 +159,18 @@ export default function MlpFuncView() {
     show('MLP Funcoes resetado');
   }
 
-  const hiddenLayerSizes = Array(parseInt(numLayers)).fill(parseInt(neurons));
-  const layerSizes = [1, ...hiddenLayerSizes, 1];
+  const layerSizes = useMemo(() => {
+    const hidden = Array(parseInt(numLayers)).fill(parseInt(neurons));
+    return [1, ...hidden, 1];
+  }, [numLayers, neurons]);
 
   return (
     <div>
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <div className="page-title">MLP <span>Funcoes</span></div>
-          <div className="page-sub">Aproximacao de funcoes com backpropagation &mdash; Aula 06</div>
+          <div className="page-title">MLP <span>Funções</span></div>
+          <div className="page-sub">Aproximação de funções com backpropagation &mdash; Aula 06</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn" onClick={handleReset} style={{ fontSize: 11, padding: '6px 12px' }}>
@@ -273,7 +275,7 @@ export default function MlpFuncView() {
       </div>
 
       {/* Charts (stacked vertically, full width) */}
-      <Card title="Funcao Original vs Aproximacao da Rede" style={{ marginBottom: 16 }}>
+      <Card title="Função Original vs Aproximação da Rede" style={{ marginBottom: 16 }}>
         <FuncChart pontos={pontos} height={300} />
       </Card>
 
@@ -287,7 +289,7 @@ export default function MlpFuncView() {
           Baseado no codigo Python da Aula 06 (MLPfuncaoBase.py). A rede usa <b>{ativacao}</b> como ativacao
           para aproximar uma funcao matematica usando 50 pontos igualmente espacados no intervalo [-1, 1].
           <br /><br />
-          <b>Arquitetura:</b> 1 entrada (x) &middot; {hiddenLayerSizes.map(n => `${n} ocultos`).join(' · ')} ({ativacao}) &middot; 1 saida ({ativacao}) &middot; erro alvo = 0.02
+          <b>Arquitetura:</b> 1 entrada (x) &middot; {layerSizes.slice(1, -1).map(n => `${n} ocultos`).join(' · ')} ({ativacao}) &middot; 1 saida ({ativacao}) &middot; erro alvo = 0.02
         </div>
       </Card>
     </div>

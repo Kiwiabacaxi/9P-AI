@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, memo } from 'react';
 
 interface Props {
   layerSizes: number[];
@@ -7,10 +7,9 @@ interface Props {
   animate?: boolean;
 }
 
-// phase: 'forward' (0→N, green) or 'backward' (N→0, pink/red for backprop)
 type Phase = 'forward' | 'backward';
 
-export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, animate = true }: Props) {
+export default memo(function NetworkViz({ layerSizes, activeLayer = -1, hudText, animate = true }: Props) {
   const MAX_SHOWN = 8;
   const H = 300;
   const padX = 55, padY = 32;
@@ -27,7 +26,6 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
     }
     const nLayers = layerSizes.length;
     if (nLayers <= 1) return;
-    // Forward: 0→N-1, then Backward: N-1→0
     const totalSteps = (nLayers - 1) * 2;
     let step = 0;
     intervalRef.current = setInterval(() => {
@@ -39,7 +37,7 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
         setPhase('backward');
         setIdleLayer(totalSteps - step);
       }
-    }, 400);
+    }, 600);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [activeLayer, animate, layerSizes.length]);
 
@@ -95,21 +93,6 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
         }
       `}</style>
       <svg viewBox="0 0 800 300" style={{ width: '100%', height: H, display: 'block' }}>
-        <defs>
-          <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="glow-pink" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
-
         {/* Grid background */}
         <pattern id="net-grid" width="40" height="40" patternUnits="userSpaceOnUse">
           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" strokeWidth="0.3" opacity="0.05" />
@@ -138,36 +121,36 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
           )
         )}
 
-        {/* Nodes */}
+        {/* Nodes — use CSS box-shadow style glow via stroke + opacity instead of expensive SVG filters */}
         {positions.map((layer, l) => {
           const isInput = l === 0;
           const isOutput = l === nLayers - 1;
           const isActive = l === currentActive;
           let fill = '#1c2026';
           let stroke = '#333';
-          let filter: string | undefined;
+          let strokeW = 1.5;
           if (isActive && currentPhase === 'backward') {
             fill = '#220011';
             stroke = '#ff6ec7';
-            filter = 'url(#glow-pink)';
+            strokeW = 2.5;
           } else if (isActive) {
             fill = '#002200';
             stroke = '#00ff00';
-            filter = 'url(#glow-green)';
+            strokeW = 2.5;
           } else if (isInput) {
             stroke = '#00fbfb';
-            filter = 'url(#glow-cyan)';
+            strokeW = 2;
           } else if (isOutput) {
             stroke = '#ff6ec7';
-            filter = 'url(#glow-pink)';
+            strokeW = 2;
           }
 
           return layer.map((node, j) => (
             <circle
               key={`n-${l}-${j}`}
               cx={node.x} cy={node.y} r={R}
-              fill={fill} stroke={stroke} strokeWidth={1.5}
-              filter={filter}
+              fill={fill} stroke={stroke} strokeWidth={strokeW}
+              opacity={isActive ? undefined : 0.9}
               className={isActive ? 'nv-node-active' : undefined}
             />
           ));
@@ -215,4 +198,4 @@ export default function NetworkViz({ layerSizes, activeLayer = -1, hudText, anim
       </svg>
     </div>
   );
-}
+});

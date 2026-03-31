@@ -21,7 +21,7 @@ const algos: NavEntry[] = [
 const desafios: NavEntry[] = [
   { view: 'mlp', label: 'MLP Desafio', icon: '\u25CE' },
   { view: 'letras', label: 'MLP Letras', icon: '\u25A4' },
-  { view: 'mlpfunc', label: 'MLP Funcoes', icon: '\u223F' },
+  { view: 'mlpfunc', label: 'MLP Funções', icon: '\u223F' },
   { view: 'mlport', label: 'MLP Ortogonal', icon: '\u229E' },
 ];
 
