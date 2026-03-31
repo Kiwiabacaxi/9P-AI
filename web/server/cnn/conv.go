@@ -49,13 +49,19 @@ func Conv2DForward(
 	output = make3D(outCh, outH, outW)
 	preRelu = make3D(outCh, outH, outW)
 
+	// Sim, são 6 loops aninhados mesmo, O(n^6), it's big brain time!
+	// Para cada filtro f (canal de saída):
 	for f := range outCh {
+		// Para cada posição (oh, ow) na saída, h->Height, w->Width:
 		for oh := range outH {
 			for ow := range outW {
 				sum := biases[f]
+				// Para cada canal de entrada c:
 				for c := range inCh {
+					// Para cada posição (kh, kw) no filtro:
 					for kh := range kH {
 						for kw := range kW {
+							// Produto escalar
 							sum += input[c][oh+kh][ow+kw] * filters[f][c][kh][kw]
 						}
 					}

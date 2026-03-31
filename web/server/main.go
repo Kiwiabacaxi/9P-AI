@@ -1239,6 +1239,92 @@ func handleCnnClassify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+const cnnModelsDir = "data/cnn-models"
+
+func handleCnnVisualize(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Pixels []float64 `json:"pixels"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	mu.RLock()
+	net := cnnRede
+	mu.RUnlock()
+	if net == nil {
+		errJSON(w, http.StatusPreconditionFailed, "CNN não treinada")
+		return
+	}
+	resp := cnn.Visualizar(net, req.Pixels)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func handleCnnSave(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Nome string `json:"nome"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+	mu.RLock()
+	net := cnnRede
+	res := cnnRes
+	mu.RUnlock()
+	if net == nil || res == nil {
+		errJSON(w, http.StatusPreconditionFailed, "CNN não treinada")
+		return
+	}
+	meta, err := cnn.SaveModel(cnnModelsDir, net, res, req.Nome)
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, "erro ao salvar: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, meta)
+}
+
+func handleCnnModels(w http.ResponseWriter, r *http.Request) {
+	models, err := cnn.ListModels(cnnModelsDir)
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, "erro ao listar: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, models)
+}
+
+func handleCnnLoad(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	net, res, err := cnn.LoadModel(cnnModelsDir, req.ID)
+	if err != nil {
+		errJSON(w, http.StatusNotFound, "erro ao carregar: "+err.Error())
+		return
+	}
+	mu.Lock()
+	cnnRede = net
+	cnnRes = res
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, res)
+}
+
+func handleCnnDeleteModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	if err := cnn.DeleteModel(cnnModelsDir, req.ID); err != nil {
+		errJSON(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -1331,6 +1417,11 @@ func main() {
 	mux.HandleFunc("/api/cnn/reset", cors(handleCnnReset))
 	mux.HandleFunc("/api/cnn/result", cors(handleCnnResult))
 	mux.HandleFunc("/api/cnn/classify", cors(handleCnnClassify))
+	mux.HandleFunc("/api/cnn/visualize", cors(handleCnnVisualize))
+	mux.HandleFunc("/api/cnn/save", cors(handleCnnSave))
+	mux.HandleFunc("/api/cnn/models", cors(handleCnnModels))
+	mux.HandleFunc("/api/cnn/load", cors(handleCnnLoad))
+	mux.HandleFunc("/api/cnn/delete-model", cors(handleCnnDeleteModel))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

@@ -281,6 +281,30 @@ export interface CnnClassifyResp {
   top5: { letra: string; score: number; idx: number }[];
 }
 
+export interface CnnVisualizeResp {
+  input: number[];
+  conv1Maps: number[][][];
+  pool1Maps: number[][][];
+  conv2Maps: number[][][];
+  pool2Maps: number[][][];
+  filters1: number[][][][];
+  probs: number[];
+  letraIdx: number;
+  letra: string;
+  top5: { letra: string; score: number; idx: number }[];
+}
+
+export interface CnnModelMeta {
+  id: string;
+  nome: string;
+  criadoEm: string;
+  epocas: number;
+  trainLimit: number;
+  acuracia: number;
+  acuraciaTest: number;
+  lossFinal: number;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'

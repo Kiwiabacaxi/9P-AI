@@ -504,3 +504,66 @@ func argmax(x []float64) int {
 	}
 	return best
 }
+
+// =============================================================================
+// Visualização das etapas da CNN
+//
+// Faz um forward pass e retorna TODAS as ativações intermediárias
+// para visualizar o pipeline: Input → Conv1 → Pool1 → Conv2 → Pool2 → resultado
+// =============================================================================
+
+// VisualizeResp contém todas as ativações intermediárias para visualização
+type VisualizeResp struct {
+	Input     []float64      `json:"input"`     // [784] imagem flat
+	Conv1Maps [][][]float64  `json:"conv1Maps"` // [8][26][26] feature maps após Conv1+ReLU
+	Pool1Maps [][][]float64  `json:"pool1Maps"` // [8][13][13] após MaxPool
+	Conv2Maps [][][]float64  `json:"conv2Maps"` // [16][11][11] feature maps após Conv2+ReLU
+	Pool2Maps [][][]float64  `json:"pool2Maps"` // [16][5][5] após MaxPool
+	Filters1  [][][][]float64 `json:"filters1"` // [8][1][3][3] kernels do Conv1
+	Probs     []float64      `json:"probs"`     // [26] softmax final
+	LetraIdx  int            `json:"letraIdx"`
+	Letra     string         `json:"letra"`
+	Top5      []CnnCandidate `json:"top5"`
+}
+
+// Visualizar faz forward pass e extrai todas as ativações para visualização.
+func Visualizar(net *CNN, pixels []float64) VisualizeResp {
+	input := ImageToTensor(pixels)
+	probs, cache := net.Forward(input)
+
+	best := argmax(probs)
+
+	// Top-5
+	type scoreIdx struct {
+		score float64
+		idx   int
+	}
+	items := make([]scoreIdx, NumClasses)
+	for i := range NumClasses {
+		items[i] = scoreIdx{probs[i], i}
+	}
+	sort.Slice(items, func(a, b int) bool {
+		return items[a].score > items[b].score
+	})
+	top5 := make([]CnnCandidate, 5)
+	for i := range 5 {
+		top5[i] = CnnCandidate{
+			Letra: LetterNames[items[i].idx],
+			Score: items[i].score,
+			Idx:   items[i].idx,
+		}
+	}
+
+	return VisualizeResp{
+		Input:     pixels,
+		Conv1Maps: cache.conv1Out,
+		Pool1Maps: cache.pool1Out,
+		Conv2Maps: cache.conv2Out,
+		Pool2Maps: cache.pool2Out,
+		Filters1:  net.Conv1F,
+		Probs:     probs,
+		LetraIdx:  best,
+		Letra:     LetterNames[best],
+		Top5:      top5,
+	}
+}
