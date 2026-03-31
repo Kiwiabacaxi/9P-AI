@@ -38,6 +38,10 @@ Thumbs.db
 # Playwright MCP screenshots/logs
 .playwright-mcp/
 
+# EMNIST dataset (large binary files, download manually)
+web/server/data/emnist/*.gz
+web/server/data/emnist/*-ubyte
+
 # WASM (built in CI from source)
 web/static/main.wasm
 web/static/wasm_exec.js

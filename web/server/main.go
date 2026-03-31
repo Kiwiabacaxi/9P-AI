@@ -19,6 +19,7 @@ import (
 	"mlp-server/mlp"
 	"mlp-server/mlpfunc"
 	"mlp-server/mlport"
+	"mlp-server/cnn"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -92,6 +93,14 @@ var (
 	ortRede     *mlport.OrtMLP
 	ortRes      *mlport.OrtResult
 	ortTraining bool
+
+	// CNN (EMNIST Letters)
+	cnnRede     *cnn.CNN
+	cnnRes      *cnn.CnnResult
+	cnnCfg      *cnn.Config
+	cnnTraining bool
+	cnnCancel   context.CancelFunc
+	cnnData     *cnn.EMNISTData
 )
 
 func init() {
@@ -148,6 +157,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		MlpFuncTraining bool `json:"mlpFuncTraining"`
 		OrtTrained      bool `json:"ortTrained"`
 		OrtTraining     bool `json:"ortTraining"`
+		CnnTrained      bool `json:"cnnTrained"`
+		CnnTraining     bool `json:"cnnTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:      mlpRede != nil,
@@ -164,6 +175,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		MlpFuncTraining: mlpFuncTraining,
 		OrtTrained:      ortRede != nil,
 		OrtTraining:     ortTraining,
+		CnnTrained:      cnnRede != nil,
+		CnnTraining:     cnnTraining,
 	})
 }
 
@@ -1093,6 +1106,139 @@ func handleOrtDataset(w http.ResponseWriter, r *http.Request) {
 // main
 // =============================================================================
 
+// =============================================================================
+// CNN (EMNIST Letters)
+// =============================================================================
+
+func handleCnnConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg cnn.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, "config inválida: "+err.Error())
+		return
+	}
+	mu.Lock()
+	cnnCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func handleCnnTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if cnnTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento já em andamento")
+		return
+	}
+	cfg := cnnCfg
+	if cfg == nil {
+		def := cnn.DefaultConfig()
+		cfg = &def
+	}
+
+	// Carregar dataset se ainda não carregado
+	if cnnData == nil {
+		data, err := cnn.LoadEMNIST("data/emnist")
+		if err != nil {
+			mu.Unlock()
+			errJSON(w, http.StatusInternalServerError, "erro ao carregar EMNIST: "+err.Error())
+			return
+		}
+		cnnData = data
+	}
+
+	cnnTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		cnnTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mu.Lock()
+	cnnCancel = cancel
+	mu.Unlock()
+
+	progressCh := make(chan cnn.CnnStep, 64)
+	go func() {
+		net, res := cnn.Treinar(ctx, useCfg, cnnData, progressCh)
+		mu.Lock()
+		cnnRede = net
+		cnnRes = &res
+		cnnTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := cnnRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleCnnReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if cnnCancel != nil {
+		cnnCancel()
+	}
+	cnnRede = nil
+	cnnRes = nil
+	cnnCfg = nil
+	cnnTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+func handleCnnResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	defer mu.RUnlock()
+	if cnnRes == nil {
+		errJSON(w, http.StatusNotFound, "CNN não treinada")
+		return
+	}
+	writeJSON(w, http.StatusOK, cnnRes)
+}
+
+func handleCnnClassify(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Pixels []float64 `json:"pixels"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	mu.RLock()
+	net := cnnRede
+	mu.RUnlock()
+	if net == nil {
+		errJSON(w, http.StatusPreconditionFailed, "CNN não treinada")
+		return
+	}
+	resp := cnn.Classificar(net, req.Pixels)
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -1178,6 +1324,13 @@ func main() {
 	mux.HandleFunc("/api/mlport/result", cors(handleOrtResult))
 	mux.HandleFunc("/api/mlport/classify", cors(handleOrtClassify))
 	mux.HandleFunc("/api/mlport/dataset", cors(handleOrtDataset))
+
+	// CNN (EMNIST Letters)
+	mux.HandleFunc("/api/cnn/config", cors(handleCnnConfig))
+	mux.HandleFunc("/api/cnn/train", cors(handleCnnTrain))
+	mux.HandleFunc("/api/cnn/reset", cors(handleCnnReset))
+	mux.HandleFunc("/api/cnn/result", cors(handleCnnResult))
+	mux.HandleFunc("/api/cnn/classify", cors(handleCnnClassify))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

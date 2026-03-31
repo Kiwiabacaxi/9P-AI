@@ -20,6 +20,8 @@ export interface AppStatus {
   mlpFuncTraining: boolean;
   ortTrained: boolean;
   ortTraining: boolean;
+  cnnTrained: boolean;
+  cnnTraining: boolean;
 }
 
 // Hebb
@@ -247,8 +249,41 @@ export interface BenchResult {
   epocas: number;
 }
 
+// CNN (EMNIST Letters)
+export interface CnnConfig {
+  alfa: number;
+  maxEpocas: number;
+  batchSize: number;
+  trainLimit: number;
+}
+
+export interface CnnStep {
+  epoca: number;
+  batch: number;
+  totalBatch: number;
+  loss: number;
+  acuracia: number;
+}
+
+export interface CnnResult {
+  epocas: number;
+  lossFinal: number;
+  lossHistorico: number[];
+  acuracia: number;
+  acuraciaTest: number;
+  tempoMs: number;
+}
+
+export interface CnnClassifyResp {
+  letraIdx: number;
+  letra: string;
+  scores: number[];
+  top5: { letra: string; score: number; idx: number }[];
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
+  | 'cnn'
   | 'about';

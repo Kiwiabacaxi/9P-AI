@@ -13,6 +13,7 @@ import MlpFuncView from './views/MlpFuncView';
 import MlpOrtView from './views/MlpOrtView';
 import ImgregView from './views/ImgregView';
 import ImgregBenchView from './views/ImgregBenchView';
+import CnnView from './views/CnnView';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -28,6 +29,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   'imgreg-matrix': () => <ImgregView variant="matrix" />,
   'imgreg-minibatch': () => <ImgregView variant="minibatch" />,
   'imgreg-bench': ImgregBenchView,
+  cnn: CnnView,
   about: AboutView,
 };
 

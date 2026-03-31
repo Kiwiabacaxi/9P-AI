@@ -68,6 +68,15 @@ export default function Sidebar({ active, onNavigate }: Props) {
         {imgregItems.map(navItem)}
       </div>
       <div className="sidebar-divider" />
+      <div className="sidebar-label">Deep Learning</div>
+      <div
+        className={`nav-item${active === 'cnn' ? ' active' : ''}`}
+        onClick={() => onNavigate('cnn')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A7'}</span>
+        CNN EMNIST
+      </div>
+      <div className="sidebar-divider" />
       <div
         className={`nav-item${active === 'about' ? ' active' : ''}`}
         onClick={() => onNavigate('about')}

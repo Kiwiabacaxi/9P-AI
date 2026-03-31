@@ -18,6 +18,7 @@ const dots: DotInfo[] = [
   { id: 'imgreg', label: 'IMG_REG', trainedKey: 'imgregTrained', trainingKey: 'imgregTraining' },
   { id: 'mlpfunc', label: 'FUNC', trainedKey: 'mlpFuncTrained', trainingKey: 'mlpFuncTraining' },
   { id: 'ort', label: 'ORT', trainedKey: 'ortTrained', trainingKey: 'ortTraining' },
+  { id: 'cnn', label: 'CNN', trainedKey: 'cnnTrained', trainingKey: 'cnnTraining' },
 ];
 
 export default function TopBar() {
