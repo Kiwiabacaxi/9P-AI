@@ -7,11 +7,11 @@ Dataset derivado do [NIST Special Database 19](https://www.nist.gov/srd/nist-spe
 Baixe os 4 arquivos do EMNIST Letters split:
 
 ```bash
-# Opção 1: GitHub mirror
-curl -LO https://raw.githubusercontent.com/hosford42/EMNIST/master/emnist-letters-train-images-idx3-ubyte.gz
-curl -LO https://raw.githubusercontent.com/hosford42/EMNIST/master/emnist-letters-train-labels-idx1-ubyte.gz
-curl -LO https://raw.githubusercontent.com/hosford42/EMNIST/master/emnist-letters-test-images-idx3-ubyte.gz
-curl -LO https://raw.githubusercontent.com/hosford42/EMNIST/master/emnist-letters-test-labels-idx1-ubyte.gz
+# Download do NIST (todas as splits, ~536MB)
+curl -LO https://biometrics.nist.gov/cs_links/EMNIST/gzip.zip
+# Extrair apenas o split "letters":
+unzip -jo gzip.zip "gzip/emnist-letters-*" -d .
+rm gzip.zip
 ```
 
 ## Formato
