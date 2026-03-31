@@ -248,31 +248,36 @@ export default function MlpOrtView() {
         </Card>
       </div>
 
-      {/* ===== Orthogonal Vector Construction ===== */}
-      <Card title="Construcao dos Vetores Bipolares Ortogonais" style={{ marginBottom: 24 }}>
-        <div className="porta-chips" style={{ marginBottom: 16 }}>
-          {ortSteps.map((s, i) => (
-            <button
-              key={i}
-              className={`porta-chip${activeStep === i ? ' selected' : ''}`}
-              onClick={() => setActiveStep(i)}
-            >
-              Passo {i} ({s.dims}x{s.dims})
-            </button>
-          ))}
-        </div>
+      {/* ===== Metrics ===== */}
+      <div className="grid-3" style={{ marginBottom: 24 }}>
+        <MetricCard
+          title="Ciclos"
+          value={result ? result.ciclos.toLocaleString() : '--'}
+          label={result ? (result.convergiu ? 'convergiu' : 'limite atingido') : 'aguardando'}
+          color="cyan"
+          pulse={training}
+        />
+        <MetricCard
+          title="Acuracia"
+          value={result ? `${result.acuracia.toFixed(1)}%` : '--'}
+          label={result ? `${result.acertos}/${result.total} corretas` : 'aguardando'}
+          color="green"
+        />
+        <MetricCard
+          title="Status"
+          value={training ? 'TREINANDO' : (trained ? 'PRONTO' : 'IDLE')}
+          label={result ? `erro final: ${result.erroFinal.toFixed(4)}` : 'nenhum resultado'}
+          color={training ? 'pink' : (trained ? 'green' : undefined)}
+          pulse={training}
+        />
+      </div>
 
-        <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-          <OrtVectorTable step={ortSteps[activeStep]} stepIdx={activeStep} />
-        </div>
-
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', lineHeight: 1.6 }}>
-          Construcao recursiva: comecar com v0=[1,1] e v1=[1,-1].
-          A cada passo, cada vetor <b>v</b> gera dois novos: <b>(v,v)</b> e <b>(v,-v)</b>.{' '}
-          Apos 4 expansoes: 32 vetores ortogonais de 32 dimensoes.
-          Para 26 letras, usamos os primeiros 26.
-        </div>
-      </Card>
+      {/* ===== Error Chart ===== */}
+      {erroHist.length > 0 && (
+        <Card title="Curva de Erro (log)" style={{ marginBottom: 24 }}>
+          <LogChart data={erroHist} />
+        </Card>
+      )}
 
       {/* ===== Letter Map + Interactive Test side by side ===== */}
       {dataset && (
@@ -292,7 +297,6 @@ export default function MlpOrtView() {
             </div>
           </Card>
 
-          {/* Interactive Test (inline, always visible after training) */}
           <Card title="Teste Interativo">
             {trained ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 32, alignItems: 'start' }}>
@@ -357,58 +361,6 @@ export default function MlpOrtView() {
         </div>
       )}
 
-      {/* ===== Network Viz (collapsible, hidden by default) ===== */}
-      <Card title="Arquitetura" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-          <button
-            className="btn btn-ghost"
-            style={{ fontSize: 10, padding: '4px 10px' }}
-            onClick={() => setShowArch(prev => !prev)}
-          >
-            {showArch ? 'OCULTAR' : 'MOSTRAR'}
-          </button>
-        </div>
-        {showArch && (
-          <NetworkViz
-            layerSizes={[35, nHid, 32]}
-            activeLayer={activeLayer}
-            hudText={`35in · tanh · 32out`}
-            animate={!training}
-          />
-        )}
-      </Card>
-
-      {/* ===== Metrics ===== */}
-      <div className="grid-3" style={{ marginBottom: 24 }}>
-        <MetricCard
-          title="Ciclos"
-          value={result ? result.ciclos.toLocaleString() : '--'}
-          label={result ? (result.convergiu ? 'convergiu' : 'limite atingido') : 'aguardando'}
-          color="cyan"
-          pulse={training}
-        />
-        <MetricCard
-          title="Acuracia"
-          value={result ? `${result.acuracia.toFixed(1)}%` : '--'}
-          label={result ? `${result.acertos}/${result.total} corretas` : 'aguardando'}
-          color="green"
-        />
-        <MetricCard
-          title="Status"
-          value={training ? 'TREINANDO' : (trained ? 'PRONTO' : 'IDLE')}
-          label={result ? `erro final: ${result.erroFinal.toFixed(4)}` : 'nenhum resultado'}
-          color={training ? 'pink' : (trained ? 'green' : undefined)}
-          pulse={training}
-        />
-      </div>
-
-      {/* ===== Error Chart ===== */}
-      {erroHist.length > 0 && (
-        <Card title="Curva de Erro (log)" style={{ marginBottom: 24 }}>
-          <LogChart data={erroHist} />
-        </Card>
-      )}
-
       {/* ===== Euclidean Distance Demo ===== */}
       {trained && dataset && (
         <Card title="Classificacao por Distancia Euclidiana" style={{ marginBottom: 24 }}>
@@ -441,6 +393,52 @@ export default function MlpOrtView() {
         </Card>
       )}
 
+      {/* ===== Orthogonal Vector Construction ===== */}
+      <Card title="Construcao dos Vetores Bipolares Ortogonais" style={{ marginBottom: 24 }}>
+        <div className="porta-chips" style={{ marginBottom: 16 }}>
+          {ortSteps.map((s, i) => (
+            <button
+              key={i}
+              className={`porta-chip${activeStep === i ? ' selected' : ''}`}
+              onClick={() => setActiveStep(i)}
+            >
+              Passo {i} ({s.dims}x{s.dims})
+            </button>
+          ))}
+        </div>
+
+        <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+          <OrtVectorTable step={ortSteps[activeStep]} stepIdx={activeStep} />
+        </div>
+
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', lineHeight: 1.6 }}>
+          Construcao recursiva: comecar com v0=[1,1] e v1=[1,-1].
+          A cada passo, cada vetor <b>v</b> gera dois novos: <b>(v,v)</b> e <b>(v,-v)</b>.{' '}
+          Apos 4 expansoes: 32 vetores ortogonais de 32 dimensoes.
+          Para 26 letras, usamos os primeiros 26.
+        </div>
+      </Card>
+
+      {/* ===== Network Viz (collapsible, hidden by default) ===== */}
+      <Card title="Arquitetura" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 10, padding: '4px 10px' }}
+            onClick={() => setShowArch(prev => !prev)}
+          >
+            {showArch ? 'OCULTAR' : 'MOSTRAR'}
+          </button>
+        </div>
+        {showArch && (
+          <NetworkViz
+            layerSizes={[35, nHid, 32]}
+            activeLayer={activeLayer}
+            hudText={`35in · tanh · 32out`}
+            animate={!training}
+          />
+        )}
+      </Card>
 
       {/* ===== Details Card ===== */}
       <Card title="Detalhes">
