@@ -1,6 +1,6 @@
 PORT := 8080
 
-.PHONY: run build clean kill
+.PHONY: run build build-frontend build-server clean kill
 
 run: build kill
 	@echo "» iniciando servidor em http://localhost:$(PORT)"
@@ -12,8 +12,14 @@ run: build kill
 	open http://localhost:$(PORT); \
 	wait
 
-build:
-	@echo "» compilando..."
+build: build-frontend build-server
+
+build-frontend:
+	@echo "» compilando frontend..."
+	@cd frontend && npm run build
+
+build-server:
+	@echo "» compilando servidor..."
 	@cd server && go build -o mlp-server .
 
 build-windows:
