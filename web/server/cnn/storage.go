@@ -130,7 +130,7 @@ func ListModels(dir string) ([]ModelMeta, error) {
 		return nil, err
 	}
 
-	var models []ModelMeta
+	models := make([]ModelMeta, 0)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
