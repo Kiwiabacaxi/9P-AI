@@ -561,7 +561,7 @@ export default function CnnView() {
                 {vizData && (
                   <button className="btn btn-primary" style={{ fontSize: 10, padding: '6px 12px' }}
                     onClick={() => setShowMegaAnim(true)}>
-                    MEGA ANIMAÇÃO
+                    ANIMAÇÃO PASSO A PASSO
                   </button>
                 )}
               </div>

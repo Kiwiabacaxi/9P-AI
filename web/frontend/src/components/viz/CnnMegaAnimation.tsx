@@ -288,7 +288,7 @@ export default function CnnMegaAnimation({ vizData, onClose }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--cyan)', fontWeight: 700 }}>
-          MEGA ANIMAÇÃO — Fase {phase}/5: {PHASE_NAMES[phase]}
+          ANIMAÇÃO PASSO A PASSO — Fase {phase}/5: {PHASE_NAMES[phase]}
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Speed */}
