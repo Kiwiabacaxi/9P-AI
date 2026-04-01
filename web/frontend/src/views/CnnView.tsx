@@ -96,6 +96,91 @@ function KernelGrid({ data }: { data: number[][] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline Diagram — 2D with hover tooltips
+// ---------------------------------------------------------------------------
+
+const PIPELINE_BLOCKS = [
+  { label: 'Input',      sub: '28×28×1',  color: '#00fbfb', bg: '#0a1a2a',
+    tip: 'Imagem grayscale 28×28 pixels normalizada [0,1]. Cada pixel é um valor de intensidade.' },
+  { label: 'Conv1+ReLU', sub: '26×26×8',  color: '#4488ff', bg: '#0a1a3a',
+    tip: '8 filtros 3×3 deslizam sobre a imagem extraindo features (bordas, cantos). ReLU zera valores negativos.' },
+  { label: 'MaxPool',    sub: '13×13×8',  color: '#ff6ec7', bg: '#2a0a1a',
+    tip: 'Reduz pela metade: pega o valor máximo de cada janela 2×2. Mantém as features mais fortes.' },
+  { label: 'Conv2+ReLU', sub: '11×11×16', color: '#4488ff', bg: '#0a1a3a',
+    tip: '16 filtros 3×3 combinam as features do Conv1 em padrões mais complexos (partes de letras).' },
+  { label: 'MaxPool',    sub: '5×5×16',   color: '#ff6ec7', bg: '#2a0a1a',
+    tip: 'Outra redução 2×2. Agora temos 16 mapas de 5×5 — representação compacta da imagem.' },
+  { label: 'Flatten',    sub: '400',      color: '#888',    bg: '#1a1a2a',
+    tip: 'Achata os 16×5×5 = 400 valores em um vetor 1D para alimentar a rede densa.' },
+  { label: 'Dense+ReLU', sub: '64',       color: '#00ff00', bg: '#0a2a0a',
+    tip: 'Camada totalmente conectada: 400→64 neurônios. Aprende combinações das features para classificação.' },
+  { label: 'Dense',      sub: '26',       color: '#00ff00', bg: '#0a2a0a',
+    tip: 'Camada final: 64→26 neurônios (um por letra A-Z). Produz scores brutos (logits).' },
+  { label: 'Softmax',    sub: 'A-Z',      color: '#00ff00', bg: '#002200',
+    tip: 'Converte logits em probabilidades (somam 100%). A letra com maior probabilidade é a classificação.' },
+];
+
+function PipelineDiagram({ animStep }: { animStep: number }) {
+  const [hover, setHover] = useState<number | null>(null);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ overflowX: 'auto', padding: '12px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 860 }}>
+          {PIPELINE_BLOCKS.map((b, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
+              {/* Block */}
+              <div
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+                style={{
+                  textAlign: 'center', padding: '10px 14px', cursor: 'pointer',
+                  background: b.bg, border: `2px solid ${b.color}`,
+                  borderRadius: 4, minWidth: 70,
+                  transition: 'all 0.3s',
+                  opacity: animStep < 0 || animStep === i ? 1 : 0.3,
+                  boxShadow: (animStep === i || hover === i) ? `0 0 12px ${b.color}60` : 'none',
+                  transform: hover === i ? 'scale(1.05)' : 'scale(1)',
+                }}
+              >
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: b.color, fontWeight: 700 }}>
+                  {b.label}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#888', marginTop: 2 }}>
+                  {b.sub}
+                </div>
+              </div>
+              {/* Arrow */}
+              {i < PIPELINE_BLOCKS.length - 1 && (
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 14, color: '#555', padding: '0 6px',
+                  transition: 'all 0.3s', opacity: animStep < 0 || animStep <= i + 1 ? 1 : 0.3,
+                }}>→</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tooltip */}
+      {hover !== null && (
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--on-surface)',
+          background: 'var(--surface-high)', border: `1px solid ${PIPELINE_BLOCKS[hover].color}40`,
+          padding: '8px 14px', marginTop: 4, lineHeight: 1.6, maxWidth: 500,
+          boxShadow: `0 0 8px ${PIPELINE_BLOCKS[hover].color}20`,
+        }}>
+          <span style={{ color: PIPELINE_BLOCKS[hover].color, fontWeight: 700 }}>
+            {PIPELINE_BLOCKS[hover].label}:
+          </span>{' '}
+          {PIPELINE_BLOCKS[hover].tip}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -518,7 +603,7 @@ export default function CnnView() {
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', minWidth: 900, padding: '8px 0' }}>
+            <div style={{ display: 'flex', gap: 24, alignItems: 'center', minWidth: 900, padding: '8px 0' }}>
 
               {/* Each stage: opacity/glow controlled by animStep */}
               {/* INPUT */}
@@ -654,54 +739,12 @@ export default function CnnView() {
 
       {/* ===== 2D Architecture Pipeline ===== */}
       <Card title="Arquitetura CNN — Pipeline" style={{ marginBottom: 24 }}>
-        <div style={{ overflowX: 'auto' }}>
-          <svg viewBox="0 0 920 140" style={{ width: '100%', maxWidth: 920, height: 140, display: 'block', margin: '0 auto' }}>
-            {/* Connection lines */}
-            {[115, 235, 345, 465, 560, 655, 745, 835].map((x, i) => (
-              <line key={`l${i}`} x1={x} y1={70} x2={x + 20} y2={70} stroke="#333" strokeWidth={1.5}
-                markerEnd="url(#arrowhead)" />
-            ))}
-            <defs>
-              <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto">
-                <polygon points="0 0, 6 2, 0 4" fill="#555" />
-              </marker>
-            </defs>
-
-            {/* Blocks */}
-            {[
-              { x: 10,  w: 100, h: 100, y: 20, label: 'Input',       sub: '28×28×1',  color: '#00fbfb', bg: '#0a1a2a' },
-              { x: 140, w: 90,  h: 90,  y: 25, label: 'Conv1+ReLU',  sub: '26×26×8',  color: '#4488ff', bg: '#0a1a3a' },
-              { x: 260, w: 80,  h: 50,  y: 45, label: 'MaxPool',     sub: '13×13×8',  color: '#ff6ec7', bg: '#2a0a1a' },
-              { x: 370, w: 90,  h: 70,  y: 35, label: 'Conv2+ReLU',  sub: '11×11×16', color: '#4488ff', bg: '#0a1a3a' },
-              { x: 490, w: 65,  h: 40,  y: 50, label: 'MaxPool',     sub: '5×5×16',   color: '#ff6ec7', bg: '#2a0a1a' },
-              { x: 585, w: 20,  h: 80,  y: 30, label: 'Flat',        sub: '400',      color: '#888',    bg: '#1a1a2a' },
-              { x: 660, w: 30,  h: 50,  y: 45, label: 'Dense',       sub: '64',       color: '#00ff00', bg: '#0a2a0a' },
-              { x: 750, w: 30,  h: 30,  y: 55, label: 'Dense',       sub: '26',       color: '#00ff00', bg: '#0a2a0a' },
-              { x: 840, w: 60,  h: 40,  y: 50, label: 'Softmax',     sub: 'A-Z',      color: '#00ff00', bg: '#002200' },
-            ].map((b, i) => (
-              <g key={i} style={{ transition: 'opacity 0.4s', opacity: animStep < 0 || animStep === i ? 1 : 0.3 }}>
-                <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={3}
-                  fill={b.bg} stroke={b.color} strokeWidth={animStep === i ? 2.5 : 1.5} />
-                {animStep === i && (
-                  <rect x={b.x - 2} y={b.y - 2} width={b.w + 4} height={b.h + 4} rx={5}
-                    fill="none" stroke={b.color} strokeWidth={1} opacity={0.3} />
-                )}
-                <text x={b.x + b.w / 2} y={b.y + b.h / 2 - 4} textAnchor="middle"
-                  fill={b.color} fontSize={9} fontFamily="JetBrains Mono" fontWeight={700}>
-                  {b.label}
-                </text>
-                <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 8} textAnchor="middle"
-                  fill="#888" fontSize={7} fontFamily="JetBrains Mono">
-                  {b.sub}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 4 }}>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a1a3a', border: '1px solid #4488ff', marginRight: 4 }} />Conv+ReLU</span>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2a0a1a', border: '1px solid #ff6ec7', marginRight: 4 }} />MaxPool</span>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a2a0a', border: '1px solid #00ff00', marginRight: 4 }} />Dense/Softmax</span>
+        <PipelineDiagram animStep={animStep} />
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontFamily: 'var(--font-mono)', fontSize: 10, marginTop: 8 }}>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#0a1a3a', border: '1.5px solid #4488ff', marginRight: 6, verticalAlign: 'middle' }} />Conv+ReLU</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#2a0a1a', border: '1.5px solid #ff6ec7', marginRight: 6, verticalAlign: 'middle' }} />MaxPool</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#0a2a0a', border: '1.5px solid #00ff00', marginRight: 6, verticalAlign: 'middle' }} />Dense/Softmax</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#1a1a2a', border: '1.5px solid #888', marginRight: 6, verticalAlign: 'middle' }} />Flatten</span>
         </div>
       </Card>
 
