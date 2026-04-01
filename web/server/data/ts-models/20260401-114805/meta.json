@@ -1,0 +1,12 @@
+{
+  "id": "20260401-114805",
+  "nome": "v1",
+  "criadoEm": "2026-04-01T11:48:05-03:00",
+  "ticker": "COGN3.SA",
+  "windowSize": 20,
+  "hiddenSize": 128,
+  "ciclos": 5000,
+  "rmseFinal": 0.14358692763869324,
+  "maeFinal": 0.11647773035789839,
+  "predicaoAmanha": 3.330957109163576
+}
