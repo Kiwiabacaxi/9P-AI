@@ -22,6 +22,8 @@ export interface AppStatus {
   ortTraining: boolean;
   cnnTrained: boolean;
   cnnTraining: boolean;
+  tsTrained: boolean;
+  tsTraining: boolean;
 }
 
 // Hebb
@@ -306,9 +308,58 @@ export interface CnnModelMeta {
   lossFinal: number;
 }
 
+// Time Series (Previsão de ações)
+export interface TsStockData {
+  ticker: string;
+  dates: string[];
+  close: number[];
+  open: number[];
+  high: number[];
+  low: number[];
+  volume: number[];
+}
+
+export interface TsStep {
+  ciclo: number;
+  mseTreino: number;
+  mseValid: number;
+}
+
+export interface TsPoint {
+  data: string;
+  preco: number;
+  predito: number;
+}
+
+export interface TsResult {
+  ciclos: number;
+  mseFinal: number;
+  rmseFinal: number;
+  maeFinal: number;
+  mseHistorico: number[];
+  pontos: TsPoint[];
+  pontosValid: TsPoint[];
+  predicaoAmanha: number;
+  ticker: string;
+  tempoMs: number;
+}
+
+export interface TsModelMeta {
+  id: string;
+  nome: string;
+  criadoEm: string;
+  ticker: string;
+  windowSize: number;
+  hiddenSize: number;
+  ciclos: number;
+  rmseFinal: number;
+  maeFinal: number;
+  predicaoAmanha: number;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
-  | 'cnn'
+  | 'cnn' | 'timeseries'
   | 'about';

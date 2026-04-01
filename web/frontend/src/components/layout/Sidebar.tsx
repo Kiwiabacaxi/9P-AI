@@ -76,6 +76,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A7'}</span>
         CNN EMNIST
       </div>
+      <div
+        className={`nav-item${active === 'timeseries' ? ' active' : ''}`}
+        onClick={() => onNavigate('timeseries')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A9'}</span>
+        MLP Ações
+      </div>
       <div className="sidebar-divider" />
       <div
         className={`nav-item${active === 'about' ? ' active' : ''}`}

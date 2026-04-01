@@ -19,6 +19,7 @@ const dots: DotInfo[] = [
   { id: 'mlpfunc', label: 'FUNC', trainedKey: 'mlpFuncTrained', trainingKey: 'mlpFuncTraining' },
   { id: 'ort', label: 'ORT', trainedKey: 'ortTrained', trainingKey: 'ortTraining' },
   { id: 'cnn', label: 'CNN', trainedKey: 'cnnTrained', trainingKey: 'cnnTraining' },
+  { id: 'ts', label: 'TS', trainedKey: 'tsTrained', trainingKey: 'tsTraining' },
 ];
 
 export default function TopBar() {

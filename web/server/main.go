@@ -20,6 +20,7 @@ import (
 	"mlp-server/mlpfunc"
 	"mlp-server/mlport"
 	"mlp-server/cnn"
+	"mlp-server/timeseries"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -101,6 +102,14 @@ var (
 	cnnTraining bool
 	cnnCancel   context.CancelFunc
 	cnnData     *cnn.EMNISTData
+
+	// Time Series (Previsão de ações)
+	tsRede      *timeseries.TimeSeriesMLP
+	tsRes       *timeseries.TimeSeriesResult
+	tsCfg       *timeseries.Config
+	tsTraining  bool
+	tsStockData *timeseries.StockData
+	tsNormData  *timeseries.NormalizedData
 )
 
 func init() {
@@ -159,6 +168,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		OrtTraining     bool `json:"ortTraining"`
 		CnnTrained      bool `json:"cnnTrained"`
 		CnnTraining     bool `json:"cnnTraining"`
+		TsTrained       bool `json:"tsTrained"`
+		TsTraining      bool `json:"tsTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:      mlpRede != nil,
@@ -177,6 +188,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		OrtTraining:     ortTraining,
 		CnnTrained:      cnnRede != nil,
 		CnnTraining:     cnnTraining,
+		TsTrained:       tsRede != nil,
+		TsTraining:      tsTraining,
 	})
 }
 
@@ -1325,6 +1338,193 @@ func handleCnnDeleteModel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// =============================================================================
+// Time Series (Previsão de ações)
+// =============================================================================
+
+const tsModelsDir = "data/ts-models"
+
+func handleTsFetchData(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Ticker string `json:"ticker"`
+		Period string `json:"period"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	if req.Ticker == "" { req.Ticker = "COGN3.SA" }
+	if req.Period == "" { req.Period = "6mo" }
+
+	data, err := timeseries.FetchStockData(req.Ticker, req.Period)
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, "erro ao buscar dados: "+err.Error())
+		return
+	}
+	mu.Lock()
+	tsStockData = data
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, data)
+}
+
+func handleTsConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg timeseries.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, "config inválida")
+		return
+	}
+	mu.Lock()
+	tsCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func handleTsTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if tsTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento já em andamento")
+		return
+	}
+	cfg := tsCfg
+	if cfg == nil {
+		def := timeseries.DefaultConfig()
+		cfg = &def
+	}
+	stockData := tsStockData
+	if stockData == nil || len(stockData.Close) == 0 {
+		mu.Unlock()
+		errJSON(w, http.StatusPreconditionFailed, "busque dados primeiro (fetch-data)")
+		return
+	}
+	tsTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		tsTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays)
+
+	progressCh := make(chan timeseries.TimeSeriesStep, 64)
+	go func() {
+		net, res := timeseries.Treinar(useCfg, normData, progressCh)
+		mu.Lock()
+		tsRede = net
+		tsRes = &res
+		tsNormData = &normData
+		tsTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := tsRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleTsReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	tsRede = nil
+	tsRes = nil
+	tsCfg = nil
+	tsTraining = false
+	tsStockData = nil
+	tsNormData = nil
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+func handleTsResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	defer mu.RUnlock()
+	if tsRes == nil {
+		errJSON(w, http.StatusNotFound, "não treinado")
+		return
+	}
+	writeJSON(w, http.StatusOK, tsRes)
+}
+
+func handleTsSave(w http.ResponseWriter, r *http.Request) {
+	var req struct { Nome string `json:"nome"` }
+	json.NewDecoder(r.Body).Decode(&req)
+	mu.RLock()
+	net, res := tsRede, tsRes
+	mu.RUnlock()
+	if net == nil || res == nil {
+		errJSON(w, http.StatusPreconditionFailed, "não treinado")
+		return
+	}
+	meta, err := timeseries.SaveModel(tsModelsDir, net, res, req.Nome)
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, meta)
+}
+
+func handleTsModels(w http.ResponseWriter, r *http.Request) {
+	models, err := timeseries.ListModels(tsModelsDir)
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, models)
+}
+
+func handleTsLoad(w http.ResponseWriter, r *http.Request) {
+	var req struct { ID string `json:"id"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	net, res, err := timeseries.LoadModel(tsModelsDir, req.ID)
+	if err != nil {
+		errJSON(w, http.StatusNotFound, err.Error())
+		return
+	}
+	mu.Lock()
+	tsRede = net
+	tsRes = res
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, res)
+}
+
+func handleTsDeleteModel(w http.ResponseWriter, r *http.Request) {
+	var req struct { ID string `json:"id"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+	if err := timeseries.DeleteModel(tsModelsDir, req.ID); err != nil {
+		errJSON(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -1422,6 +1622,17 @@ func main() {
 	mux.HandleFunc("/api/cnn/models", cors(handleCnnModels))
 	mux.HandleFunc("/api/cnn/load", cors(handleCnnLoad))
 	mux.HandleFunc("/api/cnn/delete-model", cors(handleCnnDeleteModel))
+
+	// Time Series (Previsão de ações)
+	mux.HandleFunc("/api/timeseries/fetch-data", cors(handleTsFetchData))
+	mux.HandleFunc("/api/timeseries/config", cors(handleTsConfig))
+	mux.HandleFunc("/api/timeseries/train", cors(handleTsTrain))
+	mux.HandleFunc("/api/timeseries/reset", cors(handleTsReset))
+	mux.HandleFunc("/api/timeseries/result", cors(handleTsResult))
+	mux.HandleFunc("/api/timeseries/save", cors(handleTsSave))
+	mux.HandleFunc("/api/timeseries/models", cors(handleTsModels))
+	mux.HandleFunc("/api/timeseries/load", cors(handleTsLoad))
+	mux.HandleFunc("/api/timeseries/delete-model", cors(handleTsDeleteModel))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
