@@ -58,21 +58,22 @@ function computePoolAt(map: number[][], r: number, c: number): {
 // MiniGrid — feature map renderer with kernel overlay
 // ---------------------------------------------------------------------------
 
-function MiniGrid({ data, cellSize, highlightR, highlightC, highlightSize, label, builtUpTo }: {
+function MiniGrid({ data, cellSize, highlightR, highlightC, highlightSize, label, builtUpTo, showGrid }: {
   data: number[][]; cellSize: number; highlightR?: number; highlightC?: number;
-  highlightSize?: number; label?: string; builtUpTo?: number; // show first N cells filled
+  highlightSize?: number; label?: string; builtUpTo?: number; showGrid?: boolean;
 }) {
   let min = Infinity, max = -Infinity;
   for (const row of data) for (const v of row) { if (v < min) min = v; if (v > max) max = v; }
   const range = max - min || 1;
   const w = data[0]?.length || 0;
   const hs = highlightSize ?? 3;
+  const gap = showGrid ? 1 : 0;
 
   let cellIdx = 0;
   return (
     <div style={{ display: 'inline-block', textAlign: 'center' }}>
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${w}, ${cellSize}px)`, gap: 0 }}>
+      <div style={{ position: 'relative', display: 'inline-block', background: showGrid ? '#1a1f2a' : 'transparent' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${w}, ${cellSize}px)`, gap }}>
           {data.flatMap((row, r) =>
             row.map((v, c) => {
               const norm = (v - min) / range;
@@ -92,8 +93,10 @@ function MiniGrid({ data, cellSize, highlightR, highlightC, highlightSize, label
         {highlightR != null && highlightC != null && (
           <div style={{
             position: 'absolute',
-            top: highlightR * cellSize - 1, left: highlightC * cellSize - 1,
-            width: hs * cellSize + 2, height: hs * cellSize + 2,
+            top: highlightR * (cellSize + gap) - 1,
+            left: highlightC * (cellSize + gap) - 1,
+            width: hs * cellSize + (hs - 1) * gap + 2,
+            height: hs * cellSize + (hs - 1) * gap + 2,
             border: '2px solid #00fbfb',
             boxShadow: '0 0 14px rgba(0,251,251,0.7), inset 0 0 10px rgba(0,251,251,0.15)',
             transition: 'top 200ms ease-out, left 200ms ease-out',
@@ -184,12 +187,13 @@ const PHASE_NAMES = ['Intro', 'Conv1 + ReLU', 'MaxPool 2×2', 'Conv2 + ReLU', 'M
 
 export default function CnnMegaAnimation({ vizData, onClose }: Props) {
   const [phase, setPhase] = useState(0);
-  const [step, setStep] = useState(0); // current position within the phase
+  const [step, setStep] = useState(0);
   const [autoPlay, setAutoPlay] = useState(true);
   const [speed, setSpeed] = useState(1);
+  const [filter1, setFilter1] = useState(0); // which conv1 filter (0-7)
+  const [filter2, setFilter2] = useState(0); // which conv2 filter (0-15)
   const autoRef = useRef<number>(0);
   const inputGrid = useRef(reshapeInput(vizData.input));
-  const kernel1 = vizData.filters1[0][0];
 
   // Max steps per phase
   const maxSteps = [
@@ -273,11 +277,11 @@ export default function CnnMegaAnimation({ vizData, onClose }: Props) {
     setAutoPlay(!autoPlay);
   };
 
-  // Compute current state
+  // Compute current state using selected filter
   const [posR, posC] = getPos(phase, step);
-  const convResult = phase === 1 ? computeConvAt(inputGrid.current, kernel1, posR, posC) : null;
-  const poolResult = phase === 2 ? computePoolAt(vizData.conv1Maps[0], posR, posC) : null;
-  const conv2Result = phase === 3 ? computeConvAt(vizData.pool1Maps[0], vizData.filters2[0][0], posR, posC) : null;
+  const convResult = phase === 1 ? computeConvAt(inputGrid.current, vizData.filters1[filter1][0], posR, posC) : null;
+  const poolResult = phase === 2 ? computePoolAt(vizData.conv1Maps[filter1], posR, posC) : null;
+  const conv2Result = phase === 3 ? computeConvAt(vizData.pool1Maps[0], vizData.filters2[filter2][0], posR, posC) : null;
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: 20, marginBottom: 24 }}>
@@ -305,6 +309,44 @@ export default function CnnMegaAnimation({ vizData, onClose }: Props) {
         </div>
       </div>
 
+      {/* Phase selector + filter selector */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+        {/* Phase jump buttons */}
+        <div style={{ display: 'flex', gap: 2 }}>
+          {PHASE_NAMES.map((name, i) => (
+            <button key={i} className={`porta-chip${phase === i ? ' selected' : ''}`}
+              style={{ padding: '2px 8px', fontSize: 8 }}
+              onClick={() => { clearAuto(); setPhase(i); setStep(0); }}>
+              {i}: {name.split(' ')[0]}
+            </button>
+          ))}
+        </div>
+
+        {/* Filter selector for Conv1 */}
+        {(phase === 1 || phase === 2) && (
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#888' }}>filtro:</span>
+            {Array.from({ length: 8 }, (_, i) => (
+              <button key={i} className={`porta-chip${filter1 === i ? ' selected' : ''}`}
+                style={{ padding: '1px 5px', fontSize: 8, minWidth: 0 }}
+                onClick={() => { setFilter1(i); setStep(0); }}>{i + 1}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Filter selector for Conv2 */}
+        {(phase === 3 || phase === 4) && (
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#888' }}>filtro:</span>
+            {Array.from({ length: 16 }, (_, i) => (
+              <button key={i} className={`porta-chip${filter2 === i ? ' selected' : ''}`}
+                style={{ padding: '1px 4px', fontSize: 7, minWidth: 0 }}
+                onClick={() => { setFilter2(i); setStep(0); }}>{i + 1}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Step counter */}
       {phase >= 1 && phase <= 4 && (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginBottom: 8 }}>
@@ -329,66 +371,66 @@ export default function CnnMegaAnimation({ vizData, onClose }: Props) {
       {/* Phase 1: Conv1 — kernel sliding over full 28×28 input */}
       {phase === 1 && (
         <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', justifyContent: 'center' }}>
-          <MiniGrid data={inputGrid.current} cellSize={8}
+          <MiniGrid data={inputGrid.current} cellSize={8} showGrid
             highlightR={posR} highlightC={posC} highlightSize={3}
             label={`Input 28×28 — kernel 3×3 em (${posR},${posC})`} />
           <div style={{ minWidth: 300, maxWidth: 420 }}>
-            {convResult && <MathPanel patch={convResult.patch} kernel={kernel1}
+            {convResult && <MathPanel patch={convResult.patch} kernel={vizData.filters1[filter1][0]}
               products={convResult.products} sum={convResult.sum} output={convResult.output} />}
           </div>
-          <MiniGrid data={vizData.conv1Maps[0]} cellSize={4}
+          <MiniGrid data={vizData.conv1Maps[filter1]} cellSize={4}
             builtUpTo={step} highlightR={posR} highlightC={posC} highlightSize={1}
-            label="Conv1 Feature Map (filtro 1/8)" />
+            label={`Conv1 Feature Map (filtro ${filter1 + 1}/8)`} />
         </div>
       )}
 
       {/* Phase 2: Pool1 — 2×2 window sliding over conv1 output */}
       {phase === 2 && (
         <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', justifyContent: 'center' }}>
-          <MiniGrid data={vizData.conv1Maps[0]} cellSize={5}
+          <MiniGrid data={vizData.conv1Maps[filter1]} cellSize={5} showGrid
             highlightR={posR * 2} highlightC={posC * 2} highlightSize={2}
-            label="Conv1 26×26 — janela 2×2" />
+            label={`Conv1 26×26 (filtro ${filter1 + 1}) — janela 2×2`} />
           <div style={{ minWidth: 130 }}>
             {poolResult && <PoolPanel values={poolResult.values} maxIdx={poolResult.maxIdx} />}
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--pink)', marginTop: 12, textAlign: 'center' }}>
               Reduz pela metade<br />mantendo o MAX
             </div>
           </div>
-          <MiniGrid data={vizData.pool1Maps[0]} cellSize={7}
+          <MiniGrid data={vizData.pool1Maps[filter1]} cellSize={7}
             builtUpTo={step} highlightR={posR} highlightC={posC} highlightSize={1}
-            label="Pool1 13×13" />
+            label={`Pool1 13×13 (filtro ${filter1 + 1})`} />
         </div>
       )}
 
       {/* Phase 3: Conv2 — kernel sliding over pool1 */}
       {phase === 3 && (
         <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', justifyContent: 'center' }}>
-          <MiniGrid data={vizData.pool1Maps[0]} cellSize={8}
+          <MiniGrid data={vizData.pool1Maps[0]} cellSize={8} showGrid
             highlightR={posR} highlightC={posC} highlightSize={3}
             label={`Pool1 13×13 — kernel 3×3 em (${posR},${posC})`} />
           <div style={{ minWidth: 300, maxWidth: 420 }}>
-            {conv2Result && <MathPanel patch={conv2Result.patch} kernel={vizData.filters2[0][0]}
+            {conv2Result && <MathPanel patch={conv2Result.patch} kernel={vizData.filters2[filter2][0]}
               products={conv2Result.products} sum={conv2Result.sum} output={conv2Result.output} />}
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--on-surface)', marginTop: 8, textAlign: 'center' }}>
-              Conv2 soma <b style={{ color: 'var(--pink)' }}>8 canais</b> — mostrando canal 0
+              Conv2 filtro {filter2 + 1}/16 — soma <b style={{ color: 'var(--pink)' }}>8 canais</b> (mostrando ch0)
             </div>
           </div>
-          <MiniGrid data={vizData.conv2Maps[0]} cellSize={6}
+          <MiniGrid data={vizData.conv2Maps[filter2]} cellSize={6}
             builtUpTo={step} highlightR={posR} highlightC={posC} highlightSize={1}
-            label="Conv2 11×11 (filtro 1/16)" />
+            label={`Conv2 11×11 (filtro ${filter2 + 1}/16)`} />
         </div>
       )}
 
       {/* Phase 4: Pool2 */}
       {phase === 4 && (
         <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', justifyContent: 'center' }}>
-          <MiniGrid data={vizData.conv2Maps[0]} cellSize={7}
+          <MiniGrid data={vizData.conv2Maps[filter2]} cellSize={7} showGrid
             highlightR={posR * 2} highlightC={posC * 2} highlightSize={2}
-            label="Conv2 11×11 — janela 2×2" />
+            label={`Conv2 11×11 (filtro ${filter2 + 1}) — janela 2×2`} />
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--pink)', alignSelf: 'center' }}>→ MaxPool →</div>
-          <MiniGrid data={vizData.pool2Maps[0]} cellSize={12}
+          <MiniGrid data={vizData.pool2Maps[filter2]} cellSize={12}
             builtUpTo={step} highlightR={posR} highlightC={posC} highlightSize={1}
-            label="Pool2 5×5" />
+            label={`Pool2 5×5 (filtro ${filter2 + 1})`} />
         </div>
       )}
 
