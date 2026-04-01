@@ -137,6 +137,18 @@ export default function AboutView() {
               <td className="td-white">{'Backprop + dist. euclidiana (sem limiar)'}</td>
               <td className="td-green">Geralmente sim</td>
             </tr>
+            <tr>
+              <td className="td-cyan">CNN EMNIST</td>
+              <td>07</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>cnn</td>
+              <td>
+                {'28\u00B2 \u2192 Conv \u2192 Pool \u2192 Dense \u2192 26 '}
+                <span style={{ color: 'var(--surface-top)' }}>(EMNIST A-Z)</span>
+              </td>
+              <td>{'ReLU \u00B7 Softmax'}</td>
+              <td className="td-white">{'Backprop conv + SGD \u00B7 Cross-Entropy'}</td>
+              <td className="td-green">Geralmente sim</td>
+            </tr>
           </tbody>
         </table>
       </Card>
@@ -390,6 +402,40 @@ export default function AboutView() {
           </div>
         </Card>
 
+        <Card title="Aula 07 — CNN Convolucional">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Rede Neural Convolucional (EMNIST Letters):
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Conv:</span>
+              {' 8\u00D73\u00D73 \u2192 Pool \u2192 16\u00D73\u00D73 \u2192 Pool'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Dense:</span>
+              {' 400 \u2192 64 (ReLU) \u2192 26 (Softmax)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Loss:</span>
+              {' \u00A0Cross-Entropy: \u2212log(p[target])'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Init:</span>
+              {' \u00A0He init: \u221A(2/fan_in)'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// EMNIST 28\u00D728 \u00B7 26 classes \u00B7 save/load'}
+            </div>
+          </div>
+        </Card>
+
         <Card title="Estrutura de Pacotes">
           <div
             style={{
@@ -413,7 +459,8 @@ export default function AboutView() {
             <div>{'\u00A0\u251C\u2500 letras/'}</div>
             <div>{'\u00A0\u251C\u2500 mlpfunc/'}</div>
             <div>{'\u00A0\u251C\u2500 mlport/'}</div>
-            <div>{'\u00A0\u2514\u2500 imgreg/'}</div>
+            <div>{'\u00A0\u251C\u2500 imgreg/'}</div>
+            <div>{'\u00A0\u2514\u2500 cnn/'}</div>
           </div>
         </Card>
       </div>
