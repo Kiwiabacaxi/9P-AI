@@ -760,7 +760,7 @@ export default function CnnView() {
           <div><b style={{ color: 'var(--cyan)' }}>Loss:</b> Cross-Entropy</div>
           <div><b style={{ color: 'var(--cyan)' }}>Dataset:</b> EMNIST Letters (derivado do NIST SD19) &mdash; 28×28 grayscale, 26 classes (A-Z)</div>
           <div><b style={{ color: 'var(--cyan)' }}>Inicialização:</b> He init (√(2/fan_in)) para ReLU</div>
-          <div><b style={{ color: 'var(--cyan)' }}>Referência:</b> Aula 07 &mdash; RNA Convolucional, Manzan 2026</div>
+          <div><b style={{ color: 'var(--cyan)' }}>Referência:</b> Aula 07 &mdash; RNA Convolucional (ver slide para referências completas)</div>
         </div>
       </Card>
     </div>
