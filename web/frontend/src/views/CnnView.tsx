@@ -128,6 +128,8 @@ export default function CnnView() {
   const [vizData, setVizData] = useState<CnnVisualizeResp | null>(null);
   const [vizFilter1, setVizFilter1] = useState(0);
   const [vizFilter2, setVizFilter2] = useState(0);
+  const [animStep, setAnimStep] = useState(-1); // -1 = não animando, 0-7 = etapa ativa
+  const animRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   // Models
   const [models, setModels] = useState<CnnModelMeta[]>([]);
@@ -261,6 +263,30 @@ export default function CnnView() {
       show('Erro ao visualizar');
     }
   }, [trained, testPixels, show]);
+
+  // ---------- Animation ----------
+
+  const handlePlayAnimation = useCallback(() => {
+    if (animRef.current) {
+      clearInterval(animRef.current);
+      animRef.current = undefined;
+      setAnimStep(-1);
+      return;
+    }
+    let step = 0;
+    setAnimStep(0);
+    animRef.current = setInterval(() => {
+      step++;
+      if (step > 7) {
+        clearInterval(animRef.current);
+        animRef.current = undefined;
+        // Keep last step visible for a moment then reset
+        setTimeout(() => setAnimStep(-1), 1500);
+        return;
+      }
+      setAnimStep(step);
+    }, 800);
+  }, []);
 
   // ---------- Save/Load ----------
 
@@ -480,12 +506,24 @@ export default function CnnView() {
       {/* ===== CNN Pipeline Visualization ===== */}
       {vizData && (
         <Card title="Visualização das Etapas da CNN" style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button className="btn" style={{ fontSize: 10, padding: '6px 14px' }} onClick={handlePlayAnimation}>
+              {animRef.current ? '⏹ PARAR' : '▶ PLAY ANIMAÇÃO'}
+            </button>
+            {animStep >= 0 && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--primary-glow)', alignSelf: 'center' }}>
+                Etapa {animStep + 1}/8: {['Input', 'Conv1+ReLU', 'MaxPool 2×2', 'Conv2+ReLU', 'MaxPool 2×2', 'Flatten', 'Dense+ReLU', 'Softmax'][animStep]}
+              </span>
+            )}
+          </div>
+
           <div style={{ overflowX: 'auto' }}>
-            {/* Pipeline: Input → Conv1 → Pool1 → Conv2 → Pool2 → Result */}
             <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', minWidth: 900, padding: '8px 0' }}>
 
+              {/* Each stage: opacity/glow controlled by animStep */}
               {/* INPUT */}
-              <div style={{ textAlign: 'center' }}>
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 0 ? 1 : 0.3,
+                boxShadow: animStep === 0 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
                   INPUT 28×28
                 </div>
@@ -496,10 +534,12 @@ export default function CnnView() {
                 } size={4} />
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18 }}>→</div>
+              <div style={{ alignSelf: 'center', color: animStep === 1 ? '#00ff00' : 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 1 ? 1 : 0.3 }}>→</div>
 
-              {/* CONV1 Feature Maps */}
-              <div style={{ textAlign: 'center' }}>
+              {/* CONV1 */}
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 1 ? 1 : 0.3,
+                boxShadow: animStep === 1 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
                   CONV1 26×26 (filtro {vizFilter1 + 1}/8)
                 </div>
@@ -512,27 +552,29 @@ export default function CnnView() {
                   ))}
                 </div>
                 <div style={{ marginTop: 6 }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--on-surface)', marginBottom: 2 }}>
-                    kernel 3×3:
-                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--on-surface)', marginBottom: 2 }}>kernel 3×3:</div>
                   <KernelGrid data={vizData.filters1[vizFilter1][0]} />
                 </div>
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18 }}>→</div>
+              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 2 ? 1 : 0.3 }}>→</div>
 
               {/* POOL1 */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 2 ? 1 : 0.3,
+                boxShadow: animStep === 2 ? '0 0 16px rgba(255,0,127,0.4)' : 'none', padding: 4 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginBottom: 4 }}>
                   POOL1 13×13
                 </div>
                 <FeatureMapGrid data={vizData.pool1Maps[vizFilter1]} size={6} />
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18 }}>→</div>
+              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 3 ? 1 : 0.3 }}>→</div>
 
-              {/* CONV2 Feature Maps */}
-              <div style={{ textAlign: 'center' }}>
+              {/* CONV2 */}
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 3 ? 1 : 0.3,
+                boxShadow: animStep === 3 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
                   CONV2 11×11 (filtro {vizFilter2 + 1}/16)
                 </div>
@@ -546,24 +588,30 @@ export default function CnnView() {
                 </div>
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18 }}>→</div>
+              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 4 ? 1 : 0.3 }}>→</div>
 
               {/* POOL2 */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 4 ? 1 : 0.3,
+                boxShadow: animStep === 4 ? '0 0 16px rgba(255,0,127,0.4)' : 'none', padding: 4 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginBottom: 4 }}>
                   POOL2 5×5
                 </div>
                 <FeatureMapGrid data={vizData.pool2Maps[vizFilter2]} size={10} />
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18 }}>→</div>
+              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 5 ? 1 : 0.3 }}>→</div>
 
               {/* RESULT */}
-              <div style={{ textAlign: 'center', minWidth: 60 }}>
+              <div style={{ textAlign: 'center', minWidth: 60, transition: 'all 0.4s',
+                opacity: animStep < 0 || animStep >= 5 ? 1 : 0.3,
+                boxShadow: animStep >= 6 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
-                  RESULTADO
+                  {animStep === 5 ? 'FLATTEN 400' : animStep === 6 ? 'DENSE 64→26' : 'RESULTADO'}
                 </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 32, fontWeight: 700, color: 'var(--primary-glow)' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 32, fontWeight: 700, color: 'var(--primary-glow)',
+                  transition: 'all 0.3s', transform: animStep === 7 ? 'scale(1.2)' : 'scale(1)' }}>
                   {vizData.letra}
                 </div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)' }}>
@@ -572,14 +620,59 @@ export default function CnnView() {
               </div>
             </div>
           </div>
-
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginTop: 12, lineHeight: 1.6 }}>
-            Pipeline: Input(28×28) → <b>Conv1</b>(8 filtros 3×3, ReLU) → <b>MaxPool</b>(2×2)
-            → <b>Conv2</b>(16 filtros 3×3, ReLU) → <b>MaxPool</b>(2×2) → Flatten(400)
-            → Dense(64) → Dense(26) → <b>Softmax</b> → Classificação
-          </div>
         </Card>
       )}
+
+      {/* ===== 3D Architecture Diagram ===== */}
+      <Card title="Arquitetura CNN — Pipeline 3D" style={{ marginBottom: 24 }}>
+        <div style={{ perspective: '800px', display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            transform: 'rotateX(8deg) rotateY(-12deg)',
+            transformStyle: 'preserve-3d',
+          }}>
+            {/* Each block: width=spatial, height=spatial, depth(visual)=channels */}
+            {[
+              { label: 'Input', w: 56, h: 56, d: 4,  color: '#1a3a1a', border: '#00fbfb', sub: '28×28×1' },
+              { label: 'Conv1', w: 52, h: 52, d: 16, color: '#0a2a4a', border: '#4488ff', sub: '26×26×8' },
+              { label: 'Pool1', w: 26, h: 26, d: 16, color: '#2a0a1a', border: '#ff6ec7', sub: '13×13×8' },
+              { label: 'Conv2', w: 22, h: 22, d: 28, color: '#0a2a4a', border: '#4488ff', sub: '11×11×16' },
+              { label: 'Pool2', w: 10, h: 10, d: 28, color: '#2a0a1a', border: '#ff6ec7', sub: '5×5×16' },
+              { label: 'Flat',  w: 6,  h: 60, d: 6,  color: '#1a1a2a', border: '#888',    sub: '400' },
+              { label: 'FC1',   w: 6,  h: 20, d: 6,  color: '#0a2a0a', border: '#00ff00', sub: '64' },
+              { label: 'FC2',   w: 6,  h: 10, d: 6,  color: '#0a2a0a', border: '#00ff00', sub: '26' },
+            ].map((block, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: block.w, height: block.h,
+                    background: block.color,
+                    border: `2px solid ${block.border}`,
+                    boxShadow: `${block.d}px ${block.d}px 0 ${block.color}, ${block.d}px ${block.d}px 0 1px ${block.border}40`,
+                    transition: 'all 0.4s',
+                    opacity: animStep < 0 || animStep === i ? 1 : 0.4,
+                    transform: animStep === i ? 'scale(1.1)' : 'scale(1)',
+                  }} />
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: block.border, marginTop: 4 }}>
+                    {block.label}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 6, color: 'var(--on-surface)' }}>
+                    {block.sub}
+                  </div>
+                </div>
+                {i < 7 && (
+                  <div style={{ color: '#333', fontSize: 10, margin: '0 2px' }}>→</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 8 }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a2a4a', border: '1px solid #4488ff', marginRight: 4 }} />Conv+ReLU</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2a0a1a', border: '1px solid #ff6ec7', marginRight: 4 }} />MaxPool</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a2a0a', border: '1px solid #00ff00', marginRight: 4 }} />Dense+ReLU</span>
+        </div>
+      </Card>
 
       {/* Architecture Details */}
       <Card title="Detalhes">
