@@ -362,7 +362,7 @@ export default function CnnView() {
     setAnimStep(0);
     animRef.current = setInterval(() => {
       step++;
-      if (step > 7) {
+      if (step > 8) {
         clearInterval(animRef.current);
         animRef.current = undefined;
         // Keep last step visible for a moment then reset
@@ -597,34 +597,28 @@ export default function CnnView() {
             </button>
             {animStep >= 0 && (
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--primary-glow)', alignSelf: 'center' }}>
-                Etapa {animStep + 1}/8: {['Input', 'Conv1+ReLU', 'MaxPool 2×2', 'Conv2+ReLU', 'MaxPool 2×2', 'Flatten', 'Dense+ReLU', 'Softmax'][animStep]}
+                Etapa {animStep + 1}/9: {['Input', 'Conv1+ReLU', 'MaxPool 2×2', 'Conv2+ReLU', 'MaxPool 2×2', 'Flatten', 'Dense+ReLU (64)', 'Dense (26)', 'Softmax'][animStep]}
               </span>
             )}
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <div style={{ display: 'flex', gap: 24, alignItems: 'center', minWidth: 900, padding: '8px 0' }}>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', minWidth: 1100, padding: '8px 16px' }}>
 
-              {/* Each stage: opacity/glow controlled by animStep */}
-              {/* INPUT */}
+              {/* 0: INPUT */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 0 ? 1 : 0.3,
-                boxShadow: animStep === 0 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
-                  INPUT 28×28
-                </div>
+                boxShadow: animStep === 0 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>INPUT 28×28</div>
                 <FeatureMapGrid data={
-                  Array.from({ length: 28 }, (_, r) =>
-                    Array.from({ length: 28 }, (_, c) => vizData.input[r * 28 + c])
-                  )
+                  Array.from({ length: 28 }, (_, r) => Array.from({ length: 28 }, (_, c) => vizData.input[r * 28 + c]))
                 } size={4} />
               </div>
 
-              <div style={{ alignSelf: 'center', color: animStep === 1 ? '#00ff00' : 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 1 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 1 ? 1 : 0.3 }}>→</div>
 
-              {/* CONV1 */}
+              {/* 1: CONV1 + kernel */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 1 ? 1 : 0.3,
-                boxShadow: animStep === 1 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
+                boxShadow: animStep === 1 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 8 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
                   CONV1 26×26 (filtro {vizFilter1 + 1}/8)
                 </div>
@@ -642,28 +636,24 @@ export default function CnnView() {
                 </div>
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 2 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 2 ? 1 : 0.3 }}>→</div>
 
-              {/* POOL1 */}
+              {/* 2: POOL1 */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 2 ? 1 : 0.3,
-                boxShadow: animStep === 2 ? '0 0 16px rgba(255,0,127,0.4)' : 'none', padding: 4 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginBottom: 4 }}>
-                  POOL1 13×13
-                </div>
-                <FeatureMapGrid data={vizData.pool1Maps[vizFilter1]} size={6} />
+                boxShadow: animStep === 2 ? '0 0 16px rgba(255,0,127,0.4)' : 'none', padding: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginBottom: 4 }}>POOL1 13×13</div>
+                <FeatureMapGrid data={vizData.pool1Maps[vizFilter1]} size={5} />
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 3 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 3 ? 1 : 0.3 }}>→</div>
 
-              {/* CONV2 */}
+              {/* 3: CONV2 + kernel */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 3 ? 1 : 0.3,
-                boxShadow: animStep === 3 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
+                boxShadow: animStep === 3 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 8 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
                   CONV2 11×11 (filtro {vizFilter2 + 1}/16)
                 </div>
-                <FeatureMapGrid data={vizData.conv2Maps[vizFilter2]} size={6} />
+                <FeatureMapGrid data={vizData.conv2Maps[vizFilter2]} size={5} />
                 <div style={{ display: 'flex', gap: 2, marginTop: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
                   {Array.from({ length: 16 }, (_, i) => (
                     <button key={i} className={`porta-chip${vizFilter2 === i ? ' selected' : ''}`}
@@ -671,61 +661,60 @@ export default function CnnView() {
                       onClick={() => setVizFilter2(i)}>{i + 1}</button>
                   ))}
                 </div>
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--on-surface)', marginBottom: 2 }}>kernel 3×3 (ch0):</div>
+                  <KernelGrid data={vizData.filters2[vizFilter2][0]} />
+                </div>
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 4 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 4 ? 1 : 0.3 }}>→</div>
 
-              {/* POOL2 */}
+              {/* 4: POOL2 */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 4 ? 1 : 0.3,
-                boxShadow: animStep === 4 ? '0 0 16px rgba(255,0,127,0.4)' : 'none', padding: 4 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginBottom: 4 }}>
-                  POOL2 5×5
-                </div>
-                <FeatureMapGrid data={vizData.pool2Maps[vizFilter2]} size={10} />
+                boxShadow: animStep === 4 ? '0 0 16px rgba(255,0,127,0.4)' : 'none', padding: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginBottom: 4 }}>POOL2 5×5</div>
+                <FeatureMapGrid data={vizData.pool2Maps[vizFilter2]} size={8} />
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 5 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 5 ? 1 : 0.3 }}>→</div>
 
-              {/* FLATTEN */}
+              {/* 5: FLATTEN */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 5 ? 1 : 0.3,
-                boxShadow: animStep === 5 ? '0 0 16px rgba(0,251,251,0.4)' : 'none', padding: 4 }}>
+                boxShadow: animStep === 5 ? '0 0 16px rgba(0,251,251,0.4)' : 'none', padding: 8 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>FLATTEN</div>
-                <div style={{ width: 8, height: 60, background: 'linear-gradient(180deg, #00fbfb30, #00fbfb10)', border: '1px solid #00fbfb40', margin: '0 auto' }} />
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--on-surface)', marginTop: 2 }}>400</div>
+                <div style={{ width: 10, height: 60, background: 'linear-gradient(180deg, #00fbfb30, #00fbfb10)', border: '1px solid #00fbfb40', margin: '0 auto' }} />
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--on-surface)', marginTop: 2 }}>400</div>
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 6 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 6 ? 1 : 0.3 }}>→</div>
 
-              {/* DENSE1 + DENSE2 */}
+              {/* 6: DENSE1 (400→64) */}
               <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 6 ? 1 : 0.3,
-                boxShadow: animStep === 6 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--primary-glow)', marginBottom: 4 }}>DENSE</div>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', justifyContent: 'center' }}>
-                  <div>
-                    <div style={{ width: 8, height: 32, background: 'linear-gradient(180deg, #00ff0030, #00ff0010)', border: '1px solid #00ff0040', margin: '0 auto' }} />
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: 'var(--on-surface)', marginTop: 1 }}>64</div>
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: '#555', marginBottom: 8 }}>→</div>
-                  <div>
-                    <div style={{ width: 8, height: 16, background: 'linear-gradient(180deg, #00ff0030, #00ff0010)', border: '1px solid #00ff0040', margin: '0 auto' }} />
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: 'var(--on-surface)', marginTop: 1 }}>26</div>
-                  </div>
-                </div>
+                boxShadow: animStep === 6 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--primary-glow)', marginBottom: 4 }}>DENSE+ReLU</div>
+                <div style={{ width: 10, height: 40, background: 'linear-gradient(180deg, #00ff0030, #00ff0010)', border: '1px solid #00ff0040', margin: '0 auto' }} />
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--on-surface)', marginTop: 2 }}>64</div>
               </div>
 
-              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
-                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 7 ? 1 : 0.3 }}>→</div>
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 7 ? 1 : 0.3 }}>→</div>
 
-              {/* SOFTMAX RESULT */}
+              {/* 7: DENSE2 (64→26) */}
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 7 ? 1 : 0.3,
+                boxShadow: animStep === 7 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--primary-glow)', marginBottom: 4 }}>DENSE</div>
+                <div style={{ width: 10, height: 24, background: 'linear-gradient(180deg, #00ff0030, #00ff0010)', border: '1px solid #00ff0040', margin: '0 auto' }} />
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--on-surface)', marginTop: 2 }}>26</div>
+              </div>
+
+              <div style={{ color: 'var(--primary-glow)', fontSize: 16, transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 8 ? 1 : 0.3 }}>→</div>
+
+              {/* 8: SOFTMAX RESULT */}
               <div style={{ textAlign: 'center', minWidth: 60, transition: 'all 0.4s',
-                opacity: animStep < 0 || animStep === 7 ? 1 : 0.3,
-                boxShadow: animStep === 7 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
+                opacity: animStep < 0 || animStep === 8 ? 1 : 0.3,
+                boxShadow: animStep === 8 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 8 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--primary-glow)', marginBottom: 4 }}>SOFTMAX</div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 32, fontWeight: 700, color: 'var(--primary-glow)',
-                  transition: 'all 0.3s', transform: animStep === 7 ? 'scale(1.2)' : 'scale(1)' }}>
+                  transition: 'all 0.3s', transform: animStep === 8 ? 'scale(1.2)' : 'scale(1)' }}>
                   {vizData.letra}
                 </div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)' }}>

@@ -520,6 +520,7 @@ type VisualizeResp struct {
 	Conv2Maps [][][]float64  `json:"conv2Maps"` // [16][11][11] feature maps após Conv2+ReLU
 	Pool2Maps [][][]float64  `json:"pool2Maps"` // [16][5][5] após MaxPool
 	Filters1  [][][][]float64 `json:"filters1"` // [8][1][3][3] kernels do Conv1
+	Filters2  [][][][]float64 `json:"filters2"` // [16][8][3][3] kernels do Conv2
 	Probs     []float64      `json:"probs"`     // [26] softmax final
 	LetraIdx  int            `json:"letraIdx"`
 	Letra     string         `json:"letra"`
@@ -561,6 +562,7 @@ func Visualizar(net *CNN, pixels []float64) VisualizeResp {
 		Conv2Maps: cache.conv2Out,
 		Pool2Maps: cache.pool2Out,
 		Filters1:  net.Conv1F,
+		Filters2:  net.Conv2F,
 		Probs:     probs,
 		LetraIdx:  best,
 		Letra:     LetterNames[best],

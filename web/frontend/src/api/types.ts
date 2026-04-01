@@ -288,6 +288,7 @@ export interface CnnVisualizeResp {
   conv2Maps: number[][][];
   pool2Maps: number[][][];
   filters1: number[][][][];
+  filters2: number[][][][];
   probs: number[];
   letraIdx: number;
   letra: string;
