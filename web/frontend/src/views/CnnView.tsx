@@ -5,6 +5,7 @@ import PixelGrid from '../components/shared/PixelGrid';
 import LogChart from '../components/viz/LogChart';
 import { useToast } from '../components/shared/Toast';
 import { apiGet, apiPost, apiSSE } from '../api/client';
+import CnnMegaAnimation from '../components/viz/CnnMegaAnimation';
 import type { CnnResult, CnnStep, CnnClassifyResp, CnnVisualizeResp, CnnModelMeta } from '../api/types';
 
 // ---------------------------------------------------------------------------
@@ -215,6 +216,9 @@ export default function CnnView() {
   const [vizFilter2, setVizFilter2] = useState(0);
   const [animStep, setAnimStep] = useState(-1); // -1 = não animando, 0-7 = etapa ativa
   const animRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  // Mega animation
+  const [showMegaAnim, setShowMegaAnim] = useState(false);
 
   // Models
   const [models, setModels] = useState<CnnModelMeta[]>([]);
@@ -554,6 +558,12 @@ export default function CnnView() {
                 <button className="btn" style={{ fontSize: 10, padding: '6px 12px' }} onClick={handleVisualize}>
                   VISUALIZAR ETAPAS
                 </button>
+                {vizData && (
+                  <button className="btn btn-primary" style={{ fontSize: 10, padding: '6px 12px' }}
+                    onClick={() => setShowMegaAnim(true)}>
+                    MEGA ANIMAÇÃO
+                  </button>
+                )}
               </div>
             </div>
             <div>
@@ -586,6 +596,11 @@ export default function CnnView() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* ===== Mega Animation ===== */}
+      {showMegaAnim && vizData && (
+        <CnnMegaAnimation vizData={vizData} onClose={() => setShowMegaAnim(false)} />
       )}
 
       {/* ===== CNN Pipeline Visualization ===== */}
