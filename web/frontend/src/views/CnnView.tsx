@@ -603,13 +603,42 @@ export default function CnnView() {
               <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
                 transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 5 ? 1 : 0.3 }}>→</div>
 
-              {/* RESULT */}
-              <div style={{ textAlign: 'center', minWidth: 60, transition: 'all 0.4s',
-                opacity: animStep < 0 || animStep >= 5 ? 1 : 0.3,
-                boxShadow: animStep >= 6 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>
-                  {animStep === 5 ? 'FLATTEN 400' : animStep === 6 ? 'DENSE 64→26' : 'RESULTADO'}
+              {/* FLATTEN */}
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 5 ? 1 : 0.3,
+                boxShadow: animStep === 5 ? '0 0 16px rgba(0,251,251,0.4)' : 'none', padding: 4 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--cyan)', marginBottom: 4 }}>FLATTEN</div>
+                <div style={{ width: 8, height: 60, background: 'linear-gradient(180deg, #00fbfb30, #00fbfb10)', border: '1px solid #00fbfb40', margin: '0 auto' }} />
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--on-surface)', marginTop: 2 }}>400</div>
+              </div>
+
+              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 6 ? 1 : 0.3 }}>→</div>
+
+              {/* DENSE1 + DENSE2 */}
+              <div style={{ textAlign: 'center', transition: 'all 0.4s', opacity: animStep < 0 || animStep === 6 ? 1 : 0.3,
+                boxShadow: animStep === 6 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--primary-glow)', marginBottom: 4 }}>DENSE</div>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', justifyContent: 'center' }}>
+                  <div>
+                    <div style={{ width: 8, height: 32, background: 'linear-gradient(180deg, #00ff0030, #00ff0010)', border: '1px solid #00ff0040', margin: '0 auto' }} />
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: 'var(--on-surface)', marginTop: 1 }}>64</div>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: '#555', marginBottom: 8 }}>→</div>
+                  <div>
+                    <div style={{ width: 8, height: 16, background: 'linear-gradient(180deg, #00ff0030, #00ff0010)', border: '1px solid #00ff0040', margin: '0 auto' }} />
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: 'var(--on-surface)', marginTop: 1 }}>26</div>
+                  </div>
                 </div>
+              </div>
+
+              <div style={{ alignSelf: 'center', color: 'var(--primary-glow)', fontSize: 18,
+                transition: 'all 0.4s', opacity: animStep < 0 || animStep <= 7 ? 1 : 0.3 }}>→</div>
+
+              {/* SOFTMAX RESULT */}
+              <div style={{ textAlign: 'center', minWidth: 60, transition: 'all 0.4s',
+                opacity: animStep < 0 || animStep === 7 ? 1 : 0.3,
+                boxShadow: animStep === 7 ? '0 0 16px rgba(0,255,0,0.4)' : 'none', padding: 4 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--primary-glow)', marginBottom: 4 }}>SOFTMAX</div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 32, fontWeight: 700, color: 'var(--primary-glow)',
                   transition: 'all 0.3s', transform: animStep === 7 ? 'scale(1.2)' : 'scale(1)' }}>
                   {vizData.letra}
@@ -623,54 +652,56 @@ export default function CnnView() {
         </Card>
       )}
 
-      {/* ===== 3D Architecture Diagram ===== */}
-      <Card title="Arquitetura CNN — Pipeline 3D" style={{ marginBottom: 24 }}>
-        <div style={{ perspective: '800px', display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            transform: 'rotateX(8deg) rotateY(-12deg)',
-            transformStyle: 'preserve-3d',
-          }}>
-            {/* Each block: width=spatial, height=spatial, depth(visual)=channels */}
-            {[
-              { label: 'Input', w: 56, h: 56, d: 4,  color: '#1a3a1a', border: '#00fbfb', sub: '28×28×1' },
-              { label: 'Conv1', w: 52, h: 52, d: 16, color: '#0a2a4a', border: '#4488ff', sub: '26×26×8' },
-              { label: 'Pool1', w: 26, h: 26, d: 16, color: '#2a0a1a', border: '#ff6ec7', sub: '13×13×8' },
-              { label: 'Conv2', w: 22, h: 22, d: 28, color: '#0a2a4a', border: '#4488ff', sub: '11×11×16' },
-              { label: 'Pool2', w: 10, h: 10, d: 28, color: '#2a0a1a', border: '#ff6ec7', sub: '5×5×16' },
-              { label: 'Flat',  w: 6,  h: 60, d: 6,  color: '#1a1a2a', border: '#888',    sub: '400' },
-              { label: 'FC1',   w: 6,  h: 20, d: 6,  color: '#0a2a0a', border: '#00ff00', sub: '64' },
-              { label: 'FC2',   w: 6,  h: 10, d: 6,  color: '#0a2a0a', border: '#00ff00', sub: '26' },
-            ].map((block, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{
-                    width: block.w, height: block.h,
-                    background: block.color,
-                    border: `2px solid ${block.border}`,
-                    boxShadow: `${block.d}px ${block.d}px 0 ${block.color}, ${block.d}px ${block.d}px 0 1px ${block.border}40`,
-                    transition: 'all 0.4s',
-                    opacity: animStep < 0 || animStep === i ? 1 : 0.4,
-                    transform: animStep === i ? 'scale(1.1)' : 'scale(1)',
-                  }} />
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: block.border, marginTop: 4 }}>
-                    {block.label}
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 6, color: 'var(--on-surface)' }}>
-                    {block.sub}
-                  </div>
-                </div>
-                {i < 7 && (
-                  <div style={{ color: '#333', fontSize: 10, margin: '0 2px' }}>→</div>
-                )}
-              </div>
+      {/* ===== 2D Architecture Pipeline ===== */}
+      <Card title="Arquitetura CNN — Pipeline" style={{ marginBottom: 24 }}>
+        <div style={{ overflowX: 'auto' }}>
+          <svg viewBox="0 0 920 140" style={{ width: '100%', maxWidth: 920, height: 140, display: 'block', margin: '0 auto' }}>
+            {/* Connection lines */}
+            {[115, 235, 345, 465, 560, 655, 745, 835].map((x, i) => (
+              <line key={`l${i}`} x1={x} y1={70} x2={x + 20} y2={70} stroke="#333" strokeWidth={1.5}
+                markerEnd="url(#arrowhead)" />
             ))}
-          </div>
+            <defs>
+              <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto">
+                <polygon points="0 0, 6 2, 0 4" fill="#555" />
+              </marker>
+            </defs>
+
+            {/* Blocks */}
+            {[
+              { x: 10,  w: 100, h: 100, y: 20, label: 'Input',       sub: '28×28×1',  color: '#00fbfb', bg: '#0a1a2a' },
+              { x: 140, w: 90,  h: 90,  y: 25, label: 'Conv1+ReLU',  sub: '26×26×8',  color: '#4488ff', bg: '#0a1a3a' },
+              { x: 260, w: 80,  h: 50,  y: 45, label: 'MaxPool',     sub: '13×13×8',  color: '#ff6ec7', bg: '#2a0a1a' },
+              { x: 370, w: 90,  h: 70,  y: 35, label: 'Conv2+ReLU',  sub: '11×11×16', color: '#4488ff', bg: '#0a1a3a' },
+              { x: 490, w: 65,  h: 40,  y: 50, label: 'MaxPool',     sub: '5×5×16',   color: '#ff6ec7', bg: '#2a0a1a' },
+              { x: 585, w: 20,  h: 80,  y: 30, label: 'Flat',        sub: '400',      color: '#888',    bg: '#1a1a2a' },
+              { x: 660, w: 30,  h: 50,  y: 45, label: 'Dense',       sub: '64',       color: '#00ff00', bg: '#0a2a0a' },
+              { x: 750, w: 30,  h: 30,  y: 55, label: 'Dense',       sub: '26',       color: '#00ff00', bg: '#0a2a0a' },
+              { x: 840, w: 60,  h: 40,  y: 50, label: 'Softmax',     sub: 'A-Z',      color: '#00ff00', bg: '#002200' },
+            ].map((b, i) => (
+              <g key={i} style={{ transition: 'opacity 0.4s', opacity: animStep < 0 || animStep === i ? 1 : 0.3 }}>
+                <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={3}
+                  fill={b.bg} stroke={b.color} strokeWidth={animStep === i ? 2.5 : 1.5} />
+                {animStep === i && (
+                  <rect x={b.x - 2} y={b.y - 2} width={b.w + 4} height={b.h + 4} rx={5}
+                    fill="none" stroke={b.color} strokeWidth={1} opacity={0.3} />
+                )}
+                <text x={b.x + b.w / 2} y={b.y + b.h / 2 - 4} textAnchor="middle"
+                  fill={b.color} fontSize={9} fontFamily="JetBrains Mono" fontWeight={700}>
+                  {b.label}
+                </text>
+                <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 8} textAnchor="middle"
+                  fill="#888" fontSize={7} fontFamily="JetBrains Mono">
+                  {b.sub}
+                </text>
+              </g>
+            ))}
+          </svg>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 8 }}>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a2a4a', border: '1px solid #4488ff', marginRight: 4 }} />Conv+ReLU</span>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 4 }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a1a3a', border: '1px solid #4488ff', marginRight: 4 }} />Conv+ReLU</span>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2a0a1a', border: '1px solid #ff6ec7', marginRight: 4 }} />MaxPool</span>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a2a0a', border: '1px solid #00ff00', marginRight: 4 }} />Dense+ReLU</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0a2a0a', border: '1px solid #00ff00', marginRight: 4 }} />Dense/Softmax</span>
         </div>
       </Card>
 
