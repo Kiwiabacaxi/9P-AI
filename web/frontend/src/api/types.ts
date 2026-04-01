@@ -331,6 +331,13 @@ export interface TsPoint {
   predito: number;
 }
 
+export interface TsForecastPoint {
+  dia: number;
+  predito: number;
+  upper: number;
+  lower: number;
+}
+
 export interface TsResult {
   ciclos: number;
   mseFinal: number;
@@ -340,6 +347,7 @@ export interface TsResult {
   pontos: TsPoint[];
   pontosValid: TsPoint[];
   predicaoAmanha: number;
+  forecast: TsForecastPoint[];
   ticker: string;
   tempoMs: number;
 }

@@ -1415,7 +1415,7 @@ func handleTsTrain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	useCfg := *cfg
-	normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays)
+	normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
 
 	progressCh := make(chan timeseries.TimeSeriesStep, 64)
 	go func() {

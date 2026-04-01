@@ -22,25 +22,37 @@ import (
 
 // Config permite customizar hiperparâmetros via frontend
 type Config struct {
-	Ticker     string  `json:"ticker"`     // ex: "COGN3.SA"
-	WindowSize int     `json:"windowSize"` // dias de entrada (default 5)
-	HiddenSize int     `json:"hiddenSize"` // neurônios ocultos (default 32)
-	Alfa       float64 `json:"alfa"`       // learning rate (default 0.01)
-	MaxCiclo   int     `json:"maxCiclo"`   // épocas (default 5000)
-	Ativacao   string  `json:"ativacao"`   // tanh/sigmoid/relu
-	ValidDays  int     `json:"validDays"`  // dias de validação (default 7)
+	Ticker       string  `json:"ticker"`       // ex: "COGN3.SA"
+	WindowSize   int     `json:"windowSize"`   // dias de entrada (default 5)
+	HiddenSize   int     `json:"hiddenSize"`   // neurônios ocultos (default 32)
+	Alfa         float64 `json:"alfa"`         // learning rate (default 0.01)
+	MaxCiclo     int     `json:"maxCiclo"`     // épocas (default 5000)
+	Ativacao     string  `json:"ativacao"`     // tanh/sigmoid/relu
+	ValidDays    int     `json:"validDays"`    // dias de validação (default 7)
+	ForecastDays int     `json:"forecastDays"` // dias de previsão futura (default 7)
+	ValidPct     float64 `json:"validPct"`     // % dos dados para validação (0 = usar validDays fixo)
 }
 
 func DefaultConfig() Config {
 	return Config{
-		Ticker:     "COGN3.SA",
-		WindowSize: 5,
-		HiddenSize: 32,
-		Alfa:       0.01,
-		MaxCiclo:   5000,
-		Ativacao:   "tanh",
-		ValidDays:  7,
+		Ticker:       "COGN3.SA",
+		WindowSize:   5,
+		HiddenSize:   32,
+		Alfa:         0.01,
+		MaxCiclo:     5000,
+		Ativacao:     "tanh",
+		ValidDays:    7,
+		ForecastDays: 7,
+		ValidPct:     0,
 	}
+}
+
+// ForecastPoint é um ponto de previsão futura com intervalo de confiança
+type ForecastPoint struct {
+	Dia      int     `json:"dia"`      // D+1, D+2, ...
+	Predito  float64 `json:"predito"`  // preço predito
+	Upper    float64 `json:"upper"`    // limite superior (confiança)
+	Lower    float64 `json:"lower"`    // limite inferior (confiança)
 }
 
 // TimeSeriesStep é enviado via SSE durante treinamento
@@ -60,6 +72,7 @@ type TimeSeriesResult struct {
 	Pontos         []TimeSeriesPoint `json:"pontos"`         // todos (treino+valid)
 	PontosValid    []TimeSeriesPoint `json:"pontosValid"`    // só validação
 	PredicaoAmanha float64           `json:"predicaoAmanha"` // preço predito para amanhã
+	Forecast       []ForecastPoint   `json:"forecast"`       // previsão multi-dia futura
 	Ticker         string            `json:"ticker"`
 	TempoMs        int64             `json:"tempoMs"`
 }
@@ -286,17 +299,47 @@ func Treinar(cfg Config, data NormalizedData, progressCh chan<- TimeSeriesStep) 
 	// Métricas na validação
 	res.MseFinal, res.RmseFinal, res.MaeFinal = CalcularMetricas(reaisValid, preditosValid)
 
-	// Predição para amanhã: usar os últimos windowSize preços reais
+	// Previsão futura multi-dia com intervalo de confiança
+	forecastDays := cfg.ForecastDays
+	if forecastDays <= 0 { forecastDays = 7 }
+
 	closes := data.AllClose
+	rangeP := data.MaxPrice - data.MinPrice
+	if rangeP < 0.0001 { rangeP = 1 }
+
 	if len(closes) >= cfg.WindowSize {
-		lastWindow := make([]float64, cfg.WindowSize)
-		rangeP := data.MaxPrice - data.MinPrice
-		if rangeP < 0.0001 { rangeP = 1 }
+		// Construir janela inicial com os últimos preços normalizados
+		window := make([]float64, cfg.WindowSize)
 		for j := range cfg.WindowSize {
-			lastWindow[j] = (closes[len(closes)-cfg.WindowSize+j] - data.MinPrice) / rangeP
+			window[j] = (closes[len(closes)-cfg.WindowSize+j] - data.MinPrice) / rangeP
 		}
-		predNorm, _ := m.Forward(lastWindow)
-		res.PredicaoAmanha = Desnormalizar(predNorm, data.MinPrice, data.MaxPrice)
+
+		// RMSE da validação como base do intervalo de confiança
+		confidence := res.RmseFinal
+		if confidence < 0.01 { confidence = 0.01 }
+
+		for d := 1; d <= forecastDays; d++ {
+			predNorm, _ := m.Forward(window)
+			predPrice := Desnormalizar(predNorm, data.MinPrice, data.MaxPrice)
+
+			// Intervalo cresce com a raiz do dia (incerteza acumula)
+			spread := confidence * math.Sqrt(float64(d))
+
+			fp := ForecastPoint{
+				Dia:     d,
+				Predito: predPrice,
+				Upper:   predPrice + spread,
+				Lower:   predPrice - spread,
+			}
+			res.Forecast = append(res.Forecast, fp)
+
+			if d == 1 {
+				res.PredicaoAmanha = predPrice
+			}
+
+			// Deslizar janela: remover o mais antigo, adicionar predição
+			window = append(window[1:], predNorm)
+		}
 	}
 
 	return m, res

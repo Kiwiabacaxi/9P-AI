@@ -115,8 +115,9 @@ func findPython() string {
 	return "python" // fallback
 }
 
-// PrepareData normaliza e cria janelas deslizantes para treino/validação
-func PrepareData(closes []float64, dates []string, windowSize, validDays int) NormalizedData {
+// PrepareData normaliza e cria janelas deslizantes para treino/validação.
+// Se validPct > 0, usa percentual dos dados para validação. Senão usa validDays fixo.
+func PrepareData(closes []float64, dates []string, windowSize, validDays int, validPct float64) NormalizedData {
 	n := len(closes)
 
 	// Encontrar min/max para normalização
@@ -160,8 +161,16 @@ func PrepareData(closes []float64, dates []string, windowSize, validDays int) No
 	}
 
 	// Separar treino e validação
-	trainEnd := totalPairs - validDays
+	var trainEnd int
+	if validPct > 0 && validPct < 1 {
+		trainEnd = int(float64(totalPairs) * (1.0 - validPct))
+	} else {
+		trainEnd = totalPairs - validDays
+	}
 	if trainEnd < 1 {
+		trainEnd = 1
+	}
+	if trainEnd >= totalPairs {
 		trainEnd = totalPairs - 1
 	}
 

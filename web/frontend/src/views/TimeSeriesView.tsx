@@ -18,7 +18,9 @@ export default function TimeSeriesView() {
   const [alfa, setAlfa] = useState(0.01);
   const [maxCiclo, setMaxCiclo] = useState(5000);
   const [ativacao, setAtivacao] = useState('tanh');
-  const [validDays] = useState(7);
+  const [validPct, setValidPct] = useState(0);   // 0 = usar validDays fixo
+  const [validDays, setValidDays] = useState(7);
+  const [forecastDays, setForecastDays] = useState(7);
 
   // Data
   const [stockData, setStockData] = useState<TsStockData | null>(null);
@@ -85,7 +87,7 @@ export default function TimeSeriesView() {
     addLog(`// treinando MLP: window=${windowSize} hidden=${hiddenSize} lr=${alfa} ciclos=${maxCiclo}`, 'dim');
 
     try {
-      await apiPost('/timeseries/config', { ticker, windowSize, hiddenSize, alfa, maxCiclo, ativacao, validDays });
+      await apiPost('/timeseries/config', { ticker, windowSize, hiddenSize, alfa, maxCiclo, ativacao, validDays, forecastDays, validPct });
     } catch {
       addLog('// erro ao configurar', 'err');
       setTraining(false);
@@ -240,6 +242,45 @@ export default function TimeSeriesView() {
         </Card>
       </div>
 
+      {/* Validation split + Forecast config */}
+      <div className="grid-2" style={{ marginBottom: 24 }}>
+        <Card title="Split Treino/Validação">
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginBottom: 8 }}>
+            {validPct > 0 ? `${((1 - validPct) * 100).toFixed(0)}% treino / ${(validPct * 100).toFixed(0)}% validação`
+              : `Treino: tudo exceto últimos ${validDays} dias`}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <button className={`porta-chip${validPct === 0 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0)} disabled={training}>dias fixos</button>
+            <button className={`porta-chip${validPct === 0.1 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0.1)} disabled={training}>90/10%</button>
+            <button className={`porta-chip${validPct === 0.2 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0.2)} disabled={training}>80/20%</button>
+            <button className={`porta-chip${validPct === 0.3 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0.3)} disabled={training}>70/30%</button>
+          </div>
+          {validPct === 0 && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[3, 5, 7, 10, 14].map(d => (
+                <button key={d} className={`porta-chip${validDays === d ? ' selected' : ''}`}
+                  onClick={() => setValidDays(d)} disabled={training}>{d}d</button>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card title="Previsão Futura">
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginBottom: 8 }}>
+            Prever {forecastDays} dias à frente com intervalo de confiança
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[3, 5, 7, 10, 14].map(d => (
+              <button key={d} className={`porta-chip${forecastDays === d ? ' selected' : ''}`}
+                onClick={() => setForecastDays(d)} disabled={training}>{d} dias</button>
+            ))}
+          </div>
+        </Card>
+      </div>
+
       {/* Price chart (raw data) */}
       {stockData && !result && (
         <Card title={`Histórico de Preços — ${stockData.ticker}`} style={{ marginBottom: 24 }}>
@@ -329,6 +370,45 @@ export default function TimeSeriesView() {
         </Card>
       )}
 
+      {/* Forecast chart */}
+      {result && result.forecast && result.forecast.length > 0 && (
+        <Card title={`Previsão Futura — Próximos ${result.forecast.length} dias`} style={{ marginBottom: 24 }}>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={result.forecast.map(f => ({
+              dia: `D+${f.dia}`,
+              predito: parseFloat(f.predito.toFixed(2)),
+              upper: parseFloat(f.upper.toFixed(2)),
+              lower: parseFloat(f.lower.toFixed(2)),
+            }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+              <XAxis dataKey="dia" stroke="#555" tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }} tickLine={false} />
+              <YAxis stroke="#555" tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }} tickLine={false} domain={['auto', 'auto']} />
+              <Tooltip contentStyle={{ background: '#1c2026', border: '1px solid #333', fontFamily: 'JetBrains Mono', fontSize: 10 }} />
+              <Line type="monotone" dataKey="upper" stroke="#ff6ec7" strokeWidth={1} dot={false} strokeDasharray="4 2" name="limite superior" isAnimationActive={false} />
+              <Line type="monotone" dataKey="predito" stroke="#00ff00" strokeWidth={2.5} dot={{ r: 3, fill: '#00ff00' }} name="predição" isAnimationActive={false} />
+              <Line type="monotone" dataKey="lower" stroke="#ff6ec7" strokeWidth={1} dot={false} strokeDasharray="4 2" name="limite inferior" isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginTop: 8 }}>
+            Linha verde = predição MLP · Linhas rosa = intervalo de confiança (±RMSE × √dia)
+          </div>
+          <table className="data-table" style={{ fontSize: 11, marginTop: 12 }}>
+            <thead>
+              <tr><th>Dia</th><th>Predição</th><th>Intervalo</th></tr>
+            </thead>
+            <tbody>
+              {result.forecast.map(f => (
+                <tr key={f.dia}>
+                  <td className="td-cyan">D+{f.dia}</td>
+                  <td className="td-green">R${f.predito.toFixed(2)}</td>
+                  <td>R${f.lower.toFixed(2)} — R${f.upper.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
       {/* Models */}
       <Card title="Modelos Salvos" style={{ marginBottom: 24 }}>
         {trained && (
@@ -370,7 +450,8 @@ export default function TimeSeriesView() {
           <div><b style={{ color: 'var(--cyan)' }}>Arquitetura:</b> {windowSize} entradas (janela) → {hiddenSize} ocultos ({ativacao}) → 1 saída (preço)</div>
           <div><b style={{ color: 'var(--cyan)' }}>Dados:</b> Yahoo Finance — preço de fechamento diário, normalizado Min-Max [0,1]</div>
           <div><b style={{ color: 'var(--cyan)' }}>Janela deslizante:</b> {windowSize} dias anteriores → prever dia seguinte</div>
-          <div><b style={{ color: 'var(--cyan)' }}>Validação:</b> últimos {validDays} dias separados do treino</div>
+          <div><b style={{ color: 'var(--cyan)' }}>Validação:</b> {validPct > 0 ? `${(validPct * 100).toFixed(0)}% dos dados` : `últimos ${validDays} dias`} separados do treino</div>
+          <div><b style={{ color: 'var(--cyan)' }}>Previsão futura:</b> {forecastDays} dias com intervalo de confiança (±RMSE × √dia)</div>
           <div><b style={{ color: 'var(--cyan)' }}>Métricas:</b> MSE, RMSE (raiz), MAE (absoluto) — em R$</div>
           <div><b style={{ color: 'var(--cyan)' }}>Referência:</b> Aula 08 — Investimentos e MLP (ver slide para referências)</div>
         </div>
