@@ -328,12 +328,12 @@ export default function TimeSeriesView() {
         </Card>
       </div>
 
-      {/* Prediction vs Real chart */}
+      {/* Prediction vs Real chart + Forecast */}
       {result && (
-        <Card title="Preço Real vs Predição da Rede" style={{ marginBottom: 24 }}>
-          <TimeSeriesChart pontos={result.pontos} validStart={validStart} height={300} />
+        <Card title="Preço Real vs Predição da Rede + Previsão Futura" style={{ marginBottom: 24 }}>
+          <TimeSeriesChart pontos={result.pontos} forecast={result.forecast} validStart={validStart} height={320} />
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginTop: 8 }}>
-            Linha sólida = preço real · Linha tracejada = predição MLP · Linha rosa = início da validação ({validDays} dias)
+            <span style={{ color: '#00fbfb' }}>cyan</span> = preço real · <span style={{ color: '#00ff00' }}>verde tracejado</span> = predição treino · <span style={{ color: '#ff6ec7' }}>rosa</span> = validação · <span style={{ color: '#ffaa00' }}>laranja</span> = previsão futura (±intervalo de confiança)
           </div>
         </Card>
       )}
@@ -370,37 +370,18 @@ export default function TimeSeriesView() {
         </Card>
       )}
 
-      {/* Forecast chart */}
+      {/* Forecast detail table */}
       {result && result.forecast && result.forecast.length > 0 && (
         <Card title={`Previsão Futura — Próximos ${result.forecast.length} dias`} style={{ marginBottom: 24 }}>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={result.forecast.map(f => ({
-              dia: `D+${f.dia}`,
-              predito: parseFloat(f.predito.toFixed(2)),
-              upper: parseFloat(f.upper.toFixed(2)),
-              lower: parseFloat(f.lower.toFixed(2)),
-            }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis dataKey="dia" stroke="#555" tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }} tickLine={false} />
-              <YAxis stroke="#555" tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }} tickLine={false} domain={['auto', 'auto']} />
-              <Tooltip contentStyle={{ background: '#1c2026', border: '1px solid #333', fontFamily: 'JetBrains Mono', fontSize: 10 }} />
-              <Line type="monotone" dataKey="upper" stroke="#ff6ec7" strokeWidth={1} dot={false} strokeDasharray="4 2" name="limite superior" isAnimationActive={false} />
-              <Line type="monotone" dataKey="predito" stroke="#00ff00" strokeWidth={2.5} dot={{ r: 3, fill: '#00ff00' }} name="predição" isAnimationActive={false} />
-              <Line type="monotone" dataKey="lower" stroke="#ff6ec7" strokeWidth={1} dot={false} strokeDasharray="4 2" name="limite inferior" isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginTop: 8 }}>
-            Linha verde = predição MLP · Linhas rosa = intervalo de confiança (±RMSE × √dia)
-          </div>
-          <table className="data-table" style={{ fontSize: 11, marginTop: 12 }}>
+          <table className="data-table" style={{ fontSize: 11 }}>
             <thead>
-              <tr><th>Dia</th><th>Predição</th><th>Intervalo</th></tr>
+              <tr><th>Dia</th><th>Predição</th><th>Intervalo de Confiança</th></tr>
             </thead>
             <tbody>
               {result.forecast.map(f => (
                 <tr key={f.dia}>
                   <td className="td-cyan">D+{f.dia}</td>
-                  <td className="td-green">R${f.predito.toFixed(2)}</td>
+                  <td className="td-green" style={{ fontWeight: 700 }}>R${f.predito.toFixed(2)}</td>
                   <td>R${f.lower.toFixed(2)} — R${f.upper.toFixed(2)}</td>
                 </tr>
               ))}
