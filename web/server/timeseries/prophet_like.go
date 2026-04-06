@@ -104,6 +104,25 @@ func TreinarProphetLike(cfg Config, data NormalizedData) TimeSeriesResult {
 
 	res.MseFinal, res.RmseFinal, res.MaeFinal = CalcularMetricas(reaisValid, preditosValid)
 
+	// VizData: decomposição para visualização
+	trendVals := make([]float64, n)
+	seasonalVals := make([]float64, n)
+	residualVals := make([]float64, n)
+	for i := range n {
+		trendVals[i] = alpha + beta*float64(i)
+		seasonalVals[i] = seasonal[i%period]
+		residualVals[i] = closes[i] - trendVals[i] - seasonalVals[i]
+	}
+	res.VizData = map[string]any{
+		"trend":     trendVals,
+		"seasonal":  seasonalVals,
+		"residual":  residualVals,
+		"period":    period,
+		"alpha":     alpha,
+		"beta":      beta,
+		"seasonalPattern": seasonal,
+	}
+
 	// Forecast: extrapolar trend + seasonal
 	fd := cfg.ForecastDays; if fd <= 0 { fd = 7 }
 	conf := res.RmseFinal; if conf < 0.01 { conf = 0.01 }

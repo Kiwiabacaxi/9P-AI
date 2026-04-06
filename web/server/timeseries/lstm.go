@@ -354,6 +354,29 @@ func TreinarLSTM(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (*LS
 
 	res.MseFinal, res.RmseFinal, res.MaeFinal = CalcularMetricas(reaisValid, preditosValid)
 
+	// VizData: gate values for the last validation sample (for visualization)
+	if len(data.ValidX) > 0 {
+		lastSeq := data.ValidX[len(data.ValidX)-1]
+		_, states := net.Forward(lastSeq)
+		// Extract gate averages per timestep
+		gateData := make([]map[string]float64, len(states))
+		for t, st := range states {
+			fAvg, iAvg, gAvg, oAvg := 0.0, 0.0, 0.0, 0.0
+			for j := range hidSize {
+				fAvg += st.F[j]; iAvg += st.I[j]; gAvg += math.Abs(st.G[j]); oAvg += st.O[j]
+			}
+			n := float64(hidSize)
+			gateData[t] = map[string]float64{
+				"forget": fAvg / n, "input": iAvg / n,
+				"cell": gAvg / n, "output": oAvg / n,
+			}
+		}
+		res.VizData = map[string]any{
+			"gates":     gateData,
+			"seqLength": len(states),
+		}
+	}
+
 	// Forecast
 	forecastDays := cfg.ForecastDays
 	if forecastDays <= 0 { forecastDays = 7 }

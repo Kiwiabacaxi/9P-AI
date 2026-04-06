@@ -50,6 +50,12 @@ func TreinarSMA(cfg Config, data NormalizedData) TimeSeriesResult {
 
 	res.MseFinal, res.RmseFinal, res.MaeFinal = CalcularMetricas(reaisValid, preditosValid)
 
+	// VizData: raw prices + window size for sliding animation
+	res.VizData = map[string]any{
+		"windowSize": cfg.WindowSize,
+		"prices":     data.AllClose,
+	}
+
 	// Forecast: deslizar janela com predições anteriores
 	forecastDays := cfg.ForecastDays
 	if forecastDays <= 0 { forecastDays = 7 }

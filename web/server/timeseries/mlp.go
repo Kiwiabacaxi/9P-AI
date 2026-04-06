@@ -73,6 +73,7 @@ type TimeSeriesResult struct {
 	PontosValid    []TimeSeriesPoint `json:"pontosValid"`    // só validação
 	PredicaoAmanha float64           `json:"predicaoAmanha"` // preço predito para amanhã
 	Forecast       []ForecastPoint   `json:"forecast"`       // previsão multi-dia futura
+	VizData        map[string]any    `json:"vizData,omitempty"` // dados extras para visualização (model-specific)
 	Ticker         string            `json:"ticker"`
 	TempoMs        int64             `json:"tempoMs"`
 }

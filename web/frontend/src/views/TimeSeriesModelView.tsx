@@ -5,7 +5,7 @@ import LogChart from '../components/viz/LogChart';
 import TimeSeriesChart from '../components/viz/TimeSeriesChart';
 import { useToast } from '../components/shared/Toast';
 import { apiPost, apiSSE } from '../api/client';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, BarChart, Bar, Legend, ReferenceLine } from 'recharts';
 import type { TsStockData, TsResult } from '../api/types';
 
 // ---------------------------------------------------------------------------
@@ -396,6 +396,137 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
         <Card title="Preço Real vs Predição" style={{ marginBottom: 24 }}>
           <TimeSeriesChart pontos={result.pontos} forecast={result.forecast} validStart={validStart} height={300}
             showConfidence={info.hasTraining} />
+        </Card>
+      )}
+
+      {/* ===== Model-specific visualizations ===== */}
+
+      {/* Prophet-like: Decomposition (trend + seasonal + residual) */}
+      {result && modelo === 'ProphetLike' && result.vizData && (
+        <Card title="Decomposição — Tendência + Sazonalidade + Resíduos" style={{ marginBottom: 24 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginBottom: 12 }}>
+            y(t) = <span style={{ color: '#00ff00' }}>tendência(t)</span> + <span style={{ color: '#ffaa00' }}>sazonalidade(t)</span> + <span style={{ color: '#ff6ec7' }}>resíduo(t)</span>
+          </div>
+
+          {/* Trend */}
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#00ff00', marginBottom: 2 }}>
+            TENDÊNCIA (regressão linear últimos 30d) — β = {((result.vizData as any).beta as number)?.toFixed(4) || '?'}/dia
+          </div>
+          <ResponsiveContainer width="100%" height={100}>
+            <LineChart data={((result.vizData as any).trend as number[])?.map((v: number, i: number) => ({ i, v: parseFloat(v.toFixed(2)) })) || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+              <YAxis stroke="#333" tick={{ fill: '#555', fontSize: 8, fontFamily: 'JetBrains Mono' }} tickLine={false} domain={['auto', 'auto']} />
+              <Line type="monotone" dataKey="v" stroke="#00ff00" strokeWidth={2} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+
+          {/* Seasonal */}
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#ffaa00', marginTop: 8, marginBottom: 2 }}>
+            SAZONALIDADE (padrão semanal 5 dias úteis)
+          </div>
+          <ResponsiveContainer width="100%" height={80}>
+            <BarChart data={((result.vizData as any).seasonalPattern as number[])?.map((v: number, i: number) => ({
+              dia: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'][i] || `D${i}`,
+              v: parseFloat(v.toFixed(4)),
+            })) || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+              <XAxis dataKey="dia" stroke="#555" tick={{ fill: '#ffaa00', fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} />
+              <YAxis stroke="#333" tick={{ fill: '#555', fontSize: 8, fontFamily: 'JetBrains Mono' }} tickLine={false} />
+              <ReferenceLine y={0} stroke="#333" />
+              <Bar dataKey="v" fill="#ffaa0060" stroke="#ffaa00" />
+            </BarChart>
+          </ResponsiveContainer>
+
+          {/* Residual */}
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#ff6ec7', marginTop: 8, marginBottom: 2 }}>
+            RESÍDUOS (o que sobra — idealmente ruído aleatório)
+          </div>
+          <ResponsiveContainer width="100%" height={80}>
+            <LineChart data={((result.vizData as any).residual as number[])?.map((v: number, i: number) => ({ i, v: parseFloat(v.toFixed(3)) })) || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+              <YAxis stroke="#333" tick={{ fill: '#555', fontSize: 8, fontFamily: 'JetBrains Mono' }} tickLine={false} domain={['auto', 'auto']} />
+              <ReferenceLine y={0} stroke="#333" />
+              <Line type="monotone" dataKey="v" stroke="#ff6ec7" strokeWidth={1} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {/* LSTM: Gate activation visualization */}
+      {result && modelo === 'LSTM' && result.vizData && (result.vizData as any).gates && (
+        <Card title="LSTM Gates — Ativação por Timestep (última amostra)" style={{ marginBottom: 24 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--on-surface)', marginBottom: 8 }}>
+            Cada barra mostra a ativação média dos gates em cada passo da sequência.
+            <span style={{ color: '#ff6ec7' }}> Forget</span> controla o que esquecer,
+            <span style={{ color: '#00fbfb' }}> Input</span> o que adicionar,
+            <span style={{ color: '#ffaa00' }}> Cell</span> o candidato,
+            <span style={{ color: '#00ff00' }}> Output</span> o que expor.
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={((result.vizData as any).gates as any[])?.map((g: any, t: number) => ({
+              step: `t${t + 1}`,
+              forget: parseFloat((g.forget as number).toFixed(3)),
+              input: parseFloat((g.input as number).toFixed(3)),
+              cell: parseFloat((g.cell as number).toFixed(3)),
+              output: parseFloat((g.output as number).toFixed(3)),
+            })) || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+              <XAxis dataKey="step" stroke="#555" tick={{ fill: '#888', fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} />
+              <YAxis stroke="#333" tick={{ fill: '#555', fontSize: 8, fontFamily: 'JetBrains Mono' }} tickLine={false} domain={[0, 1]} />
+              <Tooltip contentStyle={{ background: '#1c2026', border: '1px solid #333', fontFamily: 'JetBrains Mono', fontSize: 10 }} />
+              <Legend wrapperStyle={{ fontFamily: 'JetBrains Mono', fontSize: 9 }} />
+              <Bar dataKey="forget" fill="#ff6ec7" name="Forget" />
+              <Bar dataKey="input" fill="#00fbfb" name="Input" />
+              <Bar dataKey="cell" fill="#ffaa00" name="Cell" />
+              <Bar dataKey="output" fill="#00ff00" name="Output" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {/* SMA: Sliding window concept */}
+      {result && modelo === 'SMA' && result.vizData && (
+        <Card title="Conceito — Janela Deslizante" style={{ marginBottom: 24 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--on-surface)', lineHeight: 1.8 }}>
+            <div style={{ marginBottom: 8 }}>
+              A SMA calcula a <b style={{ color: info.color }}>média aritmética</b> dos últimos <b style={{ color: 'var(--cyan)' }}>{(result.vizData as any).windowSize}</b> dias:
+            </div>
+            <div style={{ background: 'var(--surface-low)', padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: 13, marginBottom: 12 }}>
+              SMA(t) = <span style={{ color: 'var(--cyan)' }}>1/{(result.vizData as any).windowSize}</span> × ( preço(t-{(result.vizData as any).windowSize}) + preço(t-{(result.vizData as any).windowSize - 1}) + ... + preço(t-1) )
+            </div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+              {/* Show last 3 windows as examples */}
+              {(() => {
+                const prices = (result.vizData as any).prices as number[] || [];
+                const ws = (result.vizData as any).windowSize as number || 5;
+                const examples = [];
+                for (let start = Math.max(0, prices.length - ws * 3); start <= prices.length - ws; start += ws) {
+                  const window = prices.slice(start, start + ws);
+                  const avg = window.reduce((a: number, b: number) => a + b, 0) / ws;
+                  examples.push({ start, window, avg });
+                  if (examples.length >= 3) break;
+                }
+                return examples.map((ex, i) => (
+                  <div key={i} style={{ background: 'var(--surface-low)', padding: 8, minWidth: 120 }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#888', marginBottom: 4 }}>
+                      Janela {i + 1} (dia {ex.start + 1}–{ex.start + ex.window.length})
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                      {ex.window.map((p: number, j: number) => (
+                        <span key={j} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--cyan)',
+                          background: '#0a1a2a', padding: '2px 4px' }}>
+                          {p.toFixed(2)}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: info.color, fontWeight: 700 }}>
+                      SMA = R${ex.avg.toFixed(2)}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
         </Card>
       )}
 

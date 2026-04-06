@@ -350,6 +350,7 @@ export interface TsResult {
   forecast: TsForecastPoint[];
   ticker: string;
   tempoMs: number;
+  vizData?: Record<string, unknown>; // model-specific visualization data
 }
 
 export interface TsModelMeta {
