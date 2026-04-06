@@ -361,7 +361,8 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
       {/* Prediction chart */}
       {result && (
         <Card title="Preço Real vs Predição" style={{ marginBottom: 24 }}>
-          <TimeSeriesChart pontos={result.pontos} forecast={result.forecast} validStart={validStart} height={300} />
+          <TimeSeriesChart pontos={result.pontos} forecast={result.forecast} validStart={validStart} height={300}
+            showConfidence={info.hasTraining} />
         </Card>
       )}
 
