@@ -110,12 +110,13 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
 
   // Config
   const [ticker, setTicker] = useState('COGN3.SA');
+  const [period, setPeriod] = useState('6mo');
   const [windowSize, setWindowSize] = useState(5);
   const [hiddenSize, setHiddenSize] = useState(16);
   const [alfa, setAlfa] = useState(0.005);
   const [maxCiclo, setMaxCiclo] = useState(2000);
   const [forecastDays, setForecastDays] = useState(7);
-  const [validDays] = useState(7);
+  const [validPct, setValidPct] = useState(20); // % para validação (slider 5-40)
 
   // State
   const [stockData, setStockData] = useState<TsStockData | null>(null);
@@ -145,7 +146,7 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
   const handleFetch = async () => {
     setFetching(true);
     try {
-      const data = await apiPost<TsStockData>('/timeseries/fetch-data', { ticker, period: '6mo' });
+      const data = await apiPost<TsStockData>('/timeseries/fetch-data', { ticker, period });
       setStockData(data);
       addLog(`✓ ${data.dates.length} dias carregados`, 'ok');
       show(`${ticker}: ${data.dates.length} dias`);
@@ -167,7 +168,7 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
     // Send config
     await apiPost('/timeseries/config', {
       ticker, windowSize, hiddenSize, alfa, maxCiclo,
-      ativacao: 'tanh', validDays, forecastDays, validPct: 0,
+      ativacao: 'tanh', validDays: 7, forecastDays, validPct: validPct / 100,
     }).catch(() => {});
 
     if (info.hasTraining) {
@@ -243,10 +244,10 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
         </div>
       </div>
 
-      {/* Config */}
-      <div className={info.showHidden ? 'grid-3' : 'grid-2'} style={{ marginBottom: 24 }}>
-        <Card title="Ação">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      {/* Config row 1: Ação + Período + Janela */}
+      <div className="grid-3" style={{ marginBottom: 16 }}>
+        <Card title="Ação · Período">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <input type="text" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())}
               style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', color: 'var(--on-surface)',
                 fontFamily: 'var(--font-mono)', fontSize: 12, padding: '6px 10px', flex: 1, fontWeight: 700 }} />
@@ -255,56 +256,88 @@ export default function TimeSeriesModelView({ modelo }: { modelo: string }) {
               {fetching ? '...' : 'BUSCAR'}
             </button>
           </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[['3mo', '3M'], ['6mo', '6M'], ['1y', '1A'], ['2y', '2A']].map(([v, l]) => (
+              <button key={v} className={`porta-chip${period === v ? ' selected' : ''}`}
+                onClick={() => setPeriod(v)} disabled={training}>{l}</button>
+            ))}
+          </div>
           {stockData && (
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--primary-glow)', marginTop: 6 }}>
               {stockData.dates.length} dias · R${Math.min(...stockData.close).toFixed(2)}–R${Math.max(...stockData.close).toFixed(2)}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            {[3, 5, 10, 20].map(w => (
+        </Card>
+
+        <Card title="Janela · Forecast">
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#888', marginBottom: 4 }}>Janela (dias de entrada)</div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            {[3, 5, 10, 20, 30, 60].map(w => (
               <button key={w} className={`porta-chip${windowSize === w ? ' selected' : ''}`}
-                onClick={() => setWindowSize(w)} disabled={training}>{w}d janela</button>
+                onClick={() => setWindowSize(w)} disabled={training}>{w}d</button>
+            ))}
+          </div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#888', marginBottom: 4 }}>Previsão futura</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[3, 5, 7, 14, 30].map(d => (
+              <button key={d} className={`porta-chip${forecastDays === d ? ' selected' : ''}`}
+                onClick={() => setForecastDays(d)} disabled={training}>{d}d</button>
             ))}
           </div>
         </Card>
 
-        {info.showHidden && (
-          <Card title="Neurônios · Ciclos · LR">
-            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-              {[8, 16, 32].map(h => (
-                <button key={h} className={`porta-chip${hiddenSize === h ? ' selected' : ''}`}
-                  onClick={() => setHiddenSize(h)} disabled={training}>{h}n</button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-              {[1000, 2000, 5000].map(c => (
-                <button key={c} className={`porta-chip${maxCiclo === c ? ' selected' : ''}`}
-                  onClick={() => setMaxCiclo(c)} disabled={training}>{c >= 1000 ? `${c/1000}k` : c}</button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[0.001, 0.005, 0.01].map(a => (
-                <button key={a} className={`porta-chip${alfa === a ? ' selected' : ''}`}
-                  onClick={() => setAlfa(a)} disabled={training}>{a}</button>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        <Card title="Previsão Futura">
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[3, 5, 7, 14].map(d => (
-              <button key={d} className={`porta-chip${forecastDays === d ? ' selected' : ''}`}
-                onClick={() => setForecastDays(d)} disabled={training}>{d} dias</button>
-            ))}
+        <Card title="Split Treino/Validação">
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--on-surface)', marginBottom: 6 }}>
+            <span style={{ color: 'var(--primary-glow)' }}>{100 - validPct}%</span> treino · <span style={{ color: 'var(--pink)' }}>{validPct}%</span> validação
+            {stockData && (
+              <span style={{ color: '#888' }}>
+                {' '}({Math.round(stockData.dates.length * (1 - validPct / 100))}d / {Math.round(stockData.dates.length * validPct / 100)}d)
+              </span>
+            )}
+          </div>
+          <input type="range" min={5} max={40} value={validPct}
+            onChange={e => setValidPct(parseInt(e.target.value))} disabled={training}
+            style={{ width: '100%', accentColor: 'var(--primary-glow)' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 8, color: '#555' }}>
+            <span>5%</span><span>20%</span><span>40%</span>
           </div>
           {info.needsPython && (
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginTop: 8 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--pink)', marginTop: 6 }}>
               Requer Python + libs instaladas
             </div>
           )}
         </Card>
       </div>
+
+      {/* Config row 2: DL params (only for training models) */}
+      {info.showHidden && (
+        <div className="grid-3" style={{ marginBottom: 24 }}>
+          <Card title="Neurônios Ocultos">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[8, 16, 32, 64].map(h => (
+                <button key={h} className={`porta-chip${hiddenSize === h ? ' selected' : ''}`}
+                  onClick={() => setHiddenSize(h)} disabled={training}>{h}</button>
+              ))}
+            </div>
+          </Card>
+          <Card title="Ciclos (Épocas)">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[1000, 2000, 5000, 10000].map(c => (
+                <button key={c} className={`porta-chip${maxCiclo === c ? ' selected' : ''}`}
+                  onClick={() => setMaxCiclo(c)} disabled={training}>{c >= 1000 ? `${c/1000}k` : c}</button>
+              ))}
+            </div>
+          </Card>
+          <Card title="Learning Rate">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[0.001, 0.005, 0.01, 0.02].map(a => (
+                <button key={a} className={`porta-chip${alfa === a ? ' selected' : ''}`}
+                  onClick={() => setAlfa(a)} disabled={training}>{a}</button>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Raw price chart (before training) */}
       {stockData && !result && (
