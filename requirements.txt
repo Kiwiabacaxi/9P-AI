@@ -1,0 +1,6 @@
+# Python dependencies for ML models (time series comparison)
+yfinance>=0.2.0
+scikit-learn>=1.0
+xgboost>=1.5
+prophet>=1.1
+numpy>=1.20
