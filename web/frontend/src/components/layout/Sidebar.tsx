@@ -33,9 +33,28 @@ const imgregItems: NavEntry[] = [
   { view: 'imgreg-bench', label: 'Benchmark', icon: '' },
 ];
 
+const tsModelItems: NavEntry[] = [
+  { view: 'ts-sma', label: 'SMA', icon: '' },
+  { view: 'ts-ema', label: 'EMA', icon: '' },
+  { view: 'ts-arima', label: 'ARIMA', icon: '' },
+  { view: 'ts-mlp-ts', label: 'MLP', icon: '' },
+  { view: 'ts-lstm', label: 'LSTM', icon: '' },
+  { view: 'ts-gru', label: 'GRU', icon: '' },
+  { view: 'ts-bilstm', label: 'BiLSTM', icon: '' },
+  { view: 'ts-seq2seq', label: 'Seq2Seq', icon: '' },
+  { view: 'ts-prophetlike', label: 'Prophet Go', icon: '' },
+  { view: 'ts-prophet', label: 'Prophet Meta', icon: '' },
+  { view: 'ts-rf', label: 'Random Forest', icon: '' },
+  { view: 'ts-xgboost', label: 'XGBoost', icon: '' },
+  { view: 'ts-compare', label: 'Benchmark', icon: '' },
+];
+
 export default function Sidebar({ active, onNavigate }: Props) {
   const [imgregOpen, setImgregOpen] = useState(
     imgregItems.some(i => i.view === active)
+  );
+  const [tsOpen, setTsOpen] = useState(
+    tsModelItems.some(i => i.view === active) || active === 'timeseries'
   );
 
   const navItem = (entry: NavEntry) => (
@@ -83,12 +102,18 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A9'}</span>
         MLP Ações
       </div>
+      <div className="sidebar-divider" />
+      <div className="sidebar-label">Extras</div>
       <div
-        className={`nav-item${active === 'ts-compare' ? ' active' : ''}`}
-        onClick={() => onNavigate('ts-compare')}
+        className={`nav-accordion-header${tsOpen ? ' open' : ''}`}
+        onClick={() => setTsOpen(!tsOpen)}
       >
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A8'}</span>
-        Comparar Modelos
+        SÉRIES TEMPORAIS
+        <span className="nav-accordion-arrow">{'\u25B6'}</span>
+      </div>
+      <div className={`nav-accordion-children${tsOpen ? ' open' : ''}`}>
+        {tsModelItems.map(navItem)}
       </div>
       <div className="sidebar-divider" />
       <div

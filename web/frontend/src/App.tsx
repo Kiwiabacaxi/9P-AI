@@ -15,6 +15,7 @@ import ImgregView from './views/ImgregView';
 import ImgregBenchView from './views/ImgregBenchView';
 import CnnView from './views/CnnView';
 import TimeSeriesView from './views/TimeSeriesView';
+import TimeSeriesModelView from './views/TimeSeriesModelView';
 import TimeSeriesCompareView from './views/TimeSeriesCompareView';
 import AboutView from './views/AboutView';
 
@@ -33,6 +34,18 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   'imgreg-bench': ImgregBenchView,
   cnn: CnnView,
   timeseries: TimeSeriesView,
+  'ts-sma': () => <TimeSeriesModelView modelo="SMA" />,
+  'ts-ema': () => <TimeSeriesModelView modelo="EMA" />,
+  'ts-arima': () => <TimeSeriesModelView modelo="ARIMA" />,
+  'ts-mlp-ts': () => <TimeSeriesModelView modelo="MLP" />,
+  'ts-lstm': () => <TimeSeriesModelView modelo="LSTM" />,
+  'ts-gru': () => <TimeSeriesModelView modelo="GRU" />,
+  'ts-bilstm': () => <TimeSeriesModelView modelo="BiLSTM" />,
+  'ts-seq2seq': () => <TimeSeriesModelView modelo="Seq2Seq" />,
+  'ts-prophetlike': () => <TimeSeriesModelView modelo="ProphetLike" />,
+  'ts-prophet': () => <TimeSeriesModelView modelo="Prophet" />,
+  'ts-rf': () => <TimeSeriesModelView modelo="RandomForest" />,
+  'ts-xgboost': () => <TimeSeriesModelView modelo="XGBoost" />,
   'ts-compare': TimeSeriesCompareView,
   about: AboutView,
 };

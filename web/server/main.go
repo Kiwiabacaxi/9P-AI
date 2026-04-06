@@ -1512,6 +1512,111 @@ func handleTsLoad(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+func handleTsTrainModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Modelo string `json:"modelo"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+
+	mu.RLock()
+	stockData := tsStockData
+	cfg := tsCfg
+	mu.RUnlock()
+
+	if stockData == nil || len(stockData.Close) == 0 {
+		errJSON(w, http.StatusPreconditionFailed, "busque dados primeiro")
+		return
+	}
+	if cfg == nil {
+		def := timeseries.DefaultConfig()
+		cfg = &def
+	}
+	useCfg := *cfg
+
+	// Modelos instantâneos (sem SSE)
+	switch req.Modelo {
+	case "SMA":
+		normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
+		res := timeseries.TreinarSMA(useCfg, normData)
+		writeJSON(w, http.StatusOK, res)
+		return
+	case "EMA":
+		normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
+		res := timeseries.TreinarEMA(useCfg, normData)
+		writeJSON(w, http.StatusOK, res)
+		return
+	case "ARIMA":
+		normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
+		res := timeseries.TreinarARIMA(useCfg, normData)
+		writeJSON(w, http.StatusOK, res)
+		return
+	case "ProphetLike":
+		normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
+		res := timeseries.TreinarProphetLike(useCfg, normData)
+		writeJSON(w, http.StatusOK, res)
+		return
+	case "RandomForest", "XGBoost", "Prophet":
+		res, err := timeseries.TreinarPythonModel(req.Modelo, useCfg, stockData)
+		if err != nil {
+			errJSON(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
+		return
+	}
+
+	// Modelos com treinamento iterativo (SSE)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
+	ch := make(chan timeseries.TimeSeriesStep, 64)
+	resCh := make(chan timeseries.TimeSeriesResult, 1)
+
+	go func() {
+		var res timeseries.TimeSeriesResult
+		switch req.Modelo {
+		case "MLP":
+			_, res = timeseries.Treinar(useCfg, normData, ch)
+		case "LSTM":
+			_, res = timeseries.TreinarLSTM(useCfg, normData, ch)
+		case "GRU":
+			_, res = timeseries.TreinarGRU(useCfg, normData, ch)
+		case "BiLSTM":
+			_, res = timeseries.TreinarBiLSTM(useCfg, normData, ch)
+		case "Seq2Seq":
+			_, res = timeseries.TreinarSeq2Seq(useCfg, normData, ch)
+		default:
+			close(ch)
+			resCh <- timeseries.TimeSeriesResult{}
+			return
+		}
+		close(ch)
+		resCh <- res
+	}()
+
+	for step := range ch {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	res := <-resCh
+	data, _ := json.Marshal(res)
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+	flusher.Flush()
+}
+
 func handleTsCompare(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Modelos []string `json:"modelos"`
@@ -1779,6 +1884,7 @@ func main() {
 	mux.HandleFunc("/api/timeseries/models", cors(handleTsModels))
 	mux.HandleFunc("/api/timeseries/load", cors(handleTsLoad))
 	mux.HandleFunc("/api/timeseries/delete-model", cors(handleTsDeleteModel))
+	mux.HandleFunc("/api/timeseries/train-model", cors(handleTsTrainModel))
 	mux.HandleFunc("/api/timeseries/compare", cors(handleTsCompare))
 	mux.HandleFunc("/api/timeseries/available-models", cors(handleTsAvailableModels))
 

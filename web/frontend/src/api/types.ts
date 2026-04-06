@@ -391,5 +391,8 @@ export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
-  | 'cnn' | 'timeseries' | 'ts-compare'
+  | 'cnn' | 'timeseries'
+  | 'ts-sma' | 'ts-ema' | 'ts-arima' | 'ts-mlp-ts' | 'ts-lstm' | 'ts-gru' | 'ts-bilstm' | 'ts-seq2seq'
+  | 'ts-prophetlike' | 'ts-prophet' | 'ts-rf' | 'ts-xgboost'
+  | 'ts-compare'
   | 'about';
