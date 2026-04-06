@@ -1590,44 +1590,54 @@ func handleTsCompare(w http.ResponseWriter, r *http.Request) {
 			sendModelDone("ProphetLike", res, "")
 		case "MLP":
 			ch := make(chan timeseries.TimeSeriesStep, 64)
+			resCh := make(chan timeseries.TimeSeriesResult, 1)
 			go func() {
 				_, res := timeseries.Treinar(useCfg, normData, ch)
 				close(ch)
-				sendModelDone("MLP", res, "")
+				resCh <- res
 			}()
 			for step := range ch { sendProgress("MLP", step) }
+			sendModelDone("MLP", <-resCh, "")
 		case "LSTM":
 			ch := make(chan timeseries.TimeSeriesStep, 64)
+			resCh := make(chan timeseries.TimeSeriesResult, 1)
 			go func() {
 				_, res := timeseries.TreinarLSTM(useCfg, normData, ch)
 				close(ch)
-				sendModelDone("LSTM", res, "")
+				resCh <- res
 			}()
 			for step := range ch { sendProgress("LSTM", step) }
+			sendModelDone("LSTM", <-resCh, "")
 		case "GRU":
 			ch := make(chan timeseries.TimeSeriesStep, 64)
+			resCh := make(chan timeseries.TimeSeriesResult, 1)
 			go func() {
 				_, res := timeseries.TreinarGRU(useCfg, normData, ch)
 				close(ch)
-				sendModelDone("GRU", res, "")
+				resCh <- res
 			}()
 			for step := range ch { sendProgress("GRU", step) }
+			sendModelDone("GRU", <-resCh, "")
 		case "BiLSTM":
 			ch := make(chan timeseries.TimeSeriesStep, 64)
+			resCh := make(chan timeseries.TimeSeriesResult, 1)
 			go func() {
 				_, res := timeseries.TreinarBiLSTM(useCfg, normData, ch)
 				close(ch)
-				sendModelDone("BiLSTM", res, "")
+				resCh <- res
 			}()
 			for step := range ch { sendProgress("BiLSTM", step) }
+			sendModelDone("BiLSTM", <-resCh, "")
 		case "Seq2Seq":
 			ch := make(chan timeseries.TimeSeriesStep, 64)
+			resCh := make(chan timeseries.TimeSeriesResult, 1)
 			go func() {
 				_, res := timeseries.TreinarSeq2Seq(useCfg, normData, ch)
 				close(ch)
-				sendModelDone("Seq2Seq", res, "")
+				resCh <- res
 			}()
 			for step := range ch { sendProgress("Seq2Seq", step) }
+			sendModelDone("Seq2Seq", <-resCh, "")
 		case "RandomForest", "XGBoost", "Prophet":
 			res, err := timeseries.TreinarPythonModel(modelo, useCfg, stockData)
 			if err != nil {
