@@ -15,6 +15,7 @@ import ImgregView from './views/ImgregView';
 import ImgregBenchView from './views/ImgregBenchView';
 import CnnView from './views/CnnView';
 import TimeSeriesView from './views/TimeSeriesView';
+import TimeSeriesCompareView from './views/TimeSeriesCompareView';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -32,6 +33,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   'imgreg-bench': ImgregBenchView,
   cnn: CnnView,
   timeseries: TimeSeriesView,
+  'ts-compare': TimeSeriesCompareView,
   about: AboutView,
 };
 

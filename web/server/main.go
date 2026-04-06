@@ -1512,6 +1512,142 @@ func handleTsLoad(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+func handleTsCompare(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Modelos []string `json:"modelos"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, "request inválido")
+		return
+	}
+
+	mu.RLock()
+	stockData := tsStockData
+	cfg := tsCfg
+	mu.RUnlock()
+
+	if stockData == nil || len(stockData.Close) == 0 {
+		errJSON(w, http.StatusPreconditionFailed, "busque dados primeiro (fetch-data)")
+		return
+	}
+	if cfg == nil {
+		def := timeseries.DefaultConfig()
+		cfg = &def
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	normData := timeseries.PrepareData(stockData.Close, stockData.Dates, useCfg.WindowSize, useCfg.ValidDays, useCfg.ValidPct)
+
+	sendModelDone := func(modelo string, result timeseries.TimeSeriesResult, erro string) {
+		mr := timeseries.CompareModelResult{
+			Modelo: modelo,
+			Result: result,
+			Cor:    timeseries.ModelColors[modelo],
+			Erro:   erro,
+		}
+		data, _ := json.Marshal(mr)
+		fmt.Fprintf(w, "event: model-done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	sendProgress := func(modelo string, step timeseries.TimeSeriesStep) {
+		type progMsg struct {
+			Modelo string `json:"modelo"`
+			timeseries.TimeSeriesStep
+		}
+		data, _ := json.Marshal(progMsg{Modelo: modelo, TimeSeriesStep: step})
+		fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	for _, modelo := range req.Modelos {
+		// Notificar que o modelo está iniciando
+		fmt.Fprintf(w, "event: model-start\ndata: {\"modelo\":%q}\n\n", modelo)
+		flusher.Flush()
+
+		switch modelo {
+		case "SMA":
+			res := timeseries.TreinarSMA(useCfg, normData)
+			sendModelDone("SMA", res, "")
+		case "EMA":
+			res := timeseries.TreinarEMA(useCfg, normData)
+			sendModelDone("EMA", res, "")
+		case "ARIMA":
+			res := timeseries.TreinarARIMA(useCfg, normData)
+			sendModelDone("ARIMA", res, "")
+		case "ProphetLike":
+			res := timeseries.TreinarProphetLike(useCfg, normData)
+			sendModelDone("ProphetLike", res, "")
+		case "MLP":
+			ch := make(chan timeseries.TimeSeriesStep, 64)
+			go func() {
+				_, res := timeseries.Treinar(useCfg, normData, ch)
+				close(ch)
+				sendModelDone("MLP", res, "")
+			}()
+			for step := range ch { sendProgress("MLP", step) }
+		case "LSTM":
+			ch := make(chan timeseries.TimeSeriesStep, 64)
+			go func() {
+				_, res := timeseries.TreinarLSTM(useCfg, normData, ch)
+				close(ch)
+				sendModelDone("LSTM", res, "")
+			}()
+			for step := range ch { sendProgress("LSTM", step) }
+		case "GRU":
+			ch := make(chan timeseries.TimeSeriesStep, 64)
+			go func() {
+				_, res := timeseries.TreinarGRU(useCfg, normData, ch)
+				close(ch)
+				sendModelDone("GRU", res, "")
+			}()
+			for step := range ch { sendProgress("GRU", step) }
+		case "BiLSTM":
+			ch := make(chan timeseries.TimeSeriesStep, 64)
+			go func() {
+				_, res := timeseries.TreinarBiLSTM(useCfg, normData, ch)
+				close(ch)
+				sendModelDone("BiLSTM", res, "")
+			}()
+			for step := range ch { sendProgress("BiLSTM", step) }
+		case "Seq2Seq":
+			ch := make(chan timeseries.TimeSeriesStep, 64)
+			go func() {
+				_, res := timeseries.TreinarSeq2Seq(useCfg, normData, ch)
+				close(ch)
+				sendModelDone("Seq2Seq", res, "")
+			}()
+			for step := range ch { sendProgress("Seq2Seq", step) }
+		case "RandomForest", "XGBoost", "Prophet":
+			res, err := timeseries.TreinarPythonModel(modelo, useCfg, stockData)
+			if err != nil {
+				sendModelDone(modelo, timeseries.TimeSeriesResult{}, err.Error())
+			} else {
+				sendModelDone(modelo, res, "")
+			}
+		default:
+			sendModelDone(modelo, timeseries.TimeSeriesResult{}, "modelo desconhecido")
+		}
+	}
+
+	fmt.Fprintf(w, "event: done\ndata: {\"status\":\"complete\"}\n\n")
+	flusher.Flush()
+}
+
+func handleTsAvailableModels(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, timeseries.AvailableModels)
+}
+
 func handleTsDeleteModel(w http.ResponseWriter, r *http.Request) {
 	var req struct { ID string `json:"id"` }
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1633,6 +1769,8 @@ func main() {
 	mux.HandleFunc("/api/timeseries/models", cors(handleTsModels))
 	mux.HandleFunc("/api/timeseries/load", cors(handleTsLoad))
 	mux.HandleFunc("/api/timeseries/delete-model", cors(handleTsDeleteModel))
+	mux.HandleFunc("/api/timeseries/compare", cors(handleTsCompare))
+	mux.HandleFunc("/api/timeseries/available-models", cors(handleTsAvailableModels))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

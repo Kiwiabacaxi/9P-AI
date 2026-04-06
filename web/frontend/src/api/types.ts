@@ -365,9 +365,31 @@ export interface TsModelMeta {
   predicaoAmanha: number;
 }
 
+// Time Series Comparison
+export interface TsCompareModelResult {
+  modelo: string;
+  result: TsResult;
+  cor: string;
+  erro?: string;
+}
+
+export interface TsCompareProgress {
+  modelo: string;
+  ciclo: number;
+  mseTreino: number;
+  mseValid: number;
+}
+
+export interface TsAvailableModel {
+  nome: string;
+  categoria: string;
+  cor: string;
+  needsPython: boolean;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
-  | 'cnn' | 'timeseries'
+  | 'cnn' | 'timeseries' | 'ts-compare'
   | 'about';

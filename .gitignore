@@ -49,3 +49,7 @@ web/server/data/emnist/*-ubyte
 # WASM (built in CI from source)
 web/static/main.wasm
 web/static/wasm_exec.js
+
+# Saved models (binary, user-specific)
+web/server/data/ts-models/
+web/server/data/cnn-models/

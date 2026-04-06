@@ -83,6 +83,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A9'}</span>
         MLP Ações
       </div>
+      <div
+        className={`nav-item${active === 'ts-compare' ? ' active' : ''}`}
+        onClick={() => onNavigate('ts-compare')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'\u25A8'}</span>
+        Comparar Modelos
+      </div>
       <div className="sidebar-divider" />
       <div
         className={`nav-item${active === 'about' ? ' active' : ''}`}
