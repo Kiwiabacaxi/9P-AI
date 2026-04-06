@@ -1,67 +1,52 @@
 package timeseries
 
 // =============================================================================
-// Seq2Seq — Sequence to Sequence (Sutskever et al. 2014)
+// Seq2Seq — Sequence to Sequence (Encoder-Decoder)
 //
-// Encoder-Decoder architecture for multi-step forecasting:
+// Encoder LSTM processa a janela inteira → produz context (h, c).
+// Decoder usa o context para gerar a predição.
 //
-//   Encoder: LSTM que processa a janela de entrada (windowSize timesteps)
-//            e comprime num vetor de contexto (h_final, c_final)
-//
-//   Decoder: LSTM que recebe o contexto e gera forecastDays predições
-//            autoregressivamente (output do step anterior vira input do próximo)
-//
-// A primeira arquitetura pensada para horizontes longos de previsão.
-// Diferença do LSTM simples: gera TODOS os passos futuros de uma vez,
-// em vez de prever um dia e deslizar a janela.
+// Simplificação: o decoder é uma camada densa sobre o hidden state
+// do encoder (equivalente a um decoder de 1 step sem recorrência).
+// Isso evita instabilidade do decoder LSTM autoregressivo em Go puro.
 // =============================================================================
 
 import (
 	"math"
-	"math/rand"
 	"time"
 
 	"gonum.org/v1/gonum/floats"
 )
 
-// Seq2SeqNet é o encoder-decoder
 type Seq2SeqNet struct {
-	Encoder    *LSTMNet // processa input sequence
-	Decoder    *LSTMNet // gera output sequence
+	Encoder    *LSTMNet
+	// Decoder simplificado: dense layer sobre o context do encoder
+	Wd         []float64 // [hiddenSize] → 1
+	Bd         float64
 	HiddenSize int
 }
 
 func NewSeq2Seq(inputSize, hiddenSize int) *Seq2SeqNet {
+	enc := NewLSTM(inputSize, hiddenSize)
+	// Decoder dense separado (não usa o dense do encoder)
+	wd := make([]float64, hiddenSize)
+	for j := range hiddenSize {
+		wd[j] = enc.Wd[j] // inicializar igual
+	}
 	return &Seq2SeqNet{
-		Encoder:    NewLSTM(inputSize, hiddenSize),
-		Decoder:    NewLSTM(1, hiddenSize), // decoder recebe 1 valor por step
-		HiddenSize: hiddenSize,
+		Encoder: enc, Wd: wd, Bd: 0, HiddenSize: hiddenSize,
 	}
 }
 
-// EncodeDecode processa input → context → previsão de 1 step
 func (net *Seq2SeqNet) Predict(sequence []float64) float64 {
-	// Encoder: processar toda a sequência para obter context
+	// Encoder: processar toda a sequência
 	_, encStates := net.Encoder.Forward(sequence)
 	hContext := encStates[len(encStates)-1].Hidden
 
-	// Decoder: um passo com o último valor como input
-	lastVal := sequence[len(sequence)-1]
-	decoderInput := []float64{lastVal}
-
-	// Setar hidden state do decoder com o context do encoder
-	// (simplificação: usar context como input ao dense)
-	output := net.Decoder.Bd
-	output += floats.Dot(net.Decoder.Wd, hContext)
-
-	// Misturar com decoder forward
-	decOut, _ := net.Decoder.Forward(decoderInput)
-	output = (output + decOut) / 2.0
-
-	return output
+	// Decoder: dense sobre context
+	return net.Bd + floats.Dot(net.Wd, hContext)
 }
 
-// TreinarSeq2Seq treina o encoder-decoder
 func TreinarSeq2Seq(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (*Seq2SeqNet, TimeSeriesResult) {
 	start := time.Now()
 	hidSize := cfg.HiddenSize
@@ -71,9 +56,6 @@ func TreinarSeq2Seq(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (
 	maxCiclo := cfg.MaxCiclo
 	if maxCiclo <= 0 { maxCiclo = 1500 }
 
-	rng := rand.New(rand.NewSource(42))
-	_ = rng
-
 	net := NewSeq2Seq(1, hidSize)
 	nTrain := len(data.TrainX)
 	var res TimeSeriesResult
@@ -82,23 +64,25 @@ func TreinarSeq2Seq(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (
 	for ciclo := 1; ciclo <= maxCiclo; ciclo++ {
 		mse := 0.0
 		for i := range nTrain {
-			seq := data.TrainX[i]
-
 			// Encoder forward
-			_, encStates := net.Encoder.Forward(seq)
-
-			// Decoder: usar último valor + context
-			lastVal := seq[len(seq)-1]
-			decOut, decStates := net.Decoder.Forward([]float64{lastVal})
+			_, encStates := net.Encoder.Forward(data.TrainX[i])
 			hCtx := encStates[len(encStates)-1].Hidden
-			output := (decOut + net.Decoder.Bd + floats.Dot(net.Decoder.Wd, hCtx)) / 2.0
+
+			// Decoder: dense output
+			output := net.Bd + floats.Dot(net.Wd, hCtx)
 
 			d := data.TrainY[i] - output
 			mse += d * d
 
-			// Backward: treinar encoder e decoder
-			net.Encoder.BackwardAndUpdate(encStates, data.TrainY[i], decOut, lr)
-			net.Decoder.BackwardAndUpdate(decStates, data.TrainY[i], decOut, lr)
+			// Backward decoder dense
+			dOutput := data.TrainY[i] - output
+			for j := range net.HiddenSize {
+				net.Wd[j] += lr * clip1(dOutput*hCtx[j])
+			}
+			net.Bd += lr * clip1(dOutput)
+
+			// Backward encoder (propagar gradiente do dense ao hidden state)
+			net.Encoder.BackwardAndUpdate(encStates, data.TrainY[i], output, lr)
 		}
 		mse /= float64(nTrain)
 		res.MseHistorico = append(res.MseHistorico, mse)
@@ -131,7 +115,7 @@ func TreinarSeq2Seq(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (
 	}
 	res.MseFinal, res.RmseFinal, res.MaeFinal = CalcularMetricas(rv, pv)
 
-	// Forecast multi-step (o ponto forte do Seq2Seq)
+	// Forecast
 	fd := cfg.ForecastDays; if fd <= 0 { fd = 7 }
 	rP := data.MaxPrice - data.MinPrice; if rP < 0.0001 { rP = 1 }
 	cls := data.AllClose

@@ -34,12 +34,19 @@ func TreinarProphetLike(cfg Config, data NormalizedData) TimeSeriesResult {
 		return res
 	}
 
-	// Passo 1: Tendência via regressão linear
-	xs := make([]float64, n)
-	for i := range n { xs[i] = float64(i) }
+	// Passo 1: Tendência via regressão linear (apenas últimos 30 dias para evitar viés)
+	trendWindow := 30
+	if trendWindow > n { trendWindow = n }
+	trendCloses := closes[n-trendWindow:]
+	trendXs := make([]float64, trendWindow)
+	for i := range trendWindow { trendXs[i] = float64(n - trendWindow + i) }
 
-	alpha, beta := stat.LinearRegression(xs, closes, nil, false)
+	alpha, beta := stat.LinearRegression(trendXs, trendCloses, nil, false)
 	// trend(t) = alpha + beta * t
+	// Damping: limitar beta para não extrapolar demais
+	maxBeta := 0.05 // máximo ~5 centavos por dia
+	if beta > maxBeta { beta = maxBeta }
+	if beta < -maxBeta { beta = -maxBeta }
 
 	// Passo 2: Remover tendência para extrair sazonalidade
 	detrended := make([]float64, n)

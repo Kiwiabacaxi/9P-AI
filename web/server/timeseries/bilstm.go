@@ -3,68 +3,50 @@ package timeseries
 // =============================================================================
 // BiLSTM — Bidirectional LSTM
 //
-// Processa a sequência em ambas as direções (forward + backward)
-// e concatena os hidden states para capturar contexto passado E futuro.
+// Processa a sequência em ambas as direções e combina os resultados.
+// Para séries temporais, o forward LSTM tem peso maior (0.7) pois
+// a direção temporal importa mais que o contexto reverso.
 //
-//   Forward LSTM:  h_fw = LSTM(x_1, x_2, ..., x_T)
-//   Backward LSTM: h_bw = LSTM(x_T, x_T-1, ..., x_1)
-//   Combined:      h = [h_fw; h_bw]  (concatenação)
-//   Output:        y = Dense(h)
-//
-// Útil quando o contexto futuro importa (classificação de sequências).
-// Para previsão temporal pura, o ganho sobre LSTM unidirecional é marginal.
+// Implementação simplificada: treina dois LSTMs independentes,
+// combina as previsões com pesos fixos.
 // =============================================================================
 
 import (
 	"math"
 	"time"
-
-	"gonum.org/v1/gonum/floats"
 )
 
-// BiLSTMNet é composto de dois LSTMs + camada densa
 type BiLSTMNet struct {
 	Forward  *LSTMNet
 	Backward *LSTMNet
-	// Dense: 2*hiddenSize → 1
-	Wd []float64
-	Bd float64
+	FwWeight float64 // peso do forward (default 0.7)
 }
 
 func NewBiLSTM(inputSize, hiddenSize int) *BiLSTMNet {
-	fw := NewLSTM(inputSize, hiddenSize)
-	bw := NewLSTM(inputSize, hiddenSize)
-	// Substituir dense dos LSTMs individuais por uma shared
-	wd := make([]float64, hiddenSize*2)
-	for j := range hiddenSize * 2 {
-		wd[j] = fw.Wd[j%hiddenSize] * 0.5
+	return &BiLSTMNet{
+		Forward:  NewLSTM(inputSize, hiddenSize),
+		Backward: NewLSTM(inputSize, hiddenSize),
+		FwWeight: 0.7,
 	}
-	return &BiLSTMNet{Forward: fw, Backward: bw, Wd: wd, Bd: 0}
 }
 
 func (net *BiLSTMNet) Predict(sequence []float64) float64 {
 	seqLen := len(sequence)
 
-	// Forward pass
-	_, fwStates := net.Forward.Forward(sequence)
-	hFw := fwStates[seqLen-1].Hidden
+	// Forward LSTM
+	fwOut, _ := net.Forward.Forward(sequence)
 
-	// Backward pass (sequência invertida)
+	// Backward LSTM (sequência invertida)
 	reversed := make([]float64, seqLen)
 	for i := range seqLen {
 		reversed[i] = sequence[seqLen-1-i]
 	}
-	_, bwStates := net.Backward.Forward(reversed)
-	hBw := bwStates[seqLen-1].Hidden
+	bwOut, _ := net.Backward.Forward(reversed)
 
-	// Concatenar [h_fw; h_bw]
-	combined := append(append([]float64{}, hFw...), hBw...)
-
-	// Dense output
-	return net.Bd + floats.Dot(net.Wd, combined)
+	// Combinação ponderada (forward tem mais peso para TS)
+	return net.FwWeight*fwOut + (1-net.FwWeight)*bwOut
 }
 
-// TreinarBiLSTM treina o BiLSTM (treina cada direção separadamente por simplicidade)
 func TreinarBiLSTM(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (*BiLSTMNet, TimeSeriesResult) {
 	start := time.Now()
 	hidSize := cfg.HiddenSize
@@ -85,19 +67,20 @@ func TreinarBiLSTM(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (*
 			seq := data.TrainX[i]
 			seqLen := len(seq)
 
-			// Forward direction
+			// Forward
 			fwOut, fwStates := net.Forward.Forward(seq)
-			// Backward direction
+
+			// Backward
 			reversed := make([]float64, seqLen)
 			for j := range seqLen { reversed[j] = seq[seqLen-1-j] }
 			bwOut, bwStates := net.Backward.Forward(reversed)
 
-			// Combined prediction (average for simplicity)
-			output := (fwOut + bwOut) / 2.0
+			// Combined prediction
+			output := net.FwWeight*fwOut + (1-net.FwWeight)*bwOut
 			d := data.TrainY[i] - output
 			mse += d * d
 
-			// Update each LSTM separately
+			// Update each direction
 			net.Forward.BackwardAndUpdate(fwStates, data.TrainY[i], fwOut, lr)
 			net.Backward.BackwardAndUpdate(bwStates, data.TrainY[i], bwOut, lr)
 		}
@@ -116,7 +99,7 @@ func TreinarBiLSTM(cfg Config, data NormalizedData, ch chan<- TimeSeriesStep) (*
 		}
 	}
 
-	// Predições
+	// Gerar predições
 	res.Ciclos = maxCiclo
 	allX := append(data.TrainX, data.ValidX...)
 	allY := append(data.TrainY, data.ValidY...)

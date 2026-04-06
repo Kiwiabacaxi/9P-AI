@@ -17,7 +17,8 @@ export default function TimeSeriesCompareView() {
   const [alfa] = useState(0.005);
   const [maxCiclo, setMaxCiclo] = useState(2000);
   const [forecastDays, setForecastDays] = useState(7);
-  const [validDays] = useState(7);
+  const [validDays, setValidDays] = useState(7);
+  const [validPct, setValidPct] = useState(0);
 
   // Data
   const [stockData, setStockData] = useState<TsStockData | null>(null);
@@ -80,7 +81,7 @@ export default function TimeSeriesCompareView() {
     // Send config first
     await apiPost('/timeseries/config', {
       ticker, windowSize, hiddenSize, alfa, maxCiclo,
-      ativacao: 'tanh', validDays, forecastDays, validPct: 0,
+      ativacao: 'tanh', validDays, forecastDays, validPct,
     }).catch(() => {});
 
     const cleanup = apiSSE('/timeseries/compare', {
@@ -170,7 +171,7 @@ export default function TimeSeriesCompareView() {
       </div>
 
       {/* Config */}
-      <div className="grid-3" style={{ marginBottom: 24 }}>
+      <div className="grid-2" style={{ marginBottom: 24 }}>
         <Card title="Ação">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="text" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())}
@@ -200,6 +201,28 @@ export default function TimeSeriesCompareView() {
                 onClick={() => setHiddenSize(h)} disabled={running}>{h}n</button>
             ))}
           </div>
+        </Card>
+        <Card title="Split Treino/Validação">
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--on-surface)', marginBottom: 6 }}>
+            {validPct > 0 ? `${((1 - validPct) * 100).toFixed(0)}% treino / ${(validPct * 100).toFixed(0)}% validação`
+              : `Últimos ${validDays} dias para validação`}
+          </div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            <button className={`porta-chip${validPct === 0 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0)} disabled={running}>dias fixos</button>
+            <button className={`porta-chip${validPct === 0.1 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0.1)} disabled={running}>90/10%</button>
+            <button className={`porta-chip${validPct === 0.2 ? ' selected' : ''}`}
+              onClick={() => setValidPct(0.2)} disabled={running}>80/20%</button>
+          </div>
+          {validPct === 0 && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[5, 7, 10, 14].map(d => (
+                <button key={d} className={`porta-chip${validDays === d ? ' selected' : ''}`}
+                  onClick={() => setValidDays(d)} disabled={running}>{d}d</button>
+              ))}
+            </div>
+          )}
         </Card>
         <Card title="Ciclos (DL) · Forecast">
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
