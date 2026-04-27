@@ -68,6 +68,15 @@ export default function Sidebar({ active, onNavigate }: Props) {
         {imgregItems.map(navItem)}
       </div>
       <div className="sidebar-divider" />
+      <div className="sidebar-label">Algoritmo Genético</div>
+      <div
+        className={`nav-item${active === 'genetico' ? ' active' : ''}`}
+        onClick={() => onNavigate('genetico')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⚘'}</span>
+        GA · Otimização
+      </div>
+      <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div
         className={`nav-item${active === 'cnn' ? ' active' : ''}`}

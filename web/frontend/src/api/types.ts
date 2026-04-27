@@ -24,6 +24,8 @@ export interface AppStatus {
   cnnTraining: boolean;
   tsTrained: boolean;
   tsTraining: boolean;
+  gaTrained: boolean;
+  gaTraining: boolean;
 }
 
 // Hebb
@@ -365,9 +367,51 @@ export interface TsModelMeta {
   predicaoAmanha: number;
 }
 
+// Algoritmo Genético (Aula 10)
+export interface GAConfig {
+  bits: number;
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  seed?: number;
+}
+
+export interface GAIndividuo {
+  bits: number[];
+  dec: number;
+  x: number;
+  fitness: number;
+  fx: number;
+}
+
+export interface GAStep {
+  geracao: number;
+  melhorX: number;
+  melhorFx: number;
+  mediaFx: number;
+  piorFx: number;
+  populacao: GAIndividuo[];
+  melhorIndiv: GAIndividuo;
+}
+
+export interface GAResult {
+  geracoes: number;
+  melhorX: number;
+  melhorFx: number;
+  melhorIndiv: GAIndividuo;
+  histMelhorFx: number[];
+  histMediaFx: number[];
+  bits: number;
+  popSize: number;
+  probCruzamento: number;
+  probMutacao: number;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
+  | 'genetico'
   | 'about';

@@ -20,6 +20,7 @@ import (
 	"mlp-server/mlpfunc"
 	"mlp-server/mlport"
 	"mlp-server/cnn"
+	"mlp-server/genetico"
 	"mlp-server/timeseries"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
@@ -110,6 +111,11 @@ var (
 	tsTraining  bool
 	tsStockData *timeseries.StockData
 	tsNormData  *timeseries.NormalizedData
+
+	// Algoritmo Genético (otimização — Aula 10)
+	gaCfg      *genetico.Config
+	gaRes      *genetico.Result
+	gaTraining bool
 )
 
 func init() {
@@ -170,6 +176,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		CnnTraining     bool `json:"cnnTraining"`
 		TsTrained       bool `json:"tsTrained"`
 		TsTraining      bool `json:"tsTraining"`
+		GaTrained       bool `json:"gaTrained"`
+		GaTraining      bool `json:"gaTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:      mlpRede != nil,
@@ -190,6 +198,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		CnnTraining:     cnnTraining,
 		TsTrained:       tsRede != nil,
 		TsTraining:      tsTraining,
+		GaTrained:       gaRes != nil,
+		GaTraining:      gaTraining,
 	})
 }
 
@@ -1525,6 +1535,98 @@ func handleTsDeleteModel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// =============================================================================
+// Algoritmo Genético (Aula 10)
+// =============================================================================
+
+func handleGaConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg genetico.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	gaCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleGaTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if gaTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	cfg := gaCfg
+	if cfg == nil {
+		def := genetico.DefaultConfig()
+		cfg = &def
+	}
+	gaTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		gaTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan genetico.Step, 64)
+	go func() {
+		res := genetico.Treinar(progressCh, useCfg)
+		mu.Lock()
+		gaRes = &res
+		gaTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := gaRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleGaReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	gaRes = nil
+	gaCfg = nil
+	gaTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleGaResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := gaRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "GA não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -1633,6 +1735,12 @@ func main() {
 	mux.HandleFunc("/api/timeseries/models", cors(handleTsModels))
 	mux.HandleFunc("/api/timeseries/load", cors(handleTsLoad))
 	mux.HandleFunc("/api/timeseries/delete-model", cors(handleTsDeleteModel))
+
+	// Algoritmo Genético (Aula 10)
+	mux.HandleFunc("/api/genetico/config", cors(handleGaConfig))
+	mux.HandleFunc("/api/genetico/train",  cors(handleGaTrain))
+	mux.HandleFunc("/api/genetico/reset",  cors(handleGaReset))
+	mux.HandleFunc("/api/genetico/result", cors(handleGaResult))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
