@@ -1,51 +1,94 @@
 # =============================================================================
 # 9P-AI — Makefile cross-platform (Windows + Mac/Linux)
 # =============================================================================
+# Uso tipico:
+#   make run       — builda tudo e sobe o servidor em http://localhost:8080
+#   make install   — instala deps do frontend (npm install)
+# =============================================================================
 
-.PHONY: build run dev clean frontend server help
+PORT := 8080
+
+.PHONY: help build run dev clean frontend server install
 
 # Detectar OS
 ifeq ($(OS),Windows_NT)
-    PYTHON := $(firstword $(wildcard C:/Users/*/AppData/Local/Programs/Python/Python3*/python.exe) python)
+    SERVER_BIN := mlp-server.exe
     RM := del /q /f
     RMDIR := rmdir /s /q
 else
-    PYTHON := python3
+    SERVER_BIN := mlp-server
     RM := rm -f
     RMDIR := rm -rf
 endif
 
-help: ## Mostra este help
+ifeq ($(OS),Windows_NT)
+help:
+	@echo 9P-AI - Comandos disponiveis:
+	@echo.
+	@echo   make run       Build tudo e inicia o servidor (http://localhost:$(PORT))
+	@echo   make build     Build frontend + backend
+	@echo   make install   Instala deps do frontend (npm install)
+	@echo   make dev       Dev mode: Vite (5173) + Go backend (8080)
+	@echo   make frontend  Build apenas o frontend
+	@echo   make server    Build apenas o backend Go
+	@echo   make clean     Limpa artefatos de build
+	@echo.
+else
+help:
 	@echo "9P-AI — Comandos disponiveis:"
 	@echo ""
+	@echo "  make run       Build tudo e inicia o servidor (http://localhost:$(PORT))"
 	@echo "  make build     Build frontend + backend"
-	@echo "  make run       Build tudo e inicia o servidor (localhost:8080)"
-	@echo "  make dev       Inicia Vite dev server (localhost:5173) + Go backend"
+	@echo "  make install   Instala deps do frontend (npm install)"
+	@echo "  make dev       Dev mode: Vite (5173) + Go backend (8080)"
 	@echo "  make frontend  Build apenas o frontend"
 	@echo "  make server    Build apenas o backend Go"
 	@echo "  make clean     Limpa artefatos de build"
 	@echo ""
+endif
+
+# ---------------------------------------------------------------------------
+# Dependencies — npm install roda so quando package.json e mais novo que node_modules
+# ---------------------------------------------------------------------------
+
+web/frontend/node_modules: web/frontend/package.json
+	cd web/frontend && npm install
+
+install: web/frontend/node_modules
 
 # ---------------------------------------------------------------------------
 # Build
 # ---------------------------------------------------------------------------
 
-frontend: ## Build frontend (npm run build)
+frontend: web/frontend/node_modules
 	cd web/frontend && npm run build
 
-server: ## Build backend Go
-	cd web/server && go build -o server$(if $(filter Windows_NT,$(OS)),.exe,) .
+server:
+	cd web/server && go build -o $(SERVER_BIN) .
 
-build: frontend server ## Build frontend + backend
+build: frontend server
 
 # ---------------------------------------------------------------------------
-# Run
+# Run — delega pro script de cada OS (kill porta + start + wait + open browser)
 # ---------------------------------------------------------------------------
 
-run: frontend ## Build frontend e inicia servidor Go
-	cd web/server && go run .
+ifeq ($(OS),Windows_NT)
 
-dev: ## Dev mode: Vite (5173) + Go (8080) em paralelo
+run: build
+	cd web && powershell -NoProfile -ExecutionPolicy Bypass -File run.ps1
+
+else
+
+run: build
+	@$(MAKE) -s -C web run
+
+endif
+
+# ---------------------------------------------------------------------------
+# Dev mode (Vite HMR)
+# ---------------------------------------------------------------------------
+
+dev: web/frontend/node_modules
 	@echo "Iniciando Go backend..."
 	cd web/server && go run . &
 	@echo "Iniciando Vite dev server..."
@@ -55,7 +98,10 @@ dev: ## Dev mode: Vite (5173) + Go (8080) em paralelo
 # Clean
 # ---------------------------------------------------------------------------
 
-clean: ## Limpa artefatos
-	$(RM) web/server/server web/server/server.exe
-	$(RMDIR) web/static/assets 2>/dev/null || true
-	$(RM) web/static/index.html 2>/dev/null || true
+clean:
+	-$(RM) web/server/mlp-server 2>/dev/null
+	-$(RM) web/server/mlp-server.exe 2>/dev/null
+	-$(RM) web/server/server 2>/dev/null
+	-$(RM) web/server/server.exe 2>/dev/null
+	-$(RMDIR) web/static/assets 2>/dev/null
+	-$(RM) web/static/index.html 2>/dev/null

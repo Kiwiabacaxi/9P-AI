@@ -1,7 +1,8 @@
 $PORT = 8080
+$ROOT = $PSScriptRoot
 
 Write-Host "» compilando..."
-Push-Location server
+Push-Location "$ROOT\server"
 go build -o mlp-server.exe .
 if ($LASTEXITCODE -ne 0) { Write-Error "Build falhou"; exit 1 }
 Pop-Location
@@ -11,7 +12,7 @@ Get-NetTCPConnection -LocalPort $PORT -State Listen -ErrorAction SilentlyContinu
     ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 
 Write-Host "» iniciando servidor em http://localhost:$PORT"
-$server = Start-Process -FilePath "server\mlp-server.exe" -PassThru
+$server = Start-Process -FilePath "$ROOT\server\mlp-server.exe" -WorkingDirectory "$ROOT\server" -PassThru
 
 Write-Host "» aguardando servidor..."
 do {
