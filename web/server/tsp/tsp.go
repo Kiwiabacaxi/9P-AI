@@ -601,8 +601,45 @@ func sanitizar(cfg Config, n int) Config {
 }
 
 // =============================================================================
-// Preset — 27 capitais brasileiras.
+// Presets — datasets prontos pra demonstração.
 // =============================================================================
+
+// TrianguloMineiro — 20 cidades do Triângulo Mineiro / Alto Paranaíba (MG).
+//
+// Cenário de logística real: Centro de Distribuição em Uberlândia (id 0) que
+// precisa atender lojas/clientes em 19 cidades vizinhas. Distâncias na ordem
+// de 50-300 km — escala real de roteirização de frota terrestre.
+//
+// É uma região estratégica do agronegócio brasileiro: Mosaic Fertilizantes em
+// Araxá, frigoríficos JBS/Marfrig em Uberlândia/Uberaba, redes regionais de
+// supermercado (Bretas/Mais Mart), distribuição de combustíveis e bebidas.
+// Coleta de leite cooperada (CCPR/Itambé) na região tem o mesmo padrão.
+//
+// Coordenadas: centro aproximado de cada cidade (lat/lng).
+func TrianguloMineiro() []Cidade {
+	return []Cidade{
+		{ID: 0, Nome: "Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
+		{ID: 1, Nome: "Uberaba", UF: "MG", Lat: -19.7479, Lng: -47.9381},
+		{ID: 2, Nome: "Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
+		{ID: 3, Nome: "Araguari", UF: "MG", Lat: -18.6443, Lng: -48.1864},
+		{ID: 4, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
+		{ID: 5, Nome: "Patrocínio", UF: "MG", Lat: -18.9442, Lng: -46.9931},
+		{ID: 6, Nome: "Frutal", UF: "MG", Lat: -20.0247, Lng: -48.9408},
+		{ID: 7, Nome: "Ituiutaba", UF: "MG", Lat: -18.9742, Lng: -49.4634},
+		{ID: 8, Nome: "Monte Carmelo", UF: "MG", Lat: -18.7250, Lng: -47.4983},
+		{ID: 9, Nome: "Tupaciguara", UF: "MG", Lat: -18.5944, Lng: -48.7050},
+		{ID: 10, Nome: "Coromandel", UF: "MG", Lat: -18.4731, Lng: -47.1944},
+		{ID: 11, Nome: "São Gotardo", UF: "MG", Lat: -19.3119, Lng: -46.0497},
+		{ID: 12, Nome: "Iturama", UF: "MG", Lat: -19.7283, Lng: -50.1969},
+		{ID: 13, Nome: "Sacramento", UF: "MG", Lat: -19.8650, Lng: -47.4378},
+		{ID: 14, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9119, Lng: -48.3858},
+		{ID: 15, Nome: "Monte Alegre de Minas", UF: "MG", Lat: -18.8689, Lng: -48.8769},
+		{ID: 16, Nome: "Capinópolis", UF: "MG", Lat: -18.6822, Lng: -49.5697},
+		{ID: 17, Nome: "Prata", UF: "MG", Lat: -19.3072, Lng: -48.9264},
+		{ID: 18, Nome: "Ibiá", UF: "MG", Lat: -19.4736, Lng: -46.5400},
+		{ID: 19, Nome: "Campina Verde", UF: "MG", Lat: -19.5394, Lng: -49.4858},
+	}
+}
 
 func CapitaisBR() []Cidade {
 	return []Cidade{

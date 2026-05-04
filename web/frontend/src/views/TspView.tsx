@@ -10,6 +10,22 @@ import type {
   TspSelecao, TspCrossover, TspMutacao, TspDistMode,
 } from '../api/types';
 
+const PRESET_OPTIONS = [
+  { value: 'triangulo',   label: 'Triângulo Mineiro · 20 cidades' },
+  { value: 'capitais-br', label: '27 Capitais BR' },
+];
+
+const PRESET_INFO: Record<string, { titulo: string; sub: string }> = {
+  'triangulo': {
+    titulo: 'Logística regional',
+    sub: 'Roteirização de entregas no Triângulo Mineiro / Alto Paranaíba (MG)',
+  },
+  'capitais-br': {
+    titulo: 'Tour pelas capitais',
+    sub: 'Encontrando o tour mais curto pelas 27 capitais brasileiras',
+  },
+};
+
 const DIST_OPTIONS = [
   { value: 'haversine',  label: 'Haversine (km reais)' },
   { value: 'euclidiana', label: 'Euclidiana (graus)' },
@@ -73,10 +89,23 @@ const ELITE_OPTIONS = [
   { value: '4', label: 'p = 4' },
 ];
 
+function fatorial(n: number): number {
+  if (n <= 1) return 1;
+  let r = 1;
+  for (let i = 2; i <= n; i++) r *= i;
+  return r;
+}
+
+function formatFatorialAprox(n: number): string {
+  if (n <= 1) return '1';
+  return fatorial(n).toExponential(2).replace('e+', ' · 10^');
+}
+
 export default function TspView() {
   const { show } = useToast();
 
   // Cidades
+  const [preset, setPreset] = useState<string>('triangulo');
   const [cidades, setCidades] = useState<TspCidade[]>([]);
   const [distMode, setDistMode] = useState<TspDistMode>('haversine');
   const [matrizPronta, setMatrizPronta] = useState(false);
@@ -115,18 +144,24 @@ export default function TspView() {
 
   const closeSSE = useRef<(() => void) | null>(null);
 
-  // Carrega o preset capitais BR no mount.
+  // Carrega preset + recalcula matriz. Reusa para mount e troca de preset.
+  async function carregarPreset(name: string, modo: TspDistMode) {
+    setMatrizPronta(false);
+    const cs = await apiGet<TspCidade[]>(`/tsp/preset?name=${encodeURIComponent(name)}`);
+    await apiPost('/tsp/cities', cs);
+    await apiPost('/tsp/distancias', { modo });
+    setCidades(cs);
+    setMatrizPronta(true);
+    return cs;
+  }
+
+  // Mount: carrega o preset default.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const preset = await apiGet<TspCidade[]>('/tsp/preset?name=capitais-br');
+        await carregarPreset('triangulo', 'haversine');
         if (cancelled) return;
-        await apiPost('/tsp/cities', preset);
-        await apiPost('/tsp/distancias', { modo: 'haversine' });
-        if (cancelled) return;
-        setCidades(preset);
-        setMatrizPronta(true);
       } catch (e) {
         show('Erro ao carregar cidades: ' + (e instanceof Error ? e.message : String(e)));
       }
@@ -134,6 +169,18 @@ export default function TspView() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handlePresetChange(novo: string) {
+    setPreset(novo);
+    // limpa qualquer treino anterior e zera o mapa
+    handleResetSilent();
+    try {
+      await carregarPreset(novo, distMode);
+      show(`Preset carregado: ${PRESET_INFO[novo]?.titulo ?? novo}`);
+    } catch (e) {
+      show('Erro: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
 
   // Quando muda o modo de distância, recalcula a matriz.
   async function handleDistModeChange(novo: string) {
@@ -147,6 +194,27 @@ export default function TspView() {
     } catch (e) {
       show('Erro: ' + (e instanceof Error ? e.message : String(e)));
     }
+  }
+
+  // versão silenciosa do reset (sem chamar API/toast — só limpa estado local).
+  function handleResetSilent() {
+    if (closeSSE.current) {
+      closeSSE.current();
+      closeSSE.current = null;
+    }
+    setGeracao('—');
+    setMelhorDist('—');
+    setDiversidade('—');
+    setTourAtual([]);
+    setTourGlobal([]);
+    setGlobalDist(null);
+    setHistMelhor([]);
+    setHistMedia([]);
+    histTourRef.current = [];
+    setMaxGen(0);
+    setDisplayGen(0);
+    setUserScrub(false);
+    setTraining(false);
   }
 
   const unidade = distMode === 'haversine' ? 'km' : 'graus';
@@ -279,7 +347,7 @@ export default function TspView() {
         <div>
           <div className="page-title">Caixeiro <span>Viajante</span></div>
           <div className="page-sub">
-            Encontrando o tour mais curto pelas 27 capitais brasileiras &mdash; Aula 12
+            {PRESET_INFO[preset]?.sub ?? 'Roteirização com AG'} &mdash; Aula 12
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -301,12 +369,21 @@ export default function TspView() {
       <div className="grid-3" style={{ marginBottom: 12 }}>
         <Card style={{ padding: '16px 20px' }}>
           <Select
-            label="Modo de distância"
-            options={DIST_OPTIONS}
-            value={distMode}
-            onChange={handleDistModeChange}
+            label="Cenário (dataset)"
+            options={PRESET_OPTIONS}
+            value={preset}
+            onChange={handlePresetChange}
             style={{ width: '100%' }}
           />
+          <div style={{ marginTop: 10 }}>
+            <Select
+              label="Modo de distância"
+              options={DIST_OPTIONS}
+              value={distMode}
+              onChange={handleDistModeChange}
+              style={{ width: '100%' }}
+            />
+          </div>
           <div style={{ marginTop: 10 }}>
             <Select
               label="Gerações"
@@ -391,7 +468,7 @@ export default function TspView() {
               {cidades.length > 0 ? `${cidades.length}!` : '—'}
             </span>
             <br />
-            (pra 27, isso é {'≈'} 1.09e28 — busca exaustiva impossível)
+            ({'≈'} <span style={{ color: 'var(--cyan)' }}>{formatFatorialAprox(cidades.length)}</span> — busca exaustiva inviável)
           </div>
         </Card>
 
@@ -525,6 +602,50 @@ export default function TspView() {
         </Card>
       )}
 
+      {/* Logistics context — por que esse cenário foi escolhido */}
+      {preset === 'triangulo' && (
+        <Card title="Por que Triângulo Mineiro?" style={{ marginBottom: 16 }}>
+          <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
+            Em vez do tour acadêmico ligando capitais por linhas reta, este preset modela um cenário que
+            <b> empresas brasileiras resolvem todo dia</b>: uma frota saindo de um centro de distribuição
+            (Uberlândia) atendendo lojas/clientes em outras cidades da região.
+            <br /><br />
+            <b>Por que essa região:</b> o Triângulo Mineiro / Alto Paranaíba é um dos hubs logísticos
+            mais densos do interior do Brasil. Concentra:
+            <ul style={{ marginLeft: 18 }}>
+              <li><b>Frigoríficos</b> — JBS e Marfrig em Uberlândia/Uberaba coletam gado de fazendas espalhadas pelo interior e distribuem carne;</li>
+              <li><b>Fertilizantes</b> — <i>Mosaic Fertilizantes</i> em Araxá distribui pra fazendas em todo o Triângulo;</li>
+              <li><b>Cooperativas leiteiras</b> — caminhões da CCPR/Itambé fazem rota diária por dezenas de fazendas pra coletar leite;</li>
+              <li><b>Varejo regional</b> — redes como <i>Bretas</i>, <i>Mais Mart</i> e <i>Bahamas</i> têm CDs em Uberlândia abastecendo lojas em cidades vizinhas;</li>
+              <li><b>Bebidas e combustíveis</b> — Coca-Cola FEMSA e BR Distribuidora operam corredores BR-050 / BR-262 / BR-365.</li>
+            </ul>
+            <br />
+            Distâncias entre as cidades aqui ficam na faixa de <b>50–300 km</b> — escala onde diferenças de
+            ordem mudam <b>centenas de reais</b> em diesel por dia. É o cenário em que TSP/VRP
+            <i> realmente se paga</i>, e por isso é caso clássico em pesquisa em engenharia de produção
+            no Brasil (Linden 2008; literatura de roteirização).
+            <br /><br />
+            <b>Note no mapa:</b> o tour ótimo costuma formar um caminho que evita zigue-zagues entre o
+            sul (Uberaba/Sacramento) e o leste (Araxá/Patos de Minas) — exatamente o que um motorista
+            humano experiente faria intuitivamente. O AG redescobre essa intuição a partir do zero.
+          </div>
+        </Card>
+      )}
+
+      {preset === 'capitais-br' && (
+        <Card title="Sobre o cenário das capitais" style={{ marginBottom: 16 }}>
+          <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
+            Este preset é mais <b>didático</b> que real — distâncias inter-capitais são da ordem de
+            milhares de km e nenhuma frota terrestre faz exatamente esse percurso. Mas serve como
+            referência: 27 cidades é o limite onde busca exaustiva ainda <i>"quase"</i> faz sentido na
+            cabeça (e o AG já mostra ganho dramático).
+            <br /><br />
+            Pra ver o uso real do TSP em logística brasileira, troque pra <b>Triângulo Mineiro</b> no seletor
+            de cenário lá em cima.
+          </div>
+        </Card>
+      )}
+
       {/* Educational */}
       <Card title="Por que TSP precisa de operadores especiais">
         <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
@@ -540,11 +661,13 @@ export default function TspView() {
           </ul>
           <b>Mutação:</b> <i>swap</i> troca duas cidades; <i>inversão</i> reverte um segmento — esta é equivalente a um movimento <b>2-opt</b> e tipicamente bem mais efetiva pra TSP, porque conserta "cruzamentos" no tour de uma vez.
           <br /><br />
-          <b>Distância:</b> com <i>Haversine</i>, calculamos a distância de great-circle (km reais entre as capitais). A
-          fitness = -distância (quanto menor, melhor). Roleta normaliza via (max - dist) pra trabalhar com valores positivos.
+          <b>Distância:</b> com <i>Haversine</i>, calculamos a distância de great-circle (km reais entre as cidades).
+          A fitness = -distância (quanto menor, melhor). Roleta normaliza via (max - dist) pra trabalhar com valores positivos.
           <br /><br />
-          <b>Por que AG aqui:</b> 27 capitais geram 27! ≈ 10²⁸ tours possíveis. Busca exaustiva é absurda; o AG acha
-          tours quase-ótimos em segundos. É exatamente o cenário que o slide aula 12 destaca.
+          <b>Por que AG aqui:</b> {cidades.length} cidades geram {cidades.length}! ≈ {formatFatorialAprox(cidades.length)} tours possíveis.
+          Busca exaustiva é absurda mesmo pra esse N pequeno; o AG acha tours quase-ótimos em segundos.
+          É exatamente o cenário que o slide aula 12 destaca: <i>"a grande utilidade dos AGs está em resolver
+          problemas onde os métodos exaustivos não conseguem chegar à solução em um tempo razoável."</i>
         </div>
       </Card>
     </div>

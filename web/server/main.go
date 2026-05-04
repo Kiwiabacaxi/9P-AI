@@ -1746,11 +1746,17 @@ func handleGa2Result(w http.ResponseWriter, r *http.Request) {
 // TSP — Caixeiro Viajante (Aula 12)
 // =============================================================================
 
-// GET /api/tsp/preset?name=capitais-br — devolve um conjunto pré-definido de cidades.
+// GET /api/tsp/preset?name=... — devolve um conjunto pré-definido de cidades.
+//
+// Presets disponíveis:
+//   - triangulo (default)  → 20 cidades do Triângulo Mineiro / Alto Paranaíba (MG)
+//   - capitais-br          → 27 capitais do Brasil
 func handleTspPreset(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	switch name {
-	case "", "capitais-br":
+	case "", "triangulo", "triangulo-mineiro":
+		writeJSON(w, http.StatusOK, tsp.TrianguloMineiro())
+	case "capitais-br":
 		writeJSON(w, http.StatusOK, tsp.CapitaisBR())
 	default:
 		errJSON(w, http.StatusNotFound, "preset desconhecido: "+name)
