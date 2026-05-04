@@ -12,6 +12,7 @@ interface Props {
   cidades: TspCidade[];
   tour: number[];                       // ordem atual exibida (best da geração displayada)
   globalTour?: number[];                // melhor global acumulado (em fade)
+  histTours?: number[][];               // melhor de cada geração (replay all-gens)
   routeGeometry?: TspRouteGeometry;     // OSRM: polyline + legs (estradas reais)
   height?: number;
 }
@@ -88,7 +89,7 @@ function tourToLatLngs(tour: number[], cidades: TspCidade[]): [number, number][]
   return pts;
 }
 
-export default function TspMap({ cidades, tour, globalTour, routeGeometry, height = 480 }: Props) {
+export default function TspMap({ cidades, tour, globalTour, histTours, routeGeometry, height = 480 }: Props) {
   const tourLatLngs = useMemo(() => tourToLatLngs(tour, cidades), [tour, cidades]);
   const globalLatLngs = useMemo(
     () => (globalTour && globalTour.length > 0 ? tourToLatLngs(globalTour, cidades) : []),
@@ -103,20 +104,39 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
     return [sumLat / cidades.length, sumLng / cidades.length];
   }, [cidades]);
 
-  // ===== Animação do "caminhão" percorrendo a rota GANHADORA =====
-  // Por design, a animação roda sempre no melhor global (globalTour) — não na
-  // rota exibida pelo slider. Faz mais sentido pedagogicamente: o usuário quer
-  // ver o melhor tour sendo percorrido, não tours intermediários ruidosos.
-  //
-  // Unificamos a animação em torno de "legs" (uma perna = ida de uma cidade
-  // pra próxima). No modo OSRM, cada leg traz sua polyline curvada pelas
-  // estradas reais. Nos modos Haversine/Euclidiana, sintetizamos legs com
-  // 2 pontos cada (cidade A → cidade B em linha reta). Em ambos os casos,
-  // o truck percorre as polylines dos legs em sequência — segue as curvas
-  // quando estão lá.
-  const animatedTour = useMemo(() => globalTour ?? [], [globalTour]);
+  // ===== Animação do "caminhão" percorrendo a rota =====
+  // Dois modos:
+  //  - "winner" (default): truck anima o melhor global (globalTour). Quando há
+  //    geometria OSRM, segue as curvas reais das estradas.
+  //  - "all-gens": truck anima o melhor de CADA geração em sequência —
+  //    quando termina o circuito de uma geração, avança pra próxima. Mostra
+  //    o GA "se estabilizando" frame a frame. Sempre usa legs em linha reta
+  //    (não cabe fazer N chamadas OSRM, uma por geração).
+
+  const [allGensMode, setAllGensMode] = useState(false);
+  const [currentReplayGen, setCurrentReplayGen] = useState(0);
+
+  // Reset all-gens quando histTours muda (novo treino)
+  useEffect(() => {
+    setCurrentReplayGen(0);
+  }, [histTours]);
+
+  // Tour atualmente sendo animado.
+  const activeTour = useMemo<number[]>(() => {
+    if (allGensMode && histTours && histTours.length > 0) {
+      const idx = Math.min(currentReplayGen, histTours.length - 1);
+      return histTours[idx] ?? globalTour ?? [];
+    }
+    return globalTour ?? [];
+  }, [allGensMode, histTours, currentReplayGen, globalTour]);
+
+  // Mantenho variável `animatedTour` por compatibilidade com código abaixo.
+  const animatedTour = activeTour;
+
   const legs = useMemo<TspLegGeometry[]>(() => {
-    if (routeGeometry?.legs && routeGeometry.legs.length > 0) {
+    // Em all-gens mode, NUNCA usa OSRM (não fazemos N chamadas) — sempre
+    // sintetiza legs em linha reta entre cidades consecutivas.
+    if (!allGensMode && routeGeometry?.legs && routeGeometry.legs.length > 0) {
       return routeGeometry.legs;
     }
     if (animatedTour.length < 2) return [];
@@ -137,7 +157,7 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
       });
     }
     return out;
-  }, [routeGeometry, animatedTour, cidades]);
+  }, [allGensMode, routeGeometry, animatedTour, cidades]);
 
   // Polyline completa do tour (concatenação dos legs com remoção de pontos
   // duplicados nas junções). Usada como "pista" desenhada no mapa.
@@ -169,7 +189,8 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalTour?.join(','), cidades, routeGeometry?.distancia]);
 
-  // RAF loop (usa lambda fresca a cada frame via refs/state)
+  // RAF loop. Em all-gens mode, ao completar o circuito atual, avança
+  // pra próxima geração (vez de só dar wrap-around no mesmo tour).
   useEffect(() => {
     if (!playing || segCount === 0) return;
     lastTimeRef.current = performance.now();
@@ -180,6 +201,20 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
         if (segCount <= 0) return 0;
         const next = prev + dt * speed;
         if (next >= segCount) {
+          if (allGensMode && histTours && histTours.length > 0) {
+            const totalGens = histTours.length;
+            const nextGen = currentReplayGen + 1;
+            if (nextGen >= totalGens) {
+              if (loop) {
+                setCurrentReplayGen(0);
+                return 0;
+              }
+              setPlaying(false);
+              return segCount;
+            }
+            setCurrentReplayGen(nextGen);
+            return 0;
+          }
           if (loop) return next % segCount;
           setPlaying(false);
           return segCount;
@@ -192,7 +227,8 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [playing, speed, loop, segCount]);
+    // currentReplayGen incluído pra closure pegar o valor atual após advance.
+  }, [playing, speed, loop, segCount, allGensMode, histTours, currentReplayGen]);
 
   // Interpola um ponto dentro da polyline de um leg, em fração [0, 1].
   // Distribui uniforme por índice de pontos (não por distância) — visual fica
@@ -437,7 +473,37 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
             loop
           </label>
 
+          {/* Toggle: percorrer cada geração em sequência */}
+          {histTours && histTours.length >= 2 && (
+            <label
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+                color: allGensMode ? 'var(--cyan)' : 'var(--muted)',
+              }}
+              title="Anima o melhor de CADA geração em sequência (em vez de só o vencedor)"
+            >
+              <input
+                type="checkbox"
+                checked={allGensMode}
+                onChange={e => {
+                  setAllGensMode(e.target.checked);
+                  setCurrentReplayGen(0);
+                  setT(0);
+                }}
+                style={{ accentColor: 'var(--cyan)' }}
+              />
+              todas gerações
+            </label>
+          )}
+
           <div style={{ flex: 1, minWidth: 80 }} />
+
+          {/* Indicador de geração no all-gens mode */}
+          {allGensMode && histTours && histTours.length > 0 && (
+            <span style={{ color: 'var(--cyan)' }}>
+              ger <b>{currentReplayGen + 1}</b> / {histTours.length}
+            </span>
+          )}
 
           {showingPlayback && animatedTour.length > 0 && currentSegIdx < animatedTour.length && (
             <span>
@@ -456,7 +522,9 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
           {!showingPlayback && (
             <span style={{ fontSize: 10 }}>
               {segCount >= 2
-                ? '▶ play anima a rota ganhadora (melhor global encontrado)'
+                ? (allGensMode
+                    ? '▶ play percorre o melhor de cada geração em sequência'
+                    : '▶ play anima a rota ganhadora (melhor global encontrado)')
                 : 'rode OTIMIZAR pra liberar a animação'}
             </span>
           )}

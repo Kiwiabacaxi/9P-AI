@@ -146,6 +146,10 @@ export default function TspView() {
 
   // Replay
   const histTourRef = useRef<number[][]>([]);
+  // Snapshot do histórico de tours pra passar como prop ao TspMap. Só populado
+  // ao final do treino — durante o treino o ref muta mas a prop não precisa
+  // re-renderizar (all-gens animation só faz sentido depois de done).
+  const [histToursDone, setHistToursDone] = useState<number[][]>([]);
   const [maxGen, setMaxGen] = useState(0);
   const [displayGen, setDisplayGen] = useState(0);
   const [userScrub, setUserScrub] = useState(false);
@@ -291,6 +295,7 @@ export default function TspView() {
     setHistMelhor([]);
     setHistMedia([]);
     histTourRef.current = [];
+    setHistToursDone([]);
     setMaxGen(0);
     setDisplayGen(0);
     setUserScrub(false);
@@ -311,6 +316,7 @@ export default function TspView() {
     setTourGlobal([]);
     setGlobalDist(null);
     histTourRef.current = [];
+    setHistToursDone([]);
     setMaxGen(0);
     setDisplayGen(0);
     setUserScrub(false);
@@ -376,6 +382,9 @@ export default function TspView() {
         setTraining(false);
         closeSSE.current = null;
         show(`Tour final: ${r.melhorDist.toFixed(1)} ${unidade}`);
+        // Snapshot do histórico de tours pra liberar a animação "todas gerações"
+        // no TspMap (durante treino o ref muta sem disparar re-render).
+        setHistToursDone(histTourRef.current.slice());
         if (distMode === 'osrm') {
           void fetchRouteGeometry(r.melhorTour);
         }
@@ -408,6 +417,7 @@ export default function TspView() {
     setHistMelhor([]);
     setHistMedia([]);
     histTourRef.current = [];
+    setHistToursDone([]);
     setMaxGen(0);
     setDisplayGen(0);
     setUserScrub(false);
@@ -686,6 +696,7 @@ export default function TspView() {
           tour={tourAtual}
           globalTour={tourGlobal}
           routeGeometry={routeGeometry ?? undefined}
+          histTours={histToursDone}
           height={500}
         />
         {maxGen > 0 && (
