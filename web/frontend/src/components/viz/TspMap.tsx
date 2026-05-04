@@ -177,6 +177,7 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
       const dt = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
       setT(prev => {
+        if (segCount <= 0) return 0;
         const next = prev + dt * speed;
         if (next >= segCount) {
           if (loop) return next % segCount;
@@ -212,24 +213,29 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
 
   // Posição interpolada do truck — segue a polyline curvada do leg atual.
   const truckPos = useMemo<[number, number] | null>(() => {
-    if (legs.length === 0) return null;
-    const ti = Math.min(t, segCount);
-    const legIdx = Math.min(Math.floor(ti), segCount - 1);
+    if (legs.length === 0 || segCount === 0) return null;
+    const ti = Math.min(Math.max(t, 0), segCount);
+    const legIdx = Math.max(0, Math.min(Math.floor(ti), legs.length - 1));
+    const leg = legs[legIdx];
+    if (!leg) return null;
     const legFrac = ti - legIdx;
-    return pointInLeg(legs[legIdx], legFrac);
+    return pointInLeg(leg, legFrac);
   }, [t, legs, segCount]);
 
   // Polyline já percorrida = legs completos + parcial do leg atual.
   const drawnLine = useMemo<[number, number][]>(() => {
-    if (legs.length === 0 || t <= 0) return [];
+    if (legs.length === 0 || segCount === 0 || t <= 0) return [];
     const out: [number, number][] = [];
-    const ti = Math.min(t, segCount);
-    const legIdx = Math.min(Math.floor(ti), segCount - 1);
+    const ti = Math.min(Math.max(t, 0), segCount);
+    const legIdx = Math.max(0, Math.min(Math.floor(ti), legs.length - 1));
     const legFrac = ti - legIdx;
 
     // legs já completos
     for (let i = 0; i < legIdx; i++) {
-      const pts = legs[i].polyline;
+      const leg = legs[i];
+      if (!leg) continue;
+      const pts = leg.polyline;
+      if (!pts || pts.length === 0) continue;
       const startIdx = out.length === 0 ? 0 : 1; // pula duplicata da junção
       for (let k = startIdx; k < pts.length; k++) {
         out.push(pts[k]);
@@ -237,7 +243,8 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
     }
 
     // parcial do leg atual
-    const cur = legs[legIdx].polyline;
+    const curLeg = legs[legIdx];
+    const cur = curLeg?.polyline;
     if (cur && cur.length >= 2) {
       const startIdx = out.length === 0 ? 0 : 1;
       const upTo = legFrac * (cur.length - 1);
