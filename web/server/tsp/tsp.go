@@ -67,6 +67,19 @@ type Config struct {
 	//         autonomia do veículo, descanso obrigatório do motorista, etc.).
 	LambdaMaxLeg float64 `json:"lambdaMaxLeg"`
 
+	// LastVisit — restrição lógica do cenário: id da cidade que DEVE ser
+	// visitada por último, imediatamente antes do retorno ao depot.
+	// -1 = sem restrição.
+	//
+	// Caso típico: rota Cargill da soja deve descarregar no Porto de Santos
+	// no FIM (depois de coletar nos silos), não no meio. O TSP puro não
+	// modela ordem; sem essa penalidade, o GA acha rotas tipo
+	// "depot → porto vazio → silos → depot cheio" que são absurdas.
+	//
+	// Implementação: penalidade proporcional ao desvio cíclico entre a
+	// posição atual de LastVisit e a posição "logo antes do depot".
+	LastVisit int `json:"lastVisit"`
+
 	Seed int64 `json:"seed,omitempty"`
 }
 
@@ -82,6 +95,7 @@ func DefaultConfig() Config {
 		Mutacao:        MutInversao,
 		Elitismo:       2,
 		LambdaMaxLeg:   0,
+		LastVisit:      -1,
 	}
 }
 
@@ -189,20 +203,57 @@ func CalcularDistanciaTour(tour []int, matriz [][]float64) float64 {
 	return total
 }
 
-// avaliar — calcula distancia, maxLeg e custo (= distancia + lambda*maxLeg).
-// É o que a seleção do AG efetivamente compara (minimizar Custo).
-func avaliar(tour []int, matriz [][]float64, lambda float64) (distancia, maxLeg, custo float64) {
-	if len(tour) < 2 {
+// avaliar — calcula distancia, maxLeg e custo. Custo é o que a seleção do AG
+// minimiza:
+//
+//	custo = distancia + λ · maxLeg + penalidade_ordem
+//
+// A penalidade_ordem é zero se lastVisit == -1. Caso contrário, ela é
+// proporcional à distância cíclica entre a posição atual da cidade `lastVisit`
+// no tour e a posição "logo antes do retorno ao depot" (que é onde ela
+// deveria estar pra rota fazer sentido logístico). Cada posição fora do
+// lugar custa 2× a perna média, o que é forte o suficiente pra dominar a
+// otimização sem ser numericamente absurdo.
+func avaliar(tour []int, matriz [][]float64, lambda float64, lastVisit int) (distancia, maxLeg, custo float64) {
+	n := len(tour)
+	if n < 2 {
 		return
 	}
-	for i := 0; i < len(tour); i++ {
-		d := matriz[tour[i]][tour[(i+1)%len(tour)]]
+	for i := 0; i < n; i++ {
+		d := matriz[tour[i]][tour[(i+1)%n]]
 		distancia += d
 		if d > maxLeg {
 			maxLeg = d
 		}
 	}
 	custo = distancia + lambda*maxLeg
+
+	if lastVisit >= 0 {
+		// Posição do depot (cidade 0) e da cidade-última.
+		depotPos, lvPos := -1, -1
+		for i, c := range tour {
+			if c == 0 {
+				depotPos = i
+			}
+			if c == lastVisit {
+				lvPos = i
+			}
+		}
+		if depotPos >= 0 && lvPos >= 0 {
+			// "Posição ideal" da cidade-última: imediatamente antes do depot
+			// no ciclo. Em coordenadas: (depotPos - 1 + n) mod n.
+			wanted := (depotPos - 1 + n) % n
+			// Distância cíclica mínima (forward ou backward).
+			fwd := (wanted - lvPos + n) % n
+			bwd := (lvPos - wanted + n) % n
+			deviation := fwd
+			if bwd < fwd {
+				deviation = bwd
+			}
+			avgLeg := distancia / float64(n)
+			custo += float64(deviation) * 2.0 * avgLeg
+		}
+	}
 	return
 }
 
@@ -210,12 +261,12 @@ func avaliar(tour []int, matriz [][]float64, lambda float64) (distancia, maxLeg,
 // População inicial — N permutações aleatórias.
 // =============================================================================
 
-func gerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matriz [][]float64, lambda float64) []Individuo {
+func gerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matriz [][]float64, lambda float64, lastVisit int) []Individuo {
 	pop := make([]Individuo, popSize)
 	for i := range pop {
 		tour := rng.Perm(n)
 		pop[i] = Individuo{Tour: tour}
-		pop[i].Distancia, pop[i].MaxLeg, pop[i].Custo = avaliar(tour, matriz, lambda)
+		pop[i].Distancia, pop[i].MaxLeg, pop[i].Custo = avaliar(tour, matriz, lambda, lastVisit)
 	}
 	return pop
 }
@@ -492,7 +543,7 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 	}
 	rng := rand.New(rand.NewSource(seed))
 
-	pop := gerarPopulacaoInicial(rng, cfg.PopSize, n, matriz, cfg.LambdaMaxLeg)
+	pop := gerarPopulacaoInicial(rng, cfg.PopSize, n, matriz, cfg.LambdaMaxLeg, cfg.LastVisit)
 
 	histMelhor := make([]float64, 0, cfg.MaxGeracoes)
 	histMedia := make([]float64, 0, cfg.MaxGeracoes)
@@ -605,9 +656,9 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 			}
 
 			f1 := Individuo{Tour: t1}
-			f1.Distancia, f1.MaxLeg, f1.Custo = avaliar(t1, matriz, cfg.LambdaMaxLeg)
+			f1.Distancia, f1.MaxLeg, f1.Custo = avaliar(t1, matriz, cfg.LambdaMaxLeg, cfg.LastVisit)
 			f2 := Individuo{Tour: t2}
-			f2.Distancia, f2.MaxLeg, f2.Custo = avaliar(t2, matriz, cfg.LambdaMaxLeg)
+			f2.Distancia, f2.MaxLeg, f2.Custo = avaliar(t2, matriz, cfg.LambdaMaxLeg, cfg.LastVisit)
 			filhos = append(filhos, f1, f2)
 		}
 		if len(filhos) > precisamos {
@@ -675,6 +726,13 @@ func sanitizar(cfg Config, n int) Config {
 	if cfg.LambdaMaxLeg < 0 {
 		cfg.LambdaMaxLeg = 0
 	}
+	if cfg.LastVisit < -1 || cfg.LastVisit >= n {
+		cfg.LastVisit = -1
+	}
+	if cfg.LastVisit == 0 {
+		// 0 é o depot — não pode ser também a "última visita"
+		cfg.LastVisit = -1
+	}
 	return cfg
 }
 
@@ -701,6 +759,13 @@ type Preset struct {
 	LambdaSugerido float64  `json:"lambdaSugerido"` // tempero recomendado pra esse cenário
 	ModoSugerido   string   `json:"modoSugerido"`   // "haversine" | "osrm" | "euclidiana"
 	FitnessNota    string   `json:"fitnessNota"`    // por que esse λ + esse modo aqui
+
+	// LastVisit — restrição lógica do cenário: id da cidade que deve ser
+	// visitada por último, imediatamente antes do retorno ao depot.
+	// -1 = sem restrição. Ex: pra Cargill, é o Porto de Santos
+	// (caminhão coleta soja nos silos primeiro, descarrega no porto por último).
+	LastVisit     int    `json:"lastVisit"`
+	LastVisitNome string `json:"lastVisitNome,omitempty"`
 }
 
 // Presets — lista todos os cenários disponíveis.
@@ -748,6 +813,7 @@ func presetItambe() Preset {
 		FitnessNota: "Leite tem cadeia fria. λ > 0 penaliza tours com algum trecho muito longo " +
 			"(refrigeração tem limite, motorista precisa parar pra descanso). " +
 			"Modo OSRM porque caminhão segue rodovias — nada de cortar reto pelo pasto.",
+		LastVisit: -1,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "Itambé Uberaba", UF: "MG", Lat: -19.7479, Lng: -47.9381},
 			{ID: 1, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9119, Lng: -48.3858},
@@ -789,6 +855,7 @@ func presetMosaic() Preset {
 		FitnessNota: "Fertilizante é volumoso e pesado — o que importa é minimizar quilometragem total " +
 			"(diesel é o maior custo operacional). λ = 0 puro TSP funciona bem. " +
 			"OSRM essencial: caminhão Vanderléia de 30+ ton só anda em rodovia federal/estadual.",
+		LastVisit: -1,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "Mosaic Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
 			{ID: 1, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
@@ -829,6 +896,7 @@ func presetJBS() Preset {
 			"com algum trecho monstruoso, porque a carne pode estragar e o motorista " +
 			"precisa de descanso pago pelas regras da ANTT. OSRM porque caminhão refrigerado " +
 			"de 20 ton tem rotas obrigatórias por BR.",
+		LastVisit: -1,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "JBS Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
 			{ID: 1, Nome: "Belo Horizonte", UF: "MG", Lat: -19.9167, Lng: -43.9345},
@@ -871,7 +939,11 @@ func presetCargillSoja() Preset {
 		FitnessNota: "Soja é peso → minimizar quilometragem total é o que importa pro fretista. " +
 			"λ = 1 leve dá uma penalizadinha em trecho gigante (motorista da ANTT precisa " +
 			"de descanso obrigatório a cada 5h30 dirigindo). Modo OSRM essencial pra " +
-			"refletir o corredor BR-163 / BR-364 / BR-153 que o caminhão de fato usa.",
+			"refletir o corredor BR-163 / BR-364 / BR-153 que o caminhão de fato usa. " +
+			"Restrição extra: Porto de Santos é o último ponto da rota antes de voltar " +
+			"a Rondonópolis (caminhão coleta cheio, descarrega no porto, volta vazio).",
+		LastVisit:     10,
+		LastVisitNome: "Porto de Santos",
 		Cidades: []Cidade{
 			{ID: 0, Nome: "Cargill Rondonópolis", UF: "MT", Lat: -16.4706, Lng: -54.6353},
 			{ID: 1, Nome: "Sorriso", UF: "MT", Lat: -12.5450, Lng: -55.7211},
@@ -912,6 +984,7 @@ func presetADMMilho() Preset {
 		FitnessNota: "Milho a granel é peso, minimizar km importa. λ = 1 modesto pra " +
 			"penalizar trecho fora da curva — o motorista volta no mesmo dia, então cada " +
 			"km a mais empurra a janela de descarga e diminui ciclos por dia.",
+		LastVisit: -1,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "ADM Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
 			{ID: 1, Nome: "Patrocínio", UF: "MG", Lat: -18.9442, Lng: -46.9931},

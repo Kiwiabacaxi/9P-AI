@@ -119,6 +119,9 @@ export default function TspView() {
   const [mutacao, setMutacao] = useState<TspMutacao>('inversao');
   const [elitismo, setElitismo] = useState('2');
   const [lambdaMaxLeg, setLambdaMaxLeg] = useState('0');
+  // Restrição lógica do cenário: cidade que deve ser visitada por último
+  // (ex.: porto de descarga). -1 = sem restrição. Vem do preset.
+  const [lastVisit, setLastVisit] = useState<number>(-1);
 
   // Training state
   const [training, setTraining] = useState(false);
@@ -203,6 +206,9 @@ export default function TspView() {
       setDistMode(modoEfetivo);
       setLambdaMaxLeg(String(p.lambdaSugerido));
     }
+    // A restrição "última visita" é parte da definição do cenário, não uma
+    // sugestão — sempre aplica.
+    setLastVisit(typeof p.lastVisit === 'number' ? p.lastVisit : -1);
     return p;
   }
 
@@ -320,6 +326,7 @@ export default function TspView() {
       mutacao,
       elitismo: parseInt(elitismo),
       lambdaMaxLeg: parseFloat(lambdaMaxLeg),
+      lastVisit,
     };
 
     try {
@@ -813,6 +820,25 @@ export default function TspView() {
             {presetMeta.narrativa.split('\n\n').map((paragrafo, i) => (
               <p key={i} style={{ marginBottom: 8 }}>{paragrafo}</p>
             ))}
+            {presetMeta.lastVisit >= 0 && presetMeta.lastVisitNome && (
+              <div style={{
+                marginTop: 12, padding: '10px 12px',
+                background: 'rgba(255, 170, 0, 0.08)',
+                border: '1px solid rgba(255, 170, 0, 0.3)',
+                borderRadius: 6,
+                fontSize: 12, lineHeight: 1.6,
+              }}>
+                <b style={{ color: '#ffaa00' }}>⚠ Restrição lógica:</b>{' '}
+                <b>{presetMeta.lastVisitNome}</b> deve ser visitada{' '}
+                <i>por último</i> (imediatamente antes do retorno ao depot).
+                <br />
+                <span style={{ color: 'var(--muted)' }}>
+                  Sem essa restrição, o TSP puro pode achar tours absurdos
+                  tipo "depot → porto vazio → silos → depot cheio". A penalidade
+                  no fitness empurra a cidade-última pra posição certa.
+                </span>
+              </div>
+            )}
             <div style={{
               marginTop: 12, padding: '10px 12px',
               background: 'var(--surface-2)', borderRadius: 6,

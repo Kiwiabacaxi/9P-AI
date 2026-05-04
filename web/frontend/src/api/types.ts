@@ -477,6 +477,8 @@ export interface TspPreset {
   lambdaSugerido: number;
   modoSugerido: TspDistMode;
   fitnessNota: string;
+  lastVisit: number;
+  lastVisitNome?: string;
 }
 
 // Versão resumida pra dropdown (sem cidades).
@@ -506,6 +508,7 @@ export interface TspConfig {
   mutacao: TspMutacao;
   elitismo: number;
   lambdaMaxLeg: number;
+  lastVisit: number;
   seed?: number;
 }
 
