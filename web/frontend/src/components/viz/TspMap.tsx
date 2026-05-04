@@ -6,13 +6,13 @@ import {
 } from 'recharts';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { TspCidade } from '../../api/types';
+import type { TspCidade, TspLegGeometry, TspRouteGeometry } from '../../api/types';
 
 interface Props {
   cidades: TspCidade[];
   tour: number[];                       // ordem atual exibida (best da geração displayada)
   globalTour?: number[];                // melhor global acumulado (em fade)
-  routeGeometry?: [number, number][];   // polyline curvada vinda do OSRM (estradas reais)
+  routeGeometry?: TspRouteGeometry;     // OSRM: polyline + legs (estradas reais)
   height?: number;
 }
 
@@ -107,13 +107,57 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
   // Por design, a animação roda sempre no melhor global (globalTour) — não na
   // rota exibida pelo slider. Faz mais sentido pedagogicamente: o usuário quer
   // ver o melhor tour sendo percorrido, não tours intermediários ruidosos.
-  const animatedLatLngs = globalLatLngs;
-  const animatedTour = globalTour ?? [];
-  const segCount = Math.max(0, animatedLatLngs.length - 1);
+  //
+  // Unificamos a animação em torno de "legs" (uma perna = ida de uma cidade
+  // pra próxima). No modo OSRM, cada leg traz sua polyline curvada pelas
+  // estradas reais. Nos modos Haversine/Euclidiana, sintetizamos legs com
+  // 2 pontos cada (cidade A → cidade B em linha reta). Em ambos os casos,
+  // o truck percorre as polylines dos legs em sequência — segue as curvas
+  // quando estão lá.
+  const animatedTour = useMemo(() => globalTour ?? [], [globalTour]);
+  const legs = useMemo<TspLegGeometry[]>(() => {
+    if (routeGeometry?.legs && routeGeometry.legs.length > 0) {
+      return routeGeometry.legs;
+    }
+    if (animatedTour.length < 2) return [];
+    const cidadeById = new Map(cidades.map(c => [c.id, c]));
+    const out: TspLegGeometry[] = [];
+    for (let i = 0; i < animatedTour.length; i++) {
+      const aId = animatedTour[i];
+      const bId = animatedTour[(i + 1) % animatedTour.length];
+      const a = cidadeById.get(aId);
+      const b = cidadeById.get(bId);
+      if (!a || !b) continue;
+      out.push({
+        polyline: [[a.lat, a.lng], [b.lat, b.lng]],
+        distancia: 0,
+        duracao: 0,
+        deId: aId,
+        paraId: bId,
+      });
+    }
+    return out;
+  }, [routeGeometry, animatedTour, cidades]);
+
+  // Polyline completa do tour (concatenação dos legs com remoção de pontos
+  // duplicados nas junções). Usada como "pista" desenhada no mapa.
+  const animatedFullLine = useMemo<[number, number][]>(() => {
+    if (legs.length === 0) return [];
+    const out: [number, number][] = [];
+    legs.forEach((leg, i) => {
+      const startIdx = i === 0 ? 0 : 1;
+      for (let k = startIdx; k < leg.polyline.length; k++) {
+        out.push(leg.polyline[k]);
+      }
+    });
+    return out;
+  }, [legs]);
+
+  const segCount = legs.length;
 
   const [playing, setPlaying] = useState(false);
-  const [t, setT] = useState(0);                 // posição contínua, em "segmentos"
-  const [speed, setSpeed] = useState(2);          // segmentos por segundo
+  const [t, setT] = useState(0);                 // posição contínua, em "legs"
+  const [speed, setSpeed] = useState(2);          // legs por segundo
   const [loop, setLoop] = useState(true);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
@@ -123,7 +167,7 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
     setPlaying(false);
     setT(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [globalTour?.join(','), cidades]);
+  }, [globalTour?.join(','), cidades, routeGeometry?.distancia]);
 
   // RAF loop (usa lambda fresca a cada frame via refs/state)
   useEffect(() => {
@@ -149,33 +193,68 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
     };
   }, [playing, speed, loop, segCount]);
 
-  // Posição interpolada do truck — sempre no animatedLatLngs (winner).
-  const truckPos = useMemo<[number, number] | null>(() => {
-    if (animatedLatLngs.length < 2) return null;
-    const ti = Math.min(t, segCount);
-    const i = Math.min(Math.floor(ti), segCount - 1);
-    const frac = ti - i;
-    const a = animatedLatLngs[i];
-    const b = animatedLatLngs[i + 1];
-    return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
-  }, [t, animatedLatLngs, segCount]);
+  // Interpola um ponto dentro da polyline de um leg, em fração [0, 1].
+  // Distribui uniforme por índice de pontos (não por distância) — visual fica
+  // bom na prática e é O(1) por frame.
+  function pointInLeg(leg: TspLegGeometry, frac: number): [number, number] | null {
+    const pts = leg.polyline;
+    if (pts.length === 0) return null;
+    if (pts.length === 1) return pts[0];
+    const f = Math.max(0, Math.min(1, frac));
+    const idx = f * (pts.length - 1);
+    const i = Math.floor(idx);
+    const localFrac = idx - i;
+    if (i >= pts.length - 1) return pts[pts.length - 1];
+    const a = pts[i];
+    const b = pts[i + 1];
+    return [a[0] + (b[0] - a[0]) * localFrac, a[1] + (b[1] - a[1]) * localFrac];
+  }
 
-  // Polyline percorrida até a posição atual no animatedLatLngs.
-  const drawnLine = useMemo<[number, number][]>(() => {
-    if (animatedLatLngs.length < 2 || t <= 0) return [];
+  // Posição interpolada do truck — segue a polyline curvada do leg atual.
+  const truckPos = useMemo<[number, number] | null>(() => {
+    if (legs.length === 0) return null;
     const ti = Math.min(t, segCount);
-    const i = Math.min(Math.floor(ti), segCount - 1);
-    const frac = ti - i;
-    const out = animatedLatLngs.slice(0, i + 1);
-    if (frac > 0) {
-      const a = animatedLatLngs[i];
-      const b = animatedLatLngs[i + 1];
-      out.push([a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac]);
-    } else if (i >= segCount) {
-      out.push(animatedLatLngs[segCount]);
+    const legIdx = Math.min(Math.floor(ti), segCount - 1);
+    const legFrac = ti - legIdx;
+    return pointInLeg(legs[legIdx], legFrac);
+  }, [t, legs, segCount]);
+
+  // Polyline já percorrida = legs completos + parcial do leg atual.
+  const drawnLine = useMemo<[number, number][]>(() => {
+    if (legs.length === 0 || t <= 0) return [];
+    const out: [number, number][] = [];
+    const ti = Math.min(t, segCount);
+    const legIdx = Math.min(Math.floor(ti), segCount - 1);
+    const legFrac = ti - legIdx;
+
+    // legs já completos
+    for (let i = 0; i < legIdx; i++) {
+      const pts = legs[i].polyline;
+      const startIdx = out.length === 0 ? 0 : 1; // pula duplicata da junção
+      for (let k = startIdx; k < pts.length; k++) {
+        out.push(pts[k]);
+      }
+    }
+
+    // parcial do leg atual
+    const cur = legs[legIdx].polyline;
+    if (cur && cur.length >= 2) {
+      const startIdx = out.length === 0 ? 0 : 1;
+      const upTo = legFrac * (cur.length - 1);
+      const intIdx = Math.floor(upTo);
+      const localFrac = upTo - intIdx;
+
+      for (let i = startIdx; i <= Math.min(intIdx, cur.length - 1); i++) {
+        out.push(cur[i]);
+      }
+      if (intIdx < cur.length - 1 && localFrac > 0) {
+        const a = cur[intIdx];
+        const b = cur[intIdx + 1];
+        out.push([a[0] + (b[0] - a[0]) * localFrac, a[1] + (b[1] - a[1]) * localFrac]);
+      }
     }
     return out;
-  }, [t, animatedLatLngs, segCount]);
+  }, [t, legs, segCount]);
 
   const showingPlayback = playing || t > 0;
   const currentSegIdx = Math.min(Math.floor(t), segCount);
@@ -196,14 +275,15 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
           <FitBounds cidades={cidades} />
 
           {/*
-            Quando há `routeGeometry` (modo OSRM com tour resolvido), desenhamos
-            APENAS a polyline curvada das estradas — visual limpo e fiel ao
-            que sairá no GPS de verdade. Caso contrário, mostramos as polylines
-            em linha reta (Haversine/Euclidiana).
+            Quando há `routeGeometry` (modo OSRM com tour resolvido), a polyline
+            principal é a versão curvada pelas estradas. Caso contrário (modos
+            Haversine/Euclidiana), as polylines são linhas retas city-to-city.
+            Em ambos os casos, durante playback, escurecemos a pista pra deixar
+            o trecho percorrido (drawnLine) sobressair.
           */}
-          {routeGeometry && routeGeometry.length > 1 && (
+          {routeGeometry && routeGeometry.polyline.length > 1 && (
             <Polyline
-              positions={routeGeometry}
+              positions={routeGeometry.polyline}
               pathOptions={{
                 color: '#ff00aa',
                 weight: 3,
@@ -212,7 +292,7 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
             />
           )}
 
-          {/* === Modo "linha reta" (Haversine/Euclidiana — sem geometry) === */}
+          {/* === Modo "linha reta" (Haversine/Euclidiana — sem OSRM) === */}
           {!routeGeometry && !showingPlayback && globalLatLngs.length > 0 && (
             <Polyline
               positions={globalLatLngs}
@@ -236,10 +316,11 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
             />
           )}
 
-          {/* Pista da animação em linha reta (só quando NÃO há geometry) */}
-          {!routeGeometry && showingPlayback && animatedLatLngs.length > 0 && (
+          {/* Pista do animatedFullLine (= legs concatenados) durante playback —
+              usada quando NÃO temos OSRM polyline (caso contrário, ela é a pista). */}
+          {!routeGeometry && showingPlayback && animatedFullLine.length > 1 && (
             <Polyline
-              positions={animatedLatLngs}
+              positions={animatedFullLine}
               pathOptions={{
                 color: '#ff00aa',
                 weight: 3,
@@ -294,7 +375,7 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
       </div>
 
       {/* Controles de playback — só aparecem quando já há rota ganhadora */}
-      {animatedLatLngs.length >= 2 && (
+      {segCount >= 2 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '8px 12px', marginTop: 8,
@@ -367,7 +448,7 @@ export default function TspMap({ cidades, tour, globalTour, routeGeometry, heigh
           )}
           {!showingPlayback && (
             <span style={{ fontSize: 10 }}>
-              {animatedLatLngs.length >= 2
+              {segCount >= 2
                 ? '▶ play anima a rota ganhadora (melhor global encontrado)'
                 : 'rode OTIMIZAR pra liberar a animação'}
             </span>

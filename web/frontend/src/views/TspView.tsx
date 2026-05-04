@@ -637,7 +637,7 @@ export default function TspView() {
           cidades={cidades}
           tour={tourAtual}
           globalTour={tourGlobal}
-          routeGeometry={routeGeometry?.polyline}
+          routeGeometry={routeGeometry ?? undefined}
           height={500}
         />
         {maxGen > 0 && (

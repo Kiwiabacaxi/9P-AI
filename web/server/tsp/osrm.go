@@ -120,19 +120,41 @@ type osrmRouteResp struct {
 			Type        string      `json:"type"`
 			Coordinates [][]float64 `json:"coordinates"` // [lng, lat]
 		} `json:"geometry"`
+		Legs []struct {
+			Distance float64 `json:"distance"` // metros
+			Duration float64 `json:"duration"` // segundos
+			Steps    []struct {
+				Geometry struct {
+					Coordinates [][]float64 `json:"coordinates"` // [lng, lat]
+				} `json:"geometry"`
+			} `json:"steps"`
+		} `json:"legs"`
 	} `json:"routes"`
+}
+
+// LegGeometry — geometria curvada de UM leg (entre dois cidades consecutivas no tour).
+// Permite que o frontend anime o truck seguindo as curvas reais das estradas
+// dentro de cada perna, em vez de cortar reto entre as cidades.
+type LegGeometry struct {
+	Polyline  [][2]float64 `json:"polyline"`  // [[lat, lng], ...] da perna
+	Distancia float64      `json:"distancia"` // km
+	Duracao   float64      `json:"duracao"`   // segundos
+	DeID      int          `json:"deId"`      // city id no início da perna
+	ParaID    int          `json:"paraId"`    // city id no fim da perna
 }
 
 // RouteGeometry — polyline percorrendo as cidades na ordem do tour, fechando
 // o ciclo (volta a c0). Retorna pontos em [lat, lng] (formato Leaflet) e
 // distância total em km.
 type RouteGeometry struct {
-	Polyline   [][2]float64 `json:"polyline"`   // [[lat, lng], ...]
-	Distancia  float64      `json:"distancia"`  // km
-	Duracao    float64      `json:"duracao"`    // segundos
+	Polyline  [][2]float64  `json:"polyline"`  // [[lat, lng], ...] tour fechado completo
+	Legs      []LegGeometry `json:"legs"`      // geometria por perna (entre cidades consecutivas)
+	Distancia float64       `json:"distancia"` // km totais
+	Duracao   float64       `json:"duracao"`   // segundos totais
 }
 
 // FetchOSRMRoute — geometria curvada da rota completa pelo tour fechado.
+// Usa steps=true pra obter geometria por step e poder consolidar legs separados.
 func FetchOSRMRoute(cidades []Cidade, tour []int) (*RouteGeometry, error) {
 	if len(tour) < 2 {
 		return nil, errors.New("rota OSRM precisa de >= 2 cidades")
@@ -142,7 +164,7 @@ func FetchOSRMRoute(cidades []Cidade, tour []int) (*RouteGeometry, error) {
 	ordem = append(ordem, tour...)
 	ordem = append(ordem, tour[0])
 
-	url := fmt.Sprintf("%s/route/v1/driving/%s?overview=full&geometries=geojson",
+	url := fmt.Sprintf("%s/route/v1/driving/%s?overview=full&geometries=geojson&steps=true",
 		osrmBaseURL, formatCoords(cidades, ordem))
 
 	resp, err := osrmHTTP.Get(url)
@@ -162,15 +184,58 @@ func FetchOSRMRoute(cidades []Cidade, tour []int) (*RouteGeometry, error) {
 	if data.Code != "Ok" || len(data.Routes) == 0 {
 		return nil, fmt.Errorf("OSRM route erro: %s — %s", data.Code, data.Message)
 	}
-	geom := data.Routes[0].Geometry.Coordinates
+
+	route := data.Routes[0]
+
+	// polyline geral (overview=full)
+	geom := route.Geometry.Coordinates
 	out := make([][2]float64, len(geom))
 	for i, c := range geom {
 		// GeoJSON [lng, lat] → Leaflet [lat, lng]
 		out[i] = [2]float64{c[1], c[0]}
 	}
+
+	// legs: concatena steps[].geometry pra obter polyline de cada perna
+	legs := make([]LegGeometry, 0, len(route.Legs))
+	for li, leg := range route.Legs {
+		// Os legs do OSRM correspondem 1:1 com os pares (ordem[li], ordem[li+1]),
+		// que por sua vez vêm de tour[li] → tour[(li+1) % len(tour)] (último é volta).
+		deID := tour[li%len(tour)]
+		paraID := tour[(li+1)%len(tour)]
+
+		// concatena geometrias de todos os steps; o primeiro ponto do step k+1
+		// é o último do step k (joining), então pulamos duplicatas.
+		var pts [][2]float64
+		for si, step := range leg.Steps {
+			coords := step.Geometry.Coordinates
+			startIdx := 0
+			if si > 0 && len(coords) > 0 {
+				startIdx = 1 // pula ponto duplicado na junção
+			}
+			for _, c := range coords[startIdx:] {
+				pts = append(pts, [2]float64{c[1], c[0]})
+			}
+		}
+		// Fallback: se o OSRM não retornou steps por algum motivo, usa um
+		// segmento reto entre as cidades — animação degrada mas não quebra.
+		if len(pts) < 2 {
+			a := cidades[deID]
+			b := cidades[paraID]
+			pts = [][2]float64{{a.Lat, a.Lng}, {b.Lat, b.Lng}}
+		}
+		legs = append(legs, LegGeometry{
+			Polyline:  pts,
+			Distancia: leg.Distance / 1000.0,
+			Duracao:   leg.Duration,
+			DeID:      deID,
+			ParaID:    paraID,
+		})
+	}
+
 	return &RouteGeometry{
 		Polyline:  out,
-		Distancia: data.Routes[0].Distance / 1000.0,
-		Duracao:   data.Routes[0].Duration,
+		Legs:      legs,
+		Distancia: route.Distance / 1000.0,
+		Duracao:   route.Duration,
 	}, nil
 }

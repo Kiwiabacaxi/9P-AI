@@ -510,11 +510,22 @@ export interface TspResult {
   cfg: TspConfig;
 }
 
-// Geometria curvada da rota retornada pelo OSRM (estradas reais).
-export interface TspRouteGeometry {
+// Uma "perna" da rota — entre duas cidades consecutivas no tour.
+// Permite animar o truck seguindo as curvas reais dentro de cada perna.
+export interface TspLegGeometry {
   polyline: [number, number][]; // [[lat, lng], ...]
   distancia: number;            // km
   duracao: number;              // segundos
+  deId: number;                 // id da cidade no início da perna
+  paraId: number;               // id da cidade no fim da perna
+}
+
+// Geometria curvada da rota retornada pelo OSRM (estradas reais).
+export interface TspRouteGeometry {
+  polyline: [number, number][];  // [[lat, lng], ...] tour fechado completo
+  legs: TspLegGeometry[];        // breakdown por perna
+  distancia: number;             // km totais
+  duracao: number;               // segundos totais
 }
 
 export type ViewId =
