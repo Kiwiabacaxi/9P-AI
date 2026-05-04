@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"mlp-server/hebb"
@@ -131,6 +132,10 @@ var (
 	tspCfg      *tsp.Config
 	tspRes      *tsp.Result
 	tspTraining bool
+
+	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
+	tspOsrmMatrixCache = map[string][][]float64{}
+	tspOsrmRouteCache  = map[string]*tsp.RouteGeometry{}
 )
 
 func init() {
@@ -1796,8 +1801,28 @@ func handleTspCities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": "cidades salvas", "n": len(cidades)})
 }
 
+// hashCidades — chave estável pra cache, baseada em ID/lat/lng.
+func hashCidades(cidades []tsp.Cidade) string {
+	parts := make([]string, len(cidades))
+	for i, c := range cidades {
+		parts[i] = fmt.Sprintf("%d:%.6f,%.6f", c.ID, c.Lat, c.Lng)
+	}
+	return strings.Join(parts, "|")
+}
+
+func hashTour(cidades []tsp.Cidade, tour []int) string {
+	idxs := make([]string, len(tour))
+	for i, t := range tour {
+		idxs[i] = fmt.Sprint(t)
+	}
+	return hashCidades(cidades) + "::" + strings.Join(idxs, ",")
+}
+
 // POST /api/tsp/distancias — calcula a matriz de distâncias para o modo escolhido.
-//   body: { "modo": "haversine" | "euclidiana" }
+//   body: { "modo": "haversine" | "euclidiana" | "osrm" }
+//
+// "osrm" chama o servidor OSRM público (estradas reais). Resultado é cacheado
+// em memória pelo hash do conjunto de cidades.
 func handleTspDistancias(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Modo string `json:"modo"`
@@ -1806,22 +1831,94 @@ func handleTspDistancias(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Modo != tsp.DistEuclidiana && req.Modo != tsp.DistHaversine {
+	if req.Modo != tsp.DistEuclidiana && req.Modo != tsp.DistHaversine && req.Modo != tsp.DistOSRM {
 		req.Modo = tsp.DistHaversine
 	}
+
+	// snapshot das cidades sob lock, depois calcula sem segurar o lock pesado
 	mu.Lock()
-	defer mu.Unlock()
 	if len(tspCidades) < 3 {
+		mu.Unlock()
 		errJSON(w, http.StatusBadRequest, "carregue cidades primeiro (POST /api/tsp/cities ou GET /api/tsp/preset)")
 		return
 	}
-	tspMatriz = tsp.CalcularMatrizDistancias(tspCidades, req.Modo)
+	cidadesSnap := make([]tsp.Cidade, len(tspCidades))
+	copy(cidadesSnap, tspCidades)
+	mu.Unlock()
+
+	var matriz [][]float64
+	if req.Modo == tsp.DistOSRM {
+		key := hashCidades(cidadesSnap)
+		mu.RLock()
+		cached, ok := tspOsrmMatrixCache[key]
+		mu.RUnlock()
+		if ok {
+			matriz = cached
+		} else {
+			m, err := tsp.FetchOSRMMatrix(cidadesSnap)
+			if err != nil {
+				errJSON(w, http.StatusBadGateway, "OSRM falhou: "+err.Error())
+				return
+			}
+			matriz = m
+			mu.Lock()
+			tspOsrmMatrixCache[key] = m
+			mu.Unlock()
+		}
+	} else {
+		matriz = tsp.CalcularMatrizDistancias(cidadesSnap, req.Modo)
+	}
+
+	mu.Lock()
+	tspMatriz = matriz
 	tspDistMode = req.Modo
+	mu.Unlock()
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   "matriz calculada",
 		"modo": req.Modo,
-		"n":    len(tspCidades),
+		"n":    len(cidadesSnap),
 	})
+}
+
+// POST /api/tsp/geometry — geometria curvada da rota (somente faz sentido após
+// otimizar). Body: { "tour": [int...] } — tipicamente o melhor global.
+// Resposta: { polyline: [[lat, lng], ...], distancia: km, duracao: s }
+func handleTspGeometry(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Tour []int `json:"tour"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.RLock()
+	cidades := make([]tsp.Cidade, len(tspCidades))
+	copy(cidades, tspCidades)
+	mu.RUnlock()
+	if len(cidades) < 3 || len(req.Tour) != len(cidades) {
+		errJSON(w, http.StatusBadRequest, "tour incompatível com o conjunto de cidades atual")
+		return
+	}
+
+	key := hashTour(cidades, req.Tour)
+	mu.RLock()
+	cached := tspOsrmRouteCache[key]
+	mu.RUnlock()
+	if cached != nil {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+
+	geo, err := tsp.FetchOSRMRoute(cidades, req.Tour)
+	if err != nil {
+		errJSON(w, http.StatusBadGateway, "OSRM route falhou: "+err.Error())
+		return
+	}
+	mu.Lock()
+	tspOsrmRouteCache[key] = geo
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, geo)
 }
 
 func handleTspConfig(w http.ResponseWriter, r *http.Request) {
@@ -2043,6 +2140,7 @@ func main() {
 	mux.HandleFunc("/api/tsp/preset",     cors(handleTspPreset))
 	mux.HandleFunc("/api/tsp/cities",     cors(handleTspCities))
 	mux.HandleFunc("/api/tsp/distancias", cors(handleTspDistancias))
+	mux.HandleFunc("/api/tsp/geometry",   cors(handleTspGeometry))
 	mux.HandleFunc("/api/tsp/config",     cors(handleTspConfig))
 	mux.HandleFunc("/api/tsp/train",      cors(handleTspTrain))
 	mux.HandleFunc("/api/tsp/reset",      cors(handleTspReset))

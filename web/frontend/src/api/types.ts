@@ -510,6 +510,13 @@ export interface TspResult {
   cfg: TspConfig;
 }
 
+// Geometria curvada da rota retornada pelo OSRM (estradas reais).
+export interface TspRouteGeometry {
+  polyline: [number, number][]; // [[lat, lng], ...]
+  distancia: number;            // km
+  duracao: number;              // segundos
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'

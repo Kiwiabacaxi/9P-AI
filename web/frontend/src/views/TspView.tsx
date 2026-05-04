@@ -6,7 +6,7 @@ import TspMap, { TspEvoChart } from '../components/viz/TspMap';
 import { useToast } from '../components/shared/Toast';
 import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
-  TspCidade, TspConfig, TspStep, TspResult,
+  TspCidade, TspConfig, TspStep, TspResult, TspRouteGeometry,
   TspSelecao, TspCrossover, TspMutacao, TspDistMode,
 } from '../api/types';
 
@@ -27,7 +27,8 @@ const PRESET_INFO: Record<string, { titulo: string; sub: string }> = {
 };
 
 const DIST_OPTIONS = [
-  { value: 'haversine',  label: 'Haversine (km reais)' },
+  { value: 'haversine',  label: 'Haversine (linha reta)' },
+  { value: 'osrm',       label: 'OSRM (estrada real)' },
   { value: 'euclidiana', label: 'Euclidiana (graus)' },
 ];
 
@@ -143,6 +144,10 @@ export default function TspView() {
   const [tourGlobal, setTourGlobal] = useState<number[]>([]);
   const [globalDist, setGlobalDist] = useState<number | null>(null);
 
+  // Geometry curvada (OSRM) — só preenchida quando dist mode == 'osrm' e há tour
+  const [routeGeometry, setRouteGeometry] = useState<TspRouteGeometry | null>(null);
+  const [geometryLoading, setGeometryLoading] = useState(false);
+
   // History
   const [histMelhor, setHistMelhor] = useState<number[]>([]);
   const [histMedia, setHistMedia] = useState<number[]>([]);
@@ -163,7 +168,23 @@ export default function TspView() {
     await apiPost('/tsp/distancias', { modo });
     setCidades(cs);
     setMatrizPronta(true);
+    setRouteGeometry(null); // cidades trocaram → geometria salva ficou inválida
     return cs;
+  }
+
+  // Busca a geometria curvada da rota (OSRM) — chamada após otimização finalizar.
+  async function fetchRouteGeometry(tour: number[]) {
+    if (distMode !== 'osrm' || tour.length < 3) return;
+    setGeometryLoading(true);
+    try {
+      const geo = await apiPost<TspRouteGeometry>('/tsp/geometry', { tour });
+      setRouteGeometry(geo);
+      show(`Geometria real: ${geo.distancia.toFixed(1)} km via estradas (${(geo.duracao / 3600).toFixed(1)} h dirigindo)`);
+    } catch (e) {
+      show('Falha ao obter geometria OSRM: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setGeometryLoading(false);
+    }
   }
 
   // Mount: carrega o preset default.
@@ -198,10 +219,13 @@ export default function TspView() {
     const modo = novo as TspDistMode;
     setDistMode(modo);
     setMatrizPronta(false);
+    setRouteGeometry(null); // muda distância → geometria salva pode não corresponder
     try {
       await apiPost('/tsp/distancias', { modo });
       setMatrizPronta(true);
-      show(`Matriz recalculada (${modo})`);
+      show(modo === 'osrm'
+        ? 'Matriz OSRM cacheada (estradas reais). Clique OTIMIZAR.'
+        : `Matriz recalculada (${modo})`);
     } catch (e) {
       show('Erro: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -213,6 +237,7 @@ export default function TspView() {
       closeSSE.current();
       closeSSE.current = null;
     }
+    setRouteGeometry(null);
     setGeracao('—');
     setMelhorDist('—');
     setMelhorMaxLeg('—');
@@ -230,7 +255,7 @@ export default function TspView() {
     setTraining(false);
   }
 
-  const unidade = distMode === 'haversine' ? 'km' : 'graus';
+  const unidade = distMode === 'euclidiana' ? 'graus' : 'km';
 
   async function handleTrain() {
     if (!matrizPronta) {
@@ -308,6 +333,9 @@ export default function TspView() {
         setTraining(false);
         closeSSE.current = null;
         show(`Tour final: ${r.melhorDist.toFixed(1)} ${unidade}`);
+        if (distMode === 'osrm') {
+          void fetchRouteGeometry(r.melhorTour);
+        }
       },
       onError() {
         setTraining(false);
@@ -590,11 +618,26 @@ export default function TspView() {
       </div>
 
       {/* Mapa principal + slider de replay */}
-      <Card title="Tour atual no mapa" style={{ marginBottom: 16 }}>
+      <Card
+        title={routeGeometry
+          ? `Tour atual no mapa (estradas reais — ${routeGeometry.distancia.toFixed(0)} km / ${(routeGeometry.duracao / 3600).toFixed(1)} h)`
+          : 'Tour atual no mapa'}
+        style={{ marginBottom: 16 }}
+      >
+        {geometryLoading && (
+          <div style={{
+            padding: '6px 12px', marginBottom: 8,
+            background: 'var(--surface-2)', borderRadius: 6,
+            fontSize: 11, color: 'var(--cyan)', fontFamily: 'JetBrains Mono',
+          }}>
+            <span className="spin" /> consultando OSRM…
+          </div>
+        )}
         <TspMap
           cidades={cidades}
           tour={tourAtual}
           globalTour={tourGlobal}
+          routeGeometry={routeGeometry?.polyline}
           height={500}
         />
         {maxGen > 0 && (

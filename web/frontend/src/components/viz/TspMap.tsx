@@ -10,8 +10,9 @@ import type { TspCidade } from '../../api/types';
 
 interface Props {
   cidades: TspCidade[];
-  tour: number[];        // ordem atual exibida (best da geração displayada)
-  globalTour?: number[]; // melhor global acumulado (em fade)
+  tour: number[];                       // ordem atual exibida (best da geração displayada)
+  globalTour?: number[];                // melhor global acumulado (em fade)
+  routeGeometry?: [number, number][];   // polyline curvada vinda do OSRM (estradas reais)
   height?: number;
 }
 
@@ -87,7 +88,7 @@ function tourToLatLngs(tour: number[], cidades: TspCidade[]): [number, number][]
   return pts;
 }
 
-export default function TspMap({ cidades, tour, globalTour, height = 480 }: Props) {
+export default function TspMap({ cidades, tour, globalTour, routeGeometry, height = 480 }: Props) {
   const tourLatLngs = useMemo(() => tourToLatLngs(tour, cidades), [tour, cidades]);
   const globalLatLngs = useMemo(
     () => (globalTour && globalTour.length > 0 ? tourToLatLngs(globalTour, cidades) : []),
@@ -102,20 +103,27 @@ export default function TspMap({ cidades, tour, globalTour, height = 480 }: Prop
     return [sumLat / cidades.length, sumLng / cidades.length];
   }, [cidades]);
 
-  // ===== Animação do "caminhão" percorrendo o tour =====
+  // ===== Animação do "caminhão" percorrendo a rota GANHADORA =====
+  // Por design, a animação roda sempre no melhor global (globalTour) — não na
+  // rota exibida pelo slider. Faz mais sentido pedagogicamente: o usuário quer
+  // ver o melhor tour sendo percorrido, não tours intermediários ruidosos.
+  const animatedLatLngs = globalLatLngs;
+  const animatedTour = globalTour ?? [];
+  const segCount = Math.max(0, animatedLatLngs.length - 1);
+
   const [playing, setPlaying] = useState(false);
-  const [t, setT] = useState(0);                 // posição contínua no tour, em "segmentos"
+  const [t, setT] = useState(0);                 // posição contínua, em "segmentos"
   const [speed, setSpeed] = useState(2);          // segmentos por segundo
   const [loop, setLoop] = useState(true);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
-  const segCount = Math.max(0, tourLatLngs.length - 1);
 
-  // reset ao trocar tour
+  // reset ao trocar a rota ganhadora (não ao trocar o tour exibido pelo slider)
   useEffect(() => {
     setPlaying(false);
     setT(0);
-  }, [tour, cidades]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalTour?.join(','), cidades]);
 
   // RAF loop (usa lambda fresca a cada frame via refs/state)
   useEffect(() => {
@@ -141,33 +149,33 @@ export default function TspMap({ cidades, tour, globalTour, height = 480 }: Prop
     };
   }, [playing, speed, loop, segCount]);
 
-  // Posição interpolada do truck.
+  // Posição interpolada do truck — sempre no animatedLatLngs (winner).
   const truckPos = useMemo<[number, number] | null>(() => {
-    if (tourLatLngs.length < 2) return null;
+    if (animatedLatLngs.length < 2) return null;
     const ti = Math.min(t, segCount);
     const i = Math.min(Math.floor(ti), segCount - 1);
     const frac = ti - i;
-    const a = tourLatLngs[i];
-    const b = tourLatLngs[i + 1];
+    const a = animatedLatLngs[i];
+    const b = animatedLatLngs[i + 1];
     return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
-  }, [t, tourLatLngs, segCount]);
+  }, [t, animatedLatLngs, segCount]);
 
-  // Polyline percorrida até a posição atual (drawn so far).
+  // Polyline percorrida até a posição atual no animatedLatLngs.
   const drawnLine = useMemo<[number, number][]>(() => {
-    if (tourLatLngs.length < 2 || t <= 0) return [];
+    if (animatedLatLngs.length < 2 || t <= 0) return [];
     const ti = Math.min(t, segCount);
     const i = Math.min(Math.floor(ti), segCount - 1);
     const frac = ti - i;
-    const out = tourLatLngs.slice(0, i + 1);
+    const out = animatedLatLngs.slice(0, i + 1);
     if (frac > 0) {
-      const a = tourLatLngs[i];
-      const b = tourLatLngs[i + 1];
+      const a = animatedLatLngs[i];
+      const b = animatedLatLngs[i + 1];
       out.push([a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac]);
     } else if (i >= segCount) {
-      out.push(tourLatLngs[segCount]);
+      out.push(animatedLatLngs[segCount]);
     }
     return out;
-  }, [t, tourLatLngs, segCount]);
+  }, [t, animatedLatLngs, segCount]);
 
   const showingPlayback = playing || t > 0;
   const currentSegIdx = Math.min(Math.floor(t), segCount);
@@ -187,8 +195,25 @@ export default function TspMap({ cidades, tour, globalTour, height = 480 }: Prop
           />
           <FitBounds cidades={cidades} />
 
-          {/* Tour global em ghost (amarelo translúcido) */}
-          {globalLatLngs.length > 0 && (
+          {/*
+            Quando há `routeGeometry` (modo OSRM com tour resolvido), desenhamos
+            APENAS a polyline curvada das estradas — visual limpo e fiel ao
+            que sairá no GPS de verdade. Caso contrário, mostramos as polylines
+            em linha reta (Haversine/Euclidiana).
+          */}
+          {routeGeometry && routeGeometry.length > 1 && (
+            <Polyline
+              positions={routeGeometry}
+              pathOptions={{
+                color: '#ff00aa',
+                weight: 3,
+                opacity: showingPlayback ? 0.3 : 0.95,
+              }}
+            />
+          )}
+
+          {/* === Modo "linha reta" (Haversine/Euclidiana — sem geometry) === */}
+          {!routeGeometry && !showingPlayback && globalLatLngs.length > 0 && (
             <Polyline
               positions={globalLatLngs}
               pathOptions={{
@@ -200,14 +225,25 @@ export default function TspMap({ cidades, tour, globalTour, height = 480 }: Prop
             />
           )}
 
-          {/* Tour atual — escurecido durante playback pra a parte percorrida sobressair */}
-          {tourLatLngs.length > 0 && (
+          {!routeGeometry && !showingPlayback && tourLatLngs.length > 0 && (
             <Polyline
               positions={tourLatLngs}
               pathOptions={{
                 color: '#ff00aa',
                 weight: 3,
-                opacity: showingPlayback ? 0.25 : 0.9,
+                opacity: 0.9,
+              }}
+            />
+          )}
+
+          {/* Pista da animação em linha reta (só quando NÃO há geometry) */}
+          {!routeGeometry && showingPlayback && animatedLatLngs.length > 0 && (
+            <Polyline
+              positions={animatedLatLngs}
+              pathOptions={{
+                color: '#ff00aa',
+                weight: 3,
+                opacity: 0.25,
               }}
             />
           )}
@@ -257,8 +293,8 @@ export default function TspMap({ cidades, tour, globalTour, height = 480 }: Prop
         </MapContainer>
       </div>
 
-      {/* Controles de playback */}
-      {tourLatLngs.length >= 2 && (
+      {/* Controles de playback — só aparecem quando já há rota ganhadora */}
+      {animatedLatLngs.length >= 2 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '8px 12px', marginTop: 8,
@@ -315,18 +351,25 @@ export default function TspMap({ cidades, tour, globalTour, height = 480 }: Prop
 
           <div style={{ flex: 1, minWidth: 80 }} />
 
-          {showingPlayback && currentSegIdx < tour.length && (
+          {showingPlayback && animatedTour.length > 0 && currentSegIdx < animatedTour.length && (
             <span>
               passo <span style={{ color: 'var(--cyan)' }}>{currentSegIdx + 1}</span> /{' '}
-              {tour.length}
+              {animatedTour.length}
               {' — '}
               <span style={{ color: 'var(--pink)' }}>
-                {cidades.find(c => c.id === tour[Math.min(currentSegIdx, tour.length - 1)])?.nome ?? ''}
+                {cidades.find(c => c.id === animatedTour[Math.min(currentSegIdx, animatedTour.length - 1)])?.nome ?? ''}
               </span>
               {' → '}
               <span style={{ color: 'var(--cyan)' }}>
-                {cidades.find(c => c.id === tour[(currentSegIdx + 1) % tour.length])?.nome ?? ''}
+                {cidades.find(c => c.id === animatedTour[(currentSegIdx + 1) % animatedTour.length])?.nome ?? ''}
               </span>
+            </span>
+          )}
+          {!showingPlayback && (
+            <span style={{ fontSize: 10 }}>
+              {animatedLatLngs.length >= 2
+                ? '▶ play anima a rota ganhadora (melhor global encontrado)'
+                : 'rode OTIMIZAR pra liberar a animação'}
             </span>
           )}
         </div>
