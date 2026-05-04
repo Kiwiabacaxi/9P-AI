@@ -59,7 +59,15 @@ type Config struct {
 	Cruzamento     string  `json:"cruzamento"`     // "ox" | "pmx"
 	Mutacao        string  `json:"mutacao"`        // "swap" | "inversao"
 	Elitismo       int     `json:"elitismo"`
-	Seed           int64   `json:"seed,omitempty"`
+
+	// LambdaMaxLeg — "tempero" opcional na função de fitness:
+	// custo = distancia_total + λ · max_leg
+	// λ = 0 → TSP puro (só minimiza distância total).
+	// λ > 0 → penaliza tours com algum trecho muito longo (caso real:
+	//         autonomia do veículo, descanso obrigatório do motorista, etc.).
+	LambdaMaxLeg float64 `json:"lambdaMaxLeg"`
+
+	Seed int64 `json:"seed,omitempty"`
 }
 
 func DefaultConfig() Config {
@@ -73,13 +81,21 @@ func DefaultConfig() Config {
 		Cruzamento:     CrossOX,
 		Mutacao:        MutInversao,
 		Elitismo:       2,
+		LambdaMaxLeg:   0,
 	}
 }
 
-// Individuo — um tour (permutação) com sua distância total já calculada.
+// Individuo — um tour (permutação) com sua distância e custo já calculados.
+//
+// Distancia = soma "crua" das distâncias percorridas (km reais).
+// MaxLeg    = maior trecho único do tour.
+// Custo     = Distancia + λ · MaxLeg — é o valor que a seleção/elitismo MINIMIZAM.
+//             Quando λ = 0, Custo == Distancia (idêntico ao TSP clássico).
 type Individuo struct {
 	Tour      []int   `json:"tour"`
 	Distancia float64 `json:"distancia"`
+	MaxLeg    float64 `json:"maxLeg"`
+	Custo     float64 `json:"custo"`
 }
 
 // Step — payload por geração via SSE.
@@ -87,6 +103,8 @@ type Step struct {
 	Geracao          int     `json:"geracao"`
 	MelhorTour       []int   `json:"melhorTour"`
 	MelhorDist       float64 `json:"melhorDist"`
+	MelhorMaxLeg     float64 `json:"melhorMaxLeg"`
+	MelhorCusto      float64 `json:"melhorCusto"`
 	MediaDist        float64 `json:"mediaDist"`
 	PiorDist         float64 `json:"piorDist"`
 	Diversidade      int     `json:"diversidade"`
@@ -98,6 +116,8 @@ type Result struct {
 	Geracoes        int       `json:"geracoes"`
 	MelhorTour      []int     `json:"melhorTour"`
 	MelhorDist      float64   `json:"melhorDist"`
+	MelhorMaxLeg    float64   `json:"melhorMaxLeg"`
+	MelhorCusto     float64   `json:"melhorCusto"`
 	HistMelhor      []float64 `json:"histMelhor"`
 	HistMedia       []float64 `json:"histMedia"`
 	HistDiversidade []int     `json:"histDiversidade"`
@@ -169,16 +189,33 @@ func CalcularDistanciaTour(tour []int, matriz [][]float64) float64 {
 	return total
 }
 
+// avaliar — calcula distancia, maxLeg e custo (= distancia + lambda*maxLeg).
+// É o que a seleção do AG efetivamente compara (minimizar Custo).
+func avaliar(tour []int, matriz [][]float64, lambda float64) (distancia, maxLeg, custo float64) {
+	if len(tour) < 2 {
+		return
+	}
+	for i := 0; i < len(tour); i++ {
+		d := matriz[tour[i]][tour[(i+1)%len(tour)]]
+		distancia += d
+		if d > maxLeg {
+			maxLeg = d
+		}
+	}
+	custo = distancia + lambda*maxLeg
+	return
+}
+
 // =============================================================================
 // População inicial — N permutações aleatórias.
 // =============================================================================
 
-func gerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matriz [][]float64) []Individuo {
+func gerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matriz [][]float64, lambda float64) []Individuo {
 	pop := make([]Individuo, popSize)
 	for i := range pop {
 		tour := rng.Perm(n)
 		pop[i] = Individuo{Tour: tour}
-		pop[i].Distancia = CalcularDistanciaTour(tour, matriz)
+		pop[i].Distancia, pop[i].MaxLeg, pop[i].Custo = avaliar(tour, matriz, lambda)
 	}
 	return pop
 }
@@ -187,19 +224,19 @@ func gerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matriz [][]float64) [
 // Seleção
 // =============================================================================
 
-// fitnessRoleta — converte distâncias em "fitness positivo" pra roleta.
-// Como queremos MINIMIZAR distância, usamos (maxDist - dist) + ε.
+// fitnessRoleta — converte custo em "fitness positivo" pra roleta.
+// Como queremos MINIMIZAR custo, usamos (maxCusto - custo) + ε.
 func fitnessRoleta(pop []Individuo) []float64 {
 	n := len(pop)
 	out := make([]float64, n)
-	maxDist := pop[0].Distancia
+	maxCusto := pop[0].Custo
 	for _, ind := range pop {
-		if ind.Distancia > maxDist {
-			maxDist = ind.Distancia
+		if ind.Custo > maxCusto {
+			maxCusto = ind.Custo
 		}
 	}
 	for i, ind := range pop {
-		out[i] = (maxDist - ind.Distancia) + 1e-6
+		out[i] = (maxCusto - ind.Custo) + 1e-6
 	}
 	return out
 }
@@ -222,7 +259,7 @@ func selecionarTorneio(pop []Individuo, k int, rng *rand.Rand) (Individuo, Indiv
 	}
 	perm := rng.Perm(len(pop))[:k]
 	sort.Slice(perm, func(i, j int) bool {
-		return pop[perm[i]].Distancia < pop[perm[j]].Distancia
+		return pop[perm[i]].Custo < pop[perm[j]].Custo
 	})
 	return clonarIndividuo(pop[perm[0]]), clonarIndividuo(pop[perm[1]])
 }
@@ -366,7 +403,7 @@ func mutacaoInversao(tour []int, prob float64, rng *rand.Rand) {
 func clonarIndividuo(src Individuo) Individuo {
 	tour := make([]int, len(src.Tour))
 	copy(tour, src.Tour)
-	return Individuo{Tour: tour, Distancia: src.Distancia}
+	return Individuo{Tour: tour, Distancia: src.Distancia, MaxLeg: src.MaxLeg, Custo: src.Custo}
 }
 
 func cloneTour(t []int) []int {
@@ -387,7 +424,7 @@ func extrairElites(pop []Individuo, p int) []Individuo {
 		idxs[i] = i
 	}
 	sort.Slice(idxs, func(i, j int) bool {
-		return pop[idxs[i]].Distancia < pop[idxs[j]].Distancia
+		return pop[idxs[i]].Custo < pop[idxs[j]].Custo
 	})
 	elites := make([]Individuo, p)
 	for i := 0; i < p; i++ {
@@ -427,22 +464,22 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 	}
 	rng := rand.New(rand.NewSource(seed))
 
-	pop := gerarPopulacaoInicial(rng, cfg.PopSize, n, matriz)
+	pop := gerarPopulacaoInicial(rng, cfg.PopSize, n, matriz, cfg.LambdaMaxLeg)
 
 	histMelhor := make([]float64, 0, cfg.MaxGeracoes)
 	histMedia := make([]float64, 0, cfg.MaxGeracoes)
 	histDiv := make([]int, 0, cfg.MaxGeracoes)
 
-	melhorGlobal := Individuo{Distancia: math.Inf(1)}
+	melhorGlobal := Individuo{Distancia: math.Inf(1), Custo: math.Inf(1)}
 
 	for g := 0; g < cfg.MaxGeracoes; g++ {
-		// estatísticas
+		// estatísticas (todas baseadas em Custo, que é o que a seleção minimiza)
 		melhorIdx := 0
 		soma := 0.0
 		piorDist := 0.0
 		for i, ind := range pop {
 			soma += ind.Distancia
-			if ind.Distancia < pop[melhorIdx].Distancia {
+			if ind.Custo < pop[melhorIdx].Custo {
 				melhorIdx = i
 			}
 			if ind.Distancia > piorDist {
@@ -456,7 +493,7 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 		histMedia = append(histMedia, mediaDist)
 		histDiv = append(histDiv, div)
 
-		if pop[melhorIdx].Distancia < melhorGlobal.Distancia {
+		if pop[melhorIdx].Custo < melhorGlobal.Custo {
 			melhorGlobal = clonarIndividuo(pop[melhorIdx])
 		}
 
@@ -465,6 +502,8 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 				Geracao:          g + 1,
 				MelhorTour:       cloneTour(pop[melhorIdx].Tour),
 				MelhorDist:       melhorDist,
+				MelhorMaxLeg:     pop[melhorIdx].MaxLeg,
+				MelhorCusto:      pop[melhorIdx].Custo,
 				MediaDist:        mediaDist,
 				PiorDist:         piorDist,
 				Diversidade:      div,
@@ -533,8 +572,10 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 				mutacaoInversao(t2, cfg.ProbMutacao, rng)
 			}
 
-			f1 := Individuo{Tour: t1, Distancia: CalcularDistanciaTour(t1, matriz)}
-			f2 := Individuo{Tour: t2, Distancia: CalcularDistanciaTour(t2, matriz)}
+			f1 := Individuo{Tour: t1}
+			f1.Distancia, f1.MaxLeg, f1.Custo = avaliar(t1, matriz, cfg.LambdaMaxLeg)
+			f2 := Individuo{Tour: t2}
+			f2.Distancia, f2.MaxLeg, f2.Custo = avaliar(t2, matriz, cfg.LambdaMaxLeg)
 			filhos = append(filhos, f1, f2)
 		}
 		if len(filhos) > precisamos {
@@ -547,6 +588,8 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 		Geracoes:        cfg.MaxGeracoes,
 		MelhorTour:      cloneTour(melhorGlobal.Tour),
 		MelhorDist:      melhorGlobal.Distancia,
+		MelhorMaxLeg:    melhorGlobal.MaxLeg,
+		MelhorCusto:     melhorGlobal.Custo,
 		HistMelhor:      histMelhor,
 		HistMedia:       histMedia,
 		HistDiversidade: histDiv,
@@ -596,6 +639,9 @@ func sanitizar(cfg Config, n int) Config {
 	}
 	if cfg.Elitismo >= cfg.PopSize {
 		cfg.Elitismo = cfg.PopSize - 2
+	}
+	if cfg.LambdaMaxLeg < 0 {
+		cfg.LambdaMaxLeg = 0
 	}
 	return cfg
 }

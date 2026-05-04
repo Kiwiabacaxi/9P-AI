@@ -481,6 +481,7 @@ export interface TspConfig {
   cruzamento: TspCrossover;
   mutacao: TspMutacao;
   elitismo: number;
+  lambdaMaxLeg: number;
   seed?: number;
 }
 
@@ -488,6 +489,8 @@ export interface TspStep {
   geracao: number;
   melhorTour: number[];
   melhorDist: number;
+  melhorMaxLeg: number;
+  melhorCusto: number;
   mediaDist: number;
   piorDist: number;
   diversidade: number;
@@ -499,6 +502,8 @@ export interface TspResult {
   geracoes: number;
   melhorTour: number[];
   melhorDist: number;
+  melhorMaxLeg: number;
+  melhorCusto: number;
   histMelhor: number[];
   histMedia: number[];
   histDiversidade: number[];

@@ -89,6 +89,14 @@ const ELITE_OPTIONS = [
   { value: '4', label: 'p = 4' },
 ];
 
+const LAMBDA_OPTIONS = [
+  { value: '0',   label: 'λ = 0  (TSP puro)' },
+  { value: '0.5', label: 'λ = 0.5' },
+  { value: '1',   label: 'λ = 1' },
+  { value: '2',   label: 'λ = 2' },
+  { value: '5',   label: 'λ = 5  (penaliza forte)' },
+];
+
 function fatorial(n: number): number {
   if (n <= 1) return 1;
   let r = 1;
@@ -120,11 +128,14 @@ export default function TspView() {
   const [cruzamento, setCruzamento] = useState<TspCrossover>('ox');
   const [mutacao, setMutacao] = useState<TspMutacao>('inversao');
   const [elitismo, setElitismo] = useState('2');
+  const [lambdaMaxLeg, setLambdaMaxLeg] = useState('0');
 
   // Training state
   const [training, setTraining] = useState(false);
   const [geracao, setGeracao] = useState<string>('—');
   const [melhorDist, setMelhorDist] = useState<string>('—');
+  const [melhorMaxLeg, setMelhorMaxLeg] = useState<string>('—');
+  const [melhorCusto, setMelhorCusto] = useState<string>('—');
   const [diversidade, setDiversidade] = useState<string>('—');
 
   // Animation
@@ -204,6 +215,8 @@ export default function TspView() {
     }
     setGeracao('—');
     setMelhorDist('—');
+    setMelhorMaxLeg('—');
+    setMelhorCusto('—');
     setDiversidade('—');
     setTourAtual([]);
     setTourGlobal([]);
@@ -245,6 +258,7 @@ export default function TspView() {
       cruzamento,
       mutacao,
       elitismo: parseInt(elitismo),
+      lambdaMaxLeg: parseFloat(lambdaMaxLeg),
     };
 
     try {
@@ -262,6 +276,8 @@ export default function TspView() {
 
         setGeracao(step.geracao.toLocaleString());
         setMelhorDist(`${step.melhorDist.toFixed(1)} ${unidade}`);
+        setMelhorMaxLeg(`${step.melhorMaxLeg.toFixed(1)} ${unidade}`);
+        setMelhorCusto(`${step.melhorCusto.toFixed(1)} ${unidade}`);
         setDiversidade(`${step.diversidade}/${cfg.popSize}`);
         setMaxGen(step.geracao);
         if (!userScrub) {
@@ -278,6 +294,8 @@ export default function TspView() {
         const r = data as TspResult;
         setGeracao(r.geracoes.toLocaleString());
         setMelhorDist(`${r.melhorDist.toFixed(1)} ${unidade}`);
+        setMelhorMaxLeg(`${r.melhorMaxLeg.toFixed(1)} ${unidade}`);
+        setMelhorCusto(`${r.melhorCusto.toFixed(1)} ${unidade}`);
         setTourGlobal(r.melhorTour);
         setGlobalDist(r.melhorDist);
         setHistMelhor(r.histMelhor);
@@ -310,6 +328,8 @@ export default function TspView() {
     }
     setGeracao('—');
     setMelhorDist('—');
+    setMelhorMaxLeg('—');
+    setMelhorCusto('—');
     setDiversidade('—');
     setTourAtual([]);
     setTourGlobal([]);
@@ -490,6 +510,52 @@ export default function TspView() {
         </Card>
       </div>
 
+      {/* Função de Fitness — explícita + tempero */}
+      <Card title="Função de fitness" style={{ marginBottom: 16 }}>
+        <div style={{ padding: '8px 16px 4px' }}>
+          <div style={{
+            background: 'var(--surface-2)', borderRadius: 6,
+            padding: '12px 16px', marginBottom: 10,
+            fontFamily: 'JetBrains Mono', fontSize: 13, lineHeight: 1.7,
+            color: 'var(--on-surface)',
+          }}>
+            <div>fitness(tour) = <span style={{ color: 'var(--cyan)' }}>−custo(tour)</span></div>
+            <div>custo(tour) = <span style={{ color: 'var(--pink)' }}>Σ d(c<sub>i</sub>, c<sub>i+1</sub>)</span> + <span style={{ color: 'var(--pink)' }}>λ · max d(c<sub>i</sub>, c<sub>i+1</sub>)</span></div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              soma fechada (volta a c<sub>0</sub>); d = haversine ou euclidiana, conforme o modo escolhido
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: '0 0 auto', minWidth: 200 }}>
+              <Select
+                label="λ (tempero — penaliza max-leg)"
+                options={LAMBDA_OPTIONS}
+                value={lambdaMaxLeg}
+                onChange={setLambdaMaxLeg}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div style={{
+              flex: 1, fontSize: 12, color: 'var(--muted)',
+              fontFamily: 'JetBrains Mono', lineHeight: 1.6, minWidth: 280,
+            }}>
+              <b>λ = 0:</b> TSP clássico — só minimiza distância total.<br />
+              <b>λ &gt; 0:</b> também penaliza tours com algum trecho muito longo.
+              Útil pra cenários reais onde o motorista tem autonomia limitada,
+              precisa parar pra descanso ou prefere balancear paradas.
+              {parseFloat(lambdaMaxLeg) > 0 && (
+                <>
+                  <br />
+                  <span style={{ color: 'var(--cyan)' }}>
+                    Cada {unidade === 'km' ? 'km' : 'grau'} a mais no maior trecho custa <b>{lambdaMaxLeg} {unidade}</b> equivalentes na fitness.
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+
       {/* Métricas */}
       <div className="grid-3" style={{ marginBottom: 16 }}>
         <MetricCard
@@ -500,16 +566,27 @@ export default function TspView() {
           pulse={training}
         />
         <MetricCard
-          title="Distância"
-          value={melhorDist}
-          label="tour mais curto da geração"
+          title={parseFloat(lambdaMaxLeg) > 0 ? 'Custo' : 'Distância'}
+          value={parseFloat(lambdaMaxLeg) > 0 ? melhorCusto : melhorDist}
+          label={parseFloat(lambdaMaxLeg) > 0
+            ? `dist + λ·max-leg (real: ${melhorDist})`
+            : 'tour mais curto da geração'}
           color="cyan"
         />
         <MetricCard
-          title="Diversidade"
-          value={diversidade}
-          label="tours únicos / população"
+          title="Maior trecho"
+          value={melhorMaxLeg}
+          label="leg mais longo do tour"
         />
+      </div>
+
+      {/* Diversidade fica numa linha solo (compacta) */}
+      <div style={{
+        display: 'flex', justifyContent: 'flex-end',
+        marginBottom: 16, fontSize: 11,
+        fontFamily: 'JetBrains Mono', color: 'var(--muted)',
+      }}>
+        diversidade da população: <span style={{ color: 'var(--cyan)', marginLeft: 6 }}>{diversidade}</span> tours únicos
       </div>
 
       {/* Mapa principal + slider de replay */}
@@ -645,6 +722,32 @@ export default function TspView() {
           </div>
         </Card>
       )}
+
+      {/* Clarification: "passar por" vs "visitar" */}
+      <Card title='Esclarecimento: "passar por" outras cidades' style={{ marginBottom: 16 }}>
+        <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
+          Pergunta natural: "uma rota A→C que naturalmente passa por B (porque B
+          fica no caminho) — o algoritmo aproveita isso?"
+          <br /><br />
+          <b>Em parte:</b> o tour ótimo <i>geralmente já visita B entre A e C na sequência</i>,
+          porque é o que minimiza distância total. Você vê isso visualmente quando o tour
+          "abraça" o mapa em ordem geográfica e não dá ziguezagues.
+          <br /><br />
+          <b>Mas o algoritmo NÃO atravessa fisicamente B sem visitá-lo.</b> No TSP cada cidade
+          é visitada exatamente uma vez, na ordem do tour. A distância A→C é calculada
+          ponta-a-ponta pela função de distância (Haversine no modo atual).
+          <br /><br />
+          <b>Limitação atual (Haversine):</b> calcula a linha reta entre lat/lng. Não conhece
+          rodovias, relevo, obras na BR-050. Pode <i>subestimar</i> a distância real entre
+          duas cidades onde o caminho de carro contorna serra, atravessa rio, etc.
+          <br /><br />
+          <b>Fase 2 (próxima — OSRM):</b> a matriz vai ser preenchida com <b>distâncias reais
+          por estrada</b> calculadas pelo OpenStreetMap Routing Machine. Aí o tour mais curto
+          em km pode parecer não-óbvio no mapa em linha reta — mas reflete o que sai do
+          tanque de combustível na vida real. O <b>desenho da rota</b> também vira a
+          geometria curvada das ruas/rodovias, não mais segmentos diretos.
+        </div>
+      </Card>
 
       {/* Educational */}
       <Card title="Por que TSP precisa de operadores especiais">
