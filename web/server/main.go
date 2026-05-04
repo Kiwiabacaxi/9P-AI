@@ -21,6 +21,7 @@ import (
 	"mlp-server/mlport"
 	"mlp-server/cnn"
 	"mlp-server/genetico"
+	"mlp-server/genetico2"
 	"mlp-server/timeseries"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
@@ -116,6 +117,11 @@ var (
 	gaCfg      *genetico.Config
 	gaRes      *genetico.Result
 	gaTraining bool
+
+	// Algoritmo Genético v2 (Aula 11 — torneio, elitismo, 2 pontos)
+	ga2Cfg      *genetico2.Config
+	ga2Res      *genetico2.Result
+	ga2Training bool
 )
 
 func init() {
@@ -178,6 +184,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		TsTraining      bool `json:"tsTraining"`
 		GaTrained       bool `json:"gaTrained"`
 		GaTraining      bool `json:"gaTraining"`
+		Ga2Trained      bool `json:"ga2Trained"`
+		Ga2Training     bool `json:"ga2Training"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:      mlpRede != nil,
@@ -200,6 +208,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		TsTraining:      tsTraining,
 		GaTrained:       gaRes != nil,
 		GaTraining:      gaTraining,
+		Ga2Trained:      ga2Res != nil,
+		Ga2Training:     ga2Training,
 	})
 }
 
@@ -1627,6 +1637,98 @@ func handleGaResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// =============================================================================
+// Algoritmo Genético v2 (Aula 11 — torneio, elitismo, cruzamento 1/2 pontos)
+// =============================================================================
+
+func handleGa2Config(w http.ResponseWriter, r *http.Request) {
+	var cfg genetico2.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	ga2Cfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleGa2Train(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if ga2Training {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	cfg := ga2Cfg
+	if cfg == nil {
+		def := genetico2.DefaultConfig()
+		cfg = &def
+	}
+	ga2Training = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		ga2Training = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan genetico2.Step, 64)
+	go func() {
+		res := genetico2.Treinar(progressCh, useCfg)
+		mu.Lock()
+		ga2Res = &res
+		ga2Training = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := ga2Res
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleGa2Reset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	ga2Res = nil
+	ga2Cfg = nil
+	ga2Training = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleGa2Result(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := ga2Res
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "GA v2 não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -1741,6 +1843,12 @@ func main() {
 	mux.HandleFunc("/api/genetico/train",  cors(handleGaTrain))
 	mux.HandleFunc("/api/genetico/reset",  cors(handleGaReset))
 	mux.HandleFunc("/api/genetico/result", cors(handleGaResult))
+
+	// Algoritmo Genético v2 (Aula 11)
+	mux.HandleFunc("/api/genetico2/config", cors(handleGa2Config))
+	mux.HandleFunc("/api/genetico2/train",  cors(handleGa2Train))
+	mux.HandleFunc("/api/genetico2/reset",  cors(handleGa2Reset))
+	mux.HandleFunc("/api/genetico2/result", cors(handleGa2Result))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

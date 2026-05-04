@@ -74,7 +74,14 @@ export default function Sidebar({ active, onNavigate }: Props) {
         onClick={() => onNavigate('genetico')}
       >
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⚘'}</span>
-        GA · Otimização
+        GA · Aula 10
+      </div>
+      <div
+        className={`nav-item${active === 'genetico2' ? ' active' : ''}`}
+        onClick={() => onNavigate('genetico2')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'❀'}</span>
+        GA · Aula 11
       </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>

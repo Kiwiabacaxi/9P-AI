@@ -74,19 +74,39 @@ export default function GaChart({
           />
           <ZAxis range={[40, 40]} />
           <Tooltip
-            contentStyle={{
-              background: '#111',
-              border: '1px solid #333',
-              fontSize: 11,
-              fontFamily: 'JetBrains Mono',
+            shared={false}
+            cursor={{ stroke: '#444', strokeWidth: 1, strokeDasharray: '3 3' }}
+            content={({ active, payload }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const item = payload[0];
+              const data = item.payload as { x: number; fx: number };
+              const colorMap: Record<string, string> = {
+                'f(x)': '#00ff88',
+                'populacao': '#00ccff',
+                'melhor (geracao)': '#ff00aa',
+                'melhor global': '#ffff00',
+              };
+              const name = String(item.name ?? '');
+              return (
+                <div style={{
+                  background: '#111',
+                  border: '1px solid #333',
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontFamily: 'JetBrains Mono',
+                  color: '#ccc',
+                }}>
+                  <div style={{ color: colorMap[name] ?? '#888', marginBottom: 4 }}>{name}</div>
+                  <div>x &nbsp;&nbsp;= {Number(data.x).toFixed(4)}</div>
+                  <div>f(x) = {Number(data.fx).toFixed(4)}</div>
+                </div>
+              );
             }}
-            labelFormatter={(v) => `x = ${Number(v).toFixed(2)}`}
-            formatter={(v) => Number(v).toFixed(4)}
           />
           <Legend wrapperStyle={{ fontFamily: 'JetBrains Mono', fontSize: 11 }} />
           <Line
             data={curvaData}
-            name="f(x) = -|x sin(√x)|"
+            name="f(x)"
             type="monotone"
             dataKey="fx"
             stroke="#00ff88"

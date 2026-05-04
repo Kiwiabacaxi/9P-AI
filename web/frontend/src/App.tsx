@@ -16,6 +16,7 @@ import ImgregBenchView from './views/ImgregBenchView';
 import CnnView from './views/CnnView';
 import TimeSeriesView from './views/TimeSeriesView';
 import GeneticoView from './views/GeneticoView';
+import GeneticoV2View from './views/GeneticoV2View';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -34,6 +35,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   cnn: CnnView,
   timeseries: TimeSeriesView,
   genetico: GeneticoView,
+  genetico2: GeneticoV2View,
   about: AboutView,
 };
 

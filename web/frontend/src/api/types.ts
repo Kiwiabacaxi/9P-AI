@@ -26,6 +26,8 @@ export interface AppStatus {
   tsTraining: boolean;
   gaTrained: boolean;
   gaTraining: boolean;
+  ga2Trained: boolean;
+  ga2Training: boolean;
 }
 
 // Hebb
@@ -408,10 +410,55 @@ export interface GAResult {
   probMutacao: number;
 }
 
+// Algoritmo Genético v2 (Aula 11)
+export type GA2Selecao = 'roleta' | 'torneio';
+
+export interface GA2Config {
+  bits: number;
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  selecao: GA2Selecao;
+  tamanhoTorneio: number;
+  pontosCorte: 1 | 2;
+  elitismo: number;
+  seed?: number;
+}
+
+export interface GA2Step {
+  geracao: number;
+  melhorX: number;
+  melhorFx: number;
+  mediaFx: number;
+  piorFx: number;
+  diversidade: number;
+  populacao: GAIndividuo[];
+  melhorIndiv: GAIndividuo;
+}
+
+export interface GA2Result {
+  geracoes: number;
+  melhorX: number;
+  melhorFx: number;
+  melhorIndiv: GAIndividuo;
+  histMelhorFx: number[];
+  histMediaFx: number[];
+  histDiversidade: number[];
+  bits: number;
+  popSize: number;
+  probCruzamento: number;
+  probMutacao: number;
+  selecao: string;
+  tamanhoTorneio: number;
+  pontosCorte: number;
+  elitismo: number;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
-  | 'genetico'
+  | 'genetico' | 'genetico2'
   | 'about';
