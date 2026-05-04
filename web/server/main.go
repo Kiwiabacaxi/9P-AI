@@ -23,6 +23,7 @@ import (
 	"mlp-server/genetico"
 	"mlp-server/genetico2"
 	"mlp-server/timeseries"
+	"mlp-server/tsp"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -122,6 +123,14 @@ var (
 	ga2Cfg      *genetico2.Config
 	ga2Res      *genetico2.Result
 	ga2Training bool
+
+	// TSP (Aula 12 — caixeiro viajante)
+	tspCidades  []tsp.Cidade
+	tspMatriz   [][]float64
+	tspDistMode string
+	tspCfg      *tsp.Config
+	tspRes      *tsp.Result
+	tspTraining bool
 )
 
 func init() {
@@ -186,6 +195,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		GaTraining      bool `json:"gaTraining"`
 		Ga2Trained      bool `json:"ga2Trained"`
 		Ga2Training     bool `json:"ga2Training"`
+		TspTrained      bool `json:"tspTrained"`
+		TspTraining     bool `json:"tspTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:      mlpRede != nil,
@@ -210,6 +221,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		GaTraining:      gaTraining,
 		Ga2Trained:      ga2Res != nil,
 		Ga2Training:     ga2Training,
+		TspTrained:      tspRes != nil,
+		TspTraining:     tspTraining,
 	})
 }
 
@@ -1729,6 +1742,176 @@ func handleGa2Result(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// =============================================================================
+// TSP — Caixeiro Viajante (Aula 12)
+// =============================================================================
+
+// GET /api/tsp/preset?name=capitais-br — devolve um conjunto pré-definido de cidades.
+func handleTspPreset(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	switch name {
+	case "", "capitais-br":
+		writeJSON(w, http.StatusOK, tsp.CapitaisBR())
+	default:
+		errJSON(w, http.StatusNotFound, "preset desconhecido: "+name)
+	}
+}
+
+// POST /api/tsp/cities — define o conjunto de cidades ativo (e zera matriz).
+func handleTspCities(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		mu.RLock()
+		cidades := tspCidades
+		mu.RUnlock()
+		if cidades == nil {
+			cidades = []tsp.Cidade{}
+		}
+		writeJSON(w, http.StatusOK, cidades)
+		return
+	}
+	var cidades []tsp.Cidade
+	if err := json.NewDecoder(r.Body).Decode(&cidades); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(cidades) < 3 {
+		errJSON(w, http.StatusBadRequest, "ao menos 3 cidades são necessárias")
+		return
+	}
+	// Atribui IDs sequenciais, ignorando os enviados (consistência interna).
+	for i := range cidades {
+		cidades[i].ID = i
+	}
+	mu.Lock()
+	tspCidades = cidades
+	tspMatriz = nil
+	tspDistMode = ""
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": "cidades salvas", "n": len(cidades)})
+}
+
+// POST /api/tsp/distancias — calcula a matriz de distâncias para o modo escolhido.
+//   body: { "modo": "haversine" | "euclidiana" }
+func handleTspDistancias(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Modo string `json:"modo"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Modo != tsp.DistEuclidiana && req.Modo != tsp.DistHaversine {
+		req.Modo = tsp.DistHaversine
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(tspCidades) < 3 {
+		errJSON(w, http.StatusBadRequest, "carregue cidades primeiro (POST /api/tsp/cities ou GET /api/tsp/preset)")
+		return
+	}
+	tspMatriz = tsp.CalcularMatrizDistancias(tspCidades, req.Modo)
+	tspDistMode = req.Modo
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":   "matriz calculada",
+		"modo": req.Modo,
+		"n":    len(tspCidades),
+	})
+}
+
+func handleTspConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg tsp.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	tspCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleTspTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if tspTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	if len(tspCidades) < 3 || tspMatriz == nil {
+		mu.Unlock()
+		errJSON(w, http.StatusBadRequest, "carregue cidades e calcule a matriz antes de treinar")
+		return
+	}
+	cfg := tspCfg
+	if cfg == nil {
+		def := tsp.DefaultConfig()
+		cfg = &def
+	}
+	matriz := tspMatriz
+	tspTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		tspTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan tsp.Step, 64)
+	go func() {
+		res := tsp.Treinar(progressCh, useCfg, matriz)
+		mu.Lock()
+		tspRes = &res
+		tspTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := tspRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleTspReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	tspRes = nil
+	tspCfg = nil
+	tspTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleTspResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := tspRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "TSP não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -1849,6 +2032,15 @@ func main() {
 	mux.HandleFunc("/api/genetico2/train",  cors(handleGa2Train))
 	mux.HandleFunc("/api/genetico2/reset",  cors(handleGa2Reset))
 	mux.HandleFunc("/api/genetico2/result", cors(handleGa2Result))
+
+	// TSP — Caixeiro Viajante (Aula 12)
+	mux.HandleFunc("/api/tsp/preset",     cors(handleTspPreset))
+	mux.HandleFunc("/api/tsp/cities",     cors(handleTspCities))
+	mux.HandleFunc("/api/tsp/distancias", cors(handleTspDistancias))
+	mux.HandleFunc("/api/tsp/config",     cors(handleTspConfig))
+	mux.HandleFunc("/api/tsp/train",      cors(handleTspTrain))
+	mux.HandleFunc("/api/tsp/reset",      cors(handleTspReset))
+	mux.HandleFunc("/api/tsp/result",     cors(handleTspResult))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

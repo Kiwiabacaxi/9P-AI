@@ -83,6 +83,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'❀'}</span>
         GA · Aula 11
       </div>
+      <div
+        className={`nav-item${active === 'tsp' ? ' active' : ''}`}
+        onClick={() => onNavigate('tsp')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'✦'}</span>
+        GA · TSP (Aula 12)
+      </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div

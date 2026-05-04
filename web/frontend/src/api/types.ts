@@ -28,6 +28,8 @@ export interface AppStatus {
   gaTraining: boolean;
   ga2Trained: boolean;
   ga2Training: boolean;
+  tspTrained: boolean;
+  tspTraining: boolean;
 }
 
 // Hebb
@@ -455,10 +457,58 @@ export interface GA2Result {
   elitismo: number;
 }
 
+// TSP — Caixeiro Viajante (Aula 12)
+export interface TspCidade {
+  id: number;
+  nome: string;
+  uf?: string;
+  lat: number;
+  lng: number;
+}
+
+export type TspSelecao = 'roleta' | 'torneio';
+export type TspCrossover = 'ox' | 'pmx';
+export type TspMutacao = 'swap' | 'inversao';
+export type TspDistMode = 'euclidiana' | 'haversine' | 'osrm';
+
+export interface TspConfig {
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  selecao: TspSelecao;
+  tamanhoTorneio: number;
+  cruzamento: TspCrossover;
+  mutacao: TspMutacao;
+  elitismo: number;
+  seed?: number;
+}
+
+export interface TspStep {
+  geracao: number;
+  melhorTour: number[];
+  melhorDist: number;
+  mediaDist: number;
+  piorDist: number;
+  diversidade: number;
+  melhorGlobal: number[];
+  melhorGlobalDist: number;
+}
+
+export interface TspResult {
+  geracoes: number;
+  melhorTour: number[];
+  melhorDist: number;
+  histMelhor: number[];
+  histMedia: number[];
+  histDiversidade: number[];
+  cfg: TspConfig;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
-  | 'genetico' | 'genetico2'
+  | 'genetico' | 'genetico2' | 'tsp'
   | 'about';
