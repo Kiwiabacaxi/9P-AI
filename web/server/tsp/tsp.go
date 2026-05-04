@@ -709,7 +709,8 @@ func Presets() []Preset {
 		presetItambe(),
 		presetMosaic(),
 		presetJBS(),
-		presetCapitais(),
+		presetCargillSoja(),
+		presetADMMilho(),
 	}
 }
 
@@ -845,55 +846,84 @@ func presetJBS() Preset {
 }
 
 // =============================================================================
-// 4) 27 Capitais BR (cenário acadêmico — sem origem real)
+// 4) Cargill · Soja → Porto de Santos (corredor MT → SP)
 // =============================================================================
 
-func presetCapitais() Preset {
+func presetCargillSoja() Preset {
 	return Preset{
-		ID:        "capitais-br",
-		Nome:      "27 Capitais BR · Acadêmico",
-		Descricao: "Tour pelas 27 capitais brasileiras (sem cenário logístico real)",
-		Origem:    "Sem depot — tour pelo Brasil inteiro",
-		Narrativa: "Cenário didático, não logístico. Distâncias inter-capitais ficam na " +
-			"ordem de milhares de km e nenhuma frota terrestre faz exatamente esse " +
-			"percurso na vida real. Mas serve como referência: 27 cidades é o limite " +
-			"onde busca exaustiva ainda \"quase\" faz sentido na cabeça (e o AG já " +
-			"mostra ganho dramático). " +
+		ID:        "cargill-soja",
+		Nome:      "Cargill · Soja → Porto de Santos",
+		Descricao: "Caminhão coleta soja em silos do MT e descarrega no Porto de Santos",
+		Origem:    "Cargill Rondonópolis (terminal de soja)",
+		Narrativa: "Cargill opera complexo real em Rondonópolis-MT — um dos maiores terminais de " +
+			"recepção e armazenamento de soja do país. Caminhões saem de Rondonópolis pra " +
+			"silos parceiros em outras cidades produtoras do MT (Sorriso, Sinop, Lucas do " +
+			"Rio Verde, Sapezal — o famoso \"corredor da soja\"), passam por hubs de " +
+			"transbordo (Cuiabá), seguem pelo interior de SP (Ribeirão Preto, Campinas) " +
+			"até descarregar no <b>Porto de Santos</b>, principal porta de saída do agro " +
+			"brasileiro pro mercado externo. " +
 			"\n\n" +
-			"Pra cenários reais de logística terrestre, escolha um dos outros presets.",
-		LambdaSugerido: 0,
-		ModoSugerido:   "haversine",
-		FitnessNota: "Sem cenário operacional, λ = 0 puro TSP. Modo Haversine porque OSRM " +
-			"calcular rotas de carro entre capitais distantes pega rodovias longas, " +
-			"e o ponto aqui é demonstrar o algoritmo, não simular caminhão.",
+			"Esta rota cobre 11 pontos reais. Distâncias na ordem de 1500-2500 km no total — " +
+			"frete \"long-haul\" típico do agronegócio. A rota física é fechada (caminhão " +
+			"volta a Rondonópolis depois de descarregar) porque é o que o TSP modela.",
+		LambdaSugerido: 1,
+		ModoSugerido:   "osrm",
+		FitnessNota: "Soja é peso → minimizar quilometragem total é o que importa pro fretista. " +
+			"λ = 1 leve dá uma penalizadinha em trecho gigante (motorista da ANTT precisa " +
+			"de descanso obrigatório a cada 5h30 dirigindo). Modo OSRM essencial pra " +
+			"refletir o corredor BR-163 / BR-364 / BR-153 que o caminhão de fato usa.",
 		Cidades: []Cidade{
-			{ID: 0, Nome: "Aracaju", UF: "SE", Lat: -10.9472, Lng: -37.0731},
-			{ID: 1, Nome: "Belém", UF: "PA", Lat: -1.4558, Lng: -48.5039},
-			{ID: 2, Nome: "Belo Horizonte", UF: "MG", Lat: -19.9167, Lng: -43.9345},
-			{ID: 3, Nome: "Boa Vista", UF: "RR", Lat: 2.8235, Lng: -60.6758},
-			{ID: 4, Nome: "Brasília", UF: "DF", Lat: -15.7942, Lng: -47.8825},
-			{ID: 5, Nome: "Campo Grande", UF: "MS", Lat: -20.4697, Lng: -54.6201},
-			{ID: 6, Nome: "Cuiabá", UF: "MT", Lat: -15.6014, Lng: -56.0979},
-			{ID: 7, Nome: "Curitiba", UF: "PR", Lat: -25.4284, Lng: -49.2733},
-			{ID: 8, Nome: "Florianópolis", UF: "SC", Lat: -27.5949, Lng: -48.5482},
-			{ID: 9, Nome: "Fortaleza", UF: "CE", Lat: -3.7172, Lng: -38.5434},
-			{ID: 10, Nome: "Goiânia", UF: "GO", Lat: -16.6869, Lng: -49.2648},
-			{ID: 11, Nome: "João Pessoa", UF: "PB", Lat: -7.1153, Lng: -34.8610},
-			{ID: 12, Nome: "Macapá", UF: "AP", Lat: 0.0349, Lng: -51.0694},
-			{ID: 13, Nome: "Maceió", UF: "AL", Lat: -9.6498, Lng: -35.7089},
-			{ID: 14, Nome: "Manaus", UF: "AM", Lat: -3.1190, Lng: -60.0217},
-			{ID: 15, Nome: "Natal", UF: "RN", Lat: -5.7945, Lng: -35.2110},
-			{ID: 16, Nome: "Palmas", UF: "TO", Lat: -10.1689, Lng: -48.3317},
-			{ID: 17, Nome: "Porto Alegre", UF: "RS", Lat: -30.0346, Lng: -51.2177},
-			{ID: 18, Nome: "Porto Velho", UF: "RO", Lat: -8.7619, Lng: -63.9039},
-			{ID: 19, Nome: "Recife", UF: "PE", Lat: -8.0476, Lng: -34.8770},
-			{ID: 20, Nome: "Rio Branco", UF: "AC", Lat: -9.9747, Lng: -67.8243},
-			{ID: 21, Nome: "Rio de Janeiro", UF: "RJ", Lat: -22.9068, Lng: -43.1729},
-			{ID: 22, Nome: "Salvador", UF: "BA", Lat: -12.9714, Lng: -38.5014},
-			{ID: 23, Nome: "São Luís", UF: "MA", Lat: -2.5391, Lng: -44.2829},
-			{ID: 24, Nome: "São Paulo", UF: "SP", Lat: -23.5505, Lng: -46.6333},
-			{ID: 25, Nome: "Teresina", UF: "PI", Lat: -5.0892, Lng: -42.8019},
-			{ID: 26, Nome: "Vitória", UF: "ES", Lat: -20.3155, Lng: -40.3128},
+			{ID: 0, Nome: "Cargill Rondonópolis", UF: "MT", Lat: -16.4706, Lng: -54.6353},
+			{ID: 1, Nome: "Sorriso", UF: "MT", Lat: -12.5450, Lng: -55.7211},
+			{ID: 2, Nome: "Sinop", UF: "MT", Lat: -11.8642, Lng: -55.5028},
+			{ID: 3, Nome: "Lucas do Rio Verde", UF: "MT", Lat: -13.0506, Lng: -55.9114},
+			{ID: 4, Nome: "Sapezal", UF: "MT", Lat: -12.9892, Lng: -58.7642},
+			{ID: 5, Nome: "Cuiabá", UF: "MT", Lat: -15.6014, Lng: -56.0979},
+			{ID: 6, Nome: "Goiânia", UF: "GO", Lat: -16.6869, Lng: -49.2648},
+			{ID: 7, Nome: "Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
+			{ID: 8, Nome: "Ribeirão Preto", UF: "SP", Lat: -21.1775, Lng: -47.8103},
+			{ID: 9, Nome: "Campinas", UF: "SP", Lat: -22.9099, Lng: -47.0626},
+			{ID: 10, Nome: "Porto de Santos", UF: "SP", Lat: -23.9353, Lng: -46.3258},
+		},
+	}
+}
+
+// =============================================================================
+// 5) ADM · Coleta de Milho no Triângulo (cenário regional)
+// =============================================================================
+
+func presetADMMilho() Preset {
+	return Preset{
+		ID:        "adm-milho",
+		Nome:      "ADM · Coleta de Milho",
+		Descricao: "Caminhão da ADM coleta milho em fazendas do Triângulo Mineiro",
+		Origem:    "ADM Uberlândia (silo + esmagadora)",
+		Narrativa: "Archer Daniels Midland (ADM) opera unidade real em Uberlândia-MG — silo + " +
+			"esmagadora de soja/milho que abastece o complexo agroindustrial brasileiro. " +
+			"Caminhões saem da unidade e fazem rota por fazendas e silos parceiros em " +
+			"cidades vizinhas, recolhendo milho na safra. " +
+			"\n\n" +
+			"Esta rota cobre 11 cidades-município reais do Triângulo Mineiro / Alto " +
+			"Paranaíba (Patrocínio, Patos de Minas, Coromandel, Monte Carmelo, Araguari, " +
+			"Tupaciguara, Ituiutaba, Capinópolis, Frutal, Iturama). Escala 50-300 km, " +
+			"caminhão volta no mesmo dia.",
+		LambdaSugerido: 1,
+		ModoSugerido:   "osrm",
+		FitnessNota: "Milho a granel é peso, minimizar km importa. λ = 1 modesto pra " +
+			"penalizar trecho fora da curva — o motorista volta no mesmo dia, então cada " +
+			"km a mais empurra a janela de descarga e diminui ciclos por dia.",
+		Cidades: []Cidade{
+			{ID: 0, Nome: "ADM Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
+			{ID: 1, Nome: "Patrocínio", UF: "MG", Lat: -18.9442, Lng: -46.9931},
+			{ID: 2, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
+			{ID: 3, Nome: "Coromandel", UF: "MG", Lat: -18.4731, Lng: -47.1944},
+			{ID: 4, Nome: "Monte Carmelo", UF: "MG", Lat: -18.7250, Lng: -47.4983},
+			{ID: 5, Nome: "Araguari", UF: "MG", Lat: -18.6443, Lng: -48.1864},
+			{ID: 6, Nome: "Tupaciguara", UF: "MG", Lat: -18.5944, Lng: -48.7050},
+			{ID: 7, Nome: "Ituiutaba", UF: "MG", Lat: -18.9742, Lng: -49.4634},
+			{ID: 8, Nome: "Capinópolis", UF: "MG", Lat: -18.6822, Lng: -49.5697},
+			{ID: 9, Nome: "Frutal", UF: "MG", Lat: -20.0247, Lng: -48.9408},
+			{ID: 10, Nome: "Iturama", UF: "MG", Lat: -19.7283, Lng: -50.1969},
 		},
 	}
 }
