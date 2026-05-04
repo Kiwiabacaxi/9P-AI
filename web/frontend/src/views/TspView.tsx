@@ -8,23 +8,8 @@ import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
   TspCidade, TspConfig, TspStep, TspResult, TspRouteGeometry,
   TspSelecao, TspCrossover, TspMutacao, TspDistMode,
+  TspPreset, TspPresetMeta,
 } from '../api/types';
-
-const PRESET_OPTIONS = [
-  { value: 'triangulo',   label: 'Triângulo Mineiro · 20 cidades' },
-  { value: 'capitais-br', label: '27 Capitais BR' },
-];
-
-const PRESET_INFO: Record<string, { titulo: string; sub: string }> = {
-  'triangulo': {
-    titulo: 'Logística regional',
-    sub: 'Roteirização de entregas no Triângulo Mineiro / Alto Paranaíba (MG)',
-  },
-  'capitais-br': {
-    titulo: 'Tour pelas capitais',
-    sub: 'Encontrando o tour mais curto pelas 27 capitais brasileiras',
-  },
-};
 
 const DIST_OPTIONS = [
   { value: 'haversine',  label: 'Haversine (linha reta)' },
@@ -94,7 +79,9 @@ const LAMBDA_OPTIONS = [
   { value: '0',   label: 'λ = 0  (TSP puro)' },
   { value: '0.5', label: 'λ = 0.5' },
   { value: '1',   label: 'λ = 1' },
+  { value: '1.5', label: 'λ = 1.5' },
   { value: '2',   label: 'λ = 2' },
+  { value: '3',   label: 'λ = 3' },
   { value: '5',   label: 'λ = 5  (penaliza forte)' },
 ];
 
@@ -114,7 +101,9 @@ export default function TspView() {
   const { show } = useToast();
 
   // Cidades
-  const [preset, setPreset] = useState<string>('triangulo');
+  const [preset, setPreset] = useState<string>('itambe-leite');
+  const [presets, setPresets] = useState<TspPresetMeta[]>([]);
+  const [presetMeta, setPresetMeta] = useState<TspPreset | null>(null);
   const [cidades, setCidades] = useState<TspCidade[]>([]);
   const [distMode, setDistMode] = useState<TspDistMode>('haversine');
   const [matrizPronta, setMatrizPronta] = useState(false);
@@ -160,16 +149,25 @@ export default function TspView() {
 
   const closeSSE = useRef<(() => void) | null>(null);
 
-  // Carrega preset + recalcula matriz. Reusa para mount e troca de preset.
-  async function carregarPreset(name: string, modo: TspDistMode) {
+  // Carrega preset + aplica settings sugeridos + recalcula matriz.
+  // O preset agora é um objeto completo (com cidades + narrativa + sugestões).
+  async function carregarPreset(name: string, opts?: { aplicarSugestoes?: boolean }) {
     setMatrizPronta(false);
-    const cs = await apiGet<TspCidade[]>(`/tsp/preset?name=${encodeURIComponent(name)}`);
-    await apiPost('/tsp/cities', cs);
-    await apiPost('/tsp/distancias', { modo });
-    setCidades(cs);
+    const p = await apiGet<TspPreset>(`/tsp/preset?name=${encodeURIComponent(name)}`);
+    await apiPost('/tsp/cities', p.cidades);
+    // Modo de distância: aplica o sugerido (na primeira carga ou troca de preset),
+    // ou mantém o que o usuário tinha selecionado (em recarregamento manual).
+    const modoEfetivo = opts?.aplicarSugestoes !== false ? p.modoSugerido : distMode;
+    await apiPost('/tsp/distancias', { modo: modoEfetivo });
+    setCidades(p.cidades);
+    setPresetMeta(p);
     setMatrizPronta(true);
-    setRouteGeometry(null); // cidades trocaram → geometria salva ficou inválida
-    return cs;
+    setRouteGeometry(null);
+    if (opts?.aplicarSugestoes !== false) {
+      setDistMode(modoEfetivo);
+      setLambdaMaxLeg(String(p.lambdaSugerido));
+    }
+    return p;
   }
 
   // Busca a geometria curvada da rota (OSRM) — chamada após otimização finalizar.
@@ -187,15 +185,18 @@ export default function TspView() {
     }
   }
 
-  // Mount: carrega o preset default.
+  // Mount: busca a lista de presets + carrega o default.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        await carregarPreset('triangulo', 'haversine');
+        const list = await apiGet<TspPresetMeta[]>('/tsp/presets');
+        if (cancelled) return;
+        setPresets(list);
+        await carregarPreset('itambe-leite', { aplicarSugestoes: true });
         if (cancelled) return;
       } catch (e) {
-        show('Erro ao carregar cidades: ' + (e instanceof Error ? e.message : String(e)));
+        show('Erro ao carregar cenários: ' + (e instanceof Error ? e.message : String(e)));
       }
     })();
     return () => { cancelled = true; };
@@ -204,11 +205,10 @@ export default function TspView() {
 
   async function handlePresetChange(novo: string) {
     setPreset(novo);
-    // limpa qualquer treino anterior e zera o mapa
     handleResetSilent();
     try {
-      await carregarPreset(novo, distMode);
-      show(`Preset carregado: ${PRESET_INFO[novo]?.titulo ?? novo}`);
+      const p = await carregarPreset(novo, { aplicarSugestoes: true });
+      show(`Cenário: ${p.nome} — ${p.cidades.length} pontos`);
     } catch (e) {
       show('Erro: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -395,7 +395,7 @@ export default function TspView() {
         <div>
           <div className="page-title">Caixeiro <span>Viajante</span></div>
           <div className="page-sub">
-            {PRESET_INFO[preset]?.sub ?? 'Roteirização com AG'} &mdash; Aula 12
+            {presetMeta?.descricao ?? 'Roteirização com AG'} &mdash; Aula 12
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -417,8 +417,8 @@ export default function TspView() {
       <div className="grid-3" style={{ marginBottom: 12 }}>
         <Card style={{ padding: '16px 20px' }}>
           <Select
-            label="Cenário (dataset)"
-            options={PRESET_OPTIONS}
+            label="Cenário"
+            options={presets.map(p => ({ value: p.id, label: p.nome }))}
             value={preset}
             onChange={handlePresetChange}
             style={{ width: '100%' }}
@@ -722,46 +722,37 @@ export default function TspView() {
         </Card>
       )}
 
-      {/* Logistics context — por que esse cenário foi escolhido */}
-      {preset === 'triangulo' && (
-        <Card title="Por que Triângulo Mineiro?" style={{ marginBottom: 16 }}>
+      {/* Cenário ativo — narrativa logística específica + sugestões de fitness */}
+      {presetMeta && (
+        <Card title={`Cenário: ${presetMeta.nome}`} style={{ marginBottom: 16 }}>
           <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
-            Em vez do tour acadêmico ligando capitais por linhas reta, este preset modela um cenário que
-            <b> empresas brasileiras resolvem todo dia</b>: uma frota saindo de um centro de distribuição
-            (Uberlândia) atendendo lojas/clientes em outras cidades da região.
-            <br /><br />
-            <b>Por que essa região:</b> o Triângulo Mineiro / Alto Paranaíba é um dos hubs logísticos
-            mais densos do interior do Brasil. Concentra:
-            <ul style={{ marginLeft: 18 }}>
-              <li><b>Frigoríficos</b> — JBS e Marfrig em Uberlândia/Uberaba coletam gado de fazendas espalhadas pelo interior e distribuem carne;</li>
-              <li><b>Fertilizantes</b> — <i>Mosaic Fertilizantes</i> em Araxá distribui pra fazendas em todo o Triângulo;</li>
-              <li><b>Cooperativas leiteiras</b> — caminhões da CCPR/Itambé fazem rota diária por dezenas de fazendas pra coletar leite;</li>
-              <li><b>Varejo regional</b> — redes como <i>Bretas</i>, <i>Mais Mart</i> e <i>Bahamas</i> têm CDs em Uberlândia abastecendo lojas em cidades vizinhas;</li>
-              <li><b>Bebidas e combustíveis</b> — Coca-Cola FEMSA e BR Distribuidora operam corredores BR-050 / BR-262 / BR-365.</li>
-            </ul>
-            <br />
-            Distâncias entre as cidades aqui ficam na faixa de <b>50–300 km</b> — escala onde diferenças de
-            ordem mudam <b>centenas de reais</b> em diesel por dia. É o cenário em que TSP/VRP
-            <i> realmente se paga</i>, e por isso é caso clássico em pesquisa em engenharia de produção
-            no Brasil (Linden 2008; literatura de roteirização).
-            <br /><br />
-            <b>Note no mapa:</b> o tour ótimo costuma formar um caminho que evita zigue-zagues entre o
-            sul (Uberaba/Sacramento) e o leste (Araxá/Patos de Minas) — exatamente o que um motorista
-            humano experiente faria intuitivamente. O AG redescobre essa intuição a partir do zero.
-          </div>
-        </Card>
-      )}
-
-      {preset === 'capitais-br' && (
-        <Card title="Sobre o cenário das capitais" style={{ marginBottom: 16 }}>
-          <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
-            Este preset é mais <b>didático</b> que real — distâncias inter-capitais são da ordem de
-            milhares de km e nenhuma frota terrestre faz exatamente esse percurso. Mas serve como
-            referência: 27 cidades é o limite onde busca exaustiva ainda <i>"quase"</i> faz sentido na
-            cabeça (e o AG já mostra ganho dramático).
-            <br /><br />
-            Pra ver o uso real do TSP em logística brasileira, troque pra <b>Triângulo Mineiro</b> no seletor
-            de cenário lá em cima.
+            <div style={{
+              fontFamily: 'JetBrains Mono', fontSize: 12,
+              color: 'var(--cyan)', marginBottom: 8,
+            }}>
+              Origem (depot): <b>{presetMeta.origem}</b>
+              {' '}&middot;{' '}
+              {presetMeta.cidades.length} pontos no total
+            </div>
+            {presetMeta.narrativa.split('\n\n').map((paragrafo, i) => (
+              <p key={i} style={{ marginBottom: 8 }}>{paragrafo}</p>
+            ))}
+            <div style={{
+              marginTop: 12, padding: '10px 12px',
+              background: 'var(--surface-2)', borderRadius: 6,
+              fontSize: 12, lineHeight: 1.6,
+            }}>
+              <b style={{ color: 'var(--pink)' }}>Sugestão de fitness pra esse cenário:</b>{' '}
+              <code>λ = {presetMeta.lambdaSugerido}</code>
+              {' '}&middot;{' '}
+              modo <code>{presetMeta.modoSugerido}</code>
+              <br />
+              {presetMeta.fitnessNota}
+              <br />
+              <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
+                (já aplicados automaticamente — você pode ajustar acima)
+              </span>
+            </div>
           </div>
         </Card>
       )}

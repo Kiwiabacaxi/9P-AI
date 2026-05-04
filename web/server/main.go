@@ -1751,21 +1751,47 @@ func handleGa2Result(w http.ResponseWriter, r *http.Request) {
 // TSP — Caixeiro Viajante (Aula 12)
 // =============================================================================
 
-// GET /api/tsp/preset?name=... — devolve um conjunto pré-definido de cidades.
-//
-// Presets disponíveis:
-//   - triangulo (default)  → 20 cidades do Triângulo Mineiro / Alto Paranaíba (MG)
-//   - capitais-br          → 27 capitais do Brasil
+// GET /api/tsp/presets — lista todos os cenários disponíveis (sem cidades pra
+// resposta menor; ideal pra popular um dropdown no frontend).
+func handleTspPresetsList(w http.ResponseWriter, r *http.Request) {
+	all := tsp.Presets()
+	type meta struct {
+		ID             string  `json:"id"`
+		Nome           string  `json:"nome"`
+		Descricao      string  `json:"descricao"`
+		Origem         string  `json:"origem"`
+		LambdaSugerido float64 `json:"lambdaSugerido"`
+		ModoSugerido   string  `json:"modoSugerido"`
+		NumCidades     int     `json:"numCidades"`
+	}
+	out := make([]meta, len(all))
+	for i, p := range all {
+		out[i] = meta{
+			ID: p.ID, Nome: p.Nome, Descricao: p.Descricao, Origem: p.Origem,
+			LambdaSugerido: p.LambdaSugerido, ModoSugerido: p.ModoSugerido,
+			NumCidades: len(p.Cidades),
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// GET /api/tsp/preset?name=... — devolve um cenário completo: cidades +
+// narrativa + parâmetros sugeridos. Default: itambe-leite.
 func handleTspPreset(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
-	switch name {
-	case "", "triangulo", "triangulo-mineiro":
-		writeJSON(w, http.StatusOK, tsp.TrianguloMineiro())
-	case "capitais-br":
-		writeJSON(w, http.StatusOK, tsp.CapitaisBR())
-	default:
-		errJSON(w, http.StatusNotFound, "preset desconhecido: "+name)
+	if name == "" {
+		name = "itambe-leite"
 	}
+	// Aliases para presets que mudaram de id na refatoração.
+	if name == "triangulo" || name == "triangulo-mineiro" {
+		name = "itambe-leite"
+	}
+	p := tsp.GetPreset(name)
+	if p == nil {
+		errJSON(w, http.StatusNotFound, "preset desconhecido: "+name)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
 }
 
 // POST /api/tsp/cities — define o conjunto de cidades ativo (e zera matriz).
@@ -2138,6 +2164,7 @@ func main() {
 
 	// TSP — Caixeiro Viajante (Aula 12)
 	mux.HandleFunc("/api/tsp/preset",     cors(handleTspPreset))
+	mux.HandleFunc("/api/tsp/presets",    cors(handleTspPresetsList))
 	mux.HandleFunc("/api/tsp/cities",     cors(handleTspCities))
 	mux.HandleFunc("/api/tsp/distancias", cors(handleTspDistancias))
 	mux.HandleFunc("/api/tsp/geometry",   cors(handleTspGeometry))

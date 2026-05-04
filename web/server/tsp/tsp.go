@@ -647,74 +647,221 @@ func sanitizar(cfg Config, n int) Config {
 }
 
 // =============================================================================
-// Presets — datasets prontos pra demonstração.
+// Presets — cenários temáticos com narrativa de logística real.
+//
+// Cada preset é um pacote: cidades + origem (depot) + narrativa explicando
+// a operação real que serve de inspiração + parâmetros de fitness sugeridos
+// pra aquele cenário. A ideia é que o usuário escolha um cenário e veja o
+// AG resolvendo um problema com cara de problema real, não um TSP abstrato.
+//
+// Empresas e operações citadas são reais — coordenadas são aproximações do
+// centro municipal (suficiente pra calcular distâncias e desenhar mapa).
 // =============================================================================
 
-// TrianguloMineiro — 20 cidades do Triângulo Mineiro / Alto Paranaíba (MG).
-//
-// Cenário de logística real: Centro de Distribuição em Uberlândia (id 0) que
-// precisa atender lojas/clientes em 19 cidades vizinhas. Distâncias na ordem
-// de 50-300 km — escala real de roteirização de frota terrestre.
-//
-// É uma região estratégica do agronegócio brasileiro: Mosaic Fertilizantes em
-// Araxá, frigoríficos JBS/Marfrig em Uberlândia/Uberaba, redes regionais de
-// supermercado (Bretas/Mais Mart), distribuição de combustíveis e bebidas.
-// Coleta de leite cooperada (CCPR/Itambé) na região tem o mesmo padrão.
-//
-// Coordenadas: centro aproximado de cada cidade (lat/lng).
-func TrianguloMineiro() []Cidade {
-	return []Cidade{
-		{ID: 0, Nome: "Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
-		{ID: 1, Nome: "Uberaba", UF: "MG", Lat: -19.7479, Lng: -47.9381},
-		{ID: 2, Nome: "Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
-		{ID: 3, Nome: "Araguari", UF: "MG", Lat: -18.6443, Lng: -48.1864},
-		{ID: 4, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
-		{ID: 5, Nome: "Patrocínio", UF: "MG", Lat: -18.9442, Lng: -46.9931},
-		{ID: 6, Nome: "Frutal", UF: "MG", Lat: -20.0247, Lng: -48.9408},
-		{ID: 7, Nome: "Ituiutaba", UF: "MG", Lat: -18.9742, Lng: -49.4634},
-		{ID: 8, Nome: "Monte Carmelo", UF: "MG", Lat: -18.7250, Lng: -47.4983},
-		{ID: 9, Nome: "Tupaciguara", UF: "MG", Lat: -18.5944, Lng: -48.7050},
-		{ID: 10, Nome: "Coromandel", UF: "MG", Lat: -18.4731, Lng: -47.1944},
-		{ID: 11, Nome: "São Gotardo", UF: "MG", Lat: -19.3119, Lng: -46.0497},
-		{ID: 12, Nome: "Iturama", UF: "MG", Lat: -19.7283, Lng: -50.1969},
-		{ID: 13, Nome: "Sacramento", UF: "MG", Lat: -19.8650, Lng: -47.4378},
-		{ID: 14, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9119, Lng: -48.3858},
-		{ID: 15, Nome: "Monte Alegre de Minas", UF: "MG", Lat: -18.8689, Lng: -48.8769},
-		{ID: 16, Nome: "Capinópolis", UF: "MG", Lat: -18.6822, Lng: -49.5697},
-		{ID: 17, Nome: "Prata", UF: "MG", Lat: -19.3072, Lng: -48.9264},
-		{ID: 18, Nome: "Ibiá", UF: "MG", Lat: -19.4736, Lng: -46.5400},
-		{ID: 19, Nome: "Campina Verde", UF: "MG", Lat: -19.5394, Lng: -49.4858},
+// Preset — um cenário temático completo.
+type Preset struct {
+	ID             string   `json:"id"`
+	Nome           string   `json:"nome"`
+	Descricao      string   `json:"descricao"`      // 1 linha pro select
+	Narrativa      string   `json:"narrativa"`      // texto multi-parágrafo
+	Origem         string   `json:"origem"`         // nome do depot (cidade ID 0)
+	Cidades        []Cidade `json:"cidades"`
+	LambdaSugerido float64  `json:"lambdaSugerido"` // tempero recomendado pra esse cenário
+	ModoSugerido   string   `json:"modoSugerido"`   // "haversine" | "osrm" | "euclidiana"
+	FitnessNota    string   `json:"fitnessNota"`    // por que esse λ + esse modo aqui
+}
+
+// Presets — lista todos os cenários disponíveis.
+func Presets() []Preset {
+	return []Preset{
+		presetItambe(),
+		presetMosaic(),
+		presetJBS(),
+		presetCapitais(),
 	}
 }
 
-func CapitaisBR() []Cidade {
-	return []Cidade{
-		{ID: 0, Nome: "Aracaju", UF: "SE", Lat: -10.9472, Lng: -37.0731},
-		{ID: 1, Nome: "Belém", UF: "PA", Lat: -1.4558, Lng: -48.5039},
-		{ID: 2, Nome: "Belo Horizonte", UF: "MG", Lat: -19.9167, Lng: -43.9345},
-		{ID: 3, Nome: "Boa Vista", UF: "RR", Lat: 2.8235, Lng: -60.6758},
-		{ID: 4, Nome: "Brasília", UF: "DF", Lat: -15.7942, Lng: -47.8825},
-		{ID: 5, Nome: "Campo Grande", UF: "MS", Lat: -20.4697, Lng: -54.6201},
-		{ID: 6, Nome: "Cuiabá", UF: "MT", Lat: -15.6014, Lng: -56.0979},
-		{ID: 7, Nome: "Curitiba", UF: "PR", Lat: -25.4284, Lng: -49.2733},
-		{ID: 8, Nome: "Florianópolis", UF: "SC", Lat: -27.5949, Lng: -48.5482},
-		{ID: 9, Nome: "Fortaleza", UF: "CE", Lat: -3.7172, Lng: -38.5434},
-		{ID: 10, Nome: "Goiânia", UF: "GO", Lat: -16.6869, Lng: -49.2648},
-		{ID: 11, Nome: "João Pessoa", UF: "PB", Lat: -7.1153, Lng: -34.8610},
-		{ID: 12, Nome: "Macapá", UF: "AP", Lat: 0.0349, Lng: -51.0694},
-		{ID: 13, Nome: "Maceió", UF: "AL", Lat: -9.6498, Lng: -35.7089},
-		{ID: 14, Nome: "Manaus", UF: "AM", Lat: -3.1190, Lng: -60.0217},
-		{ID: 15, Nome: "Natal", UF: "RN", Lat: -5.7945, Lng: -35.2110},
-		{ID: 16, Nome: "Palmas", UF: "TO", Lat: -10.1689, Lng: -48.3317},
-		{ID: 17, Nome: "Porto Alegre", UF: "RS", Lat: -30.0346, Lng: -51.2177},
-		{ID: 18, Nome: "Porto Velho", UF: "RO", Lat: -8.7619, Lng: -63.9039},
-		{ID: 19, Nome: "Recife", UF: "PE", Lat: -8.0476, Lng: -34.8770},
-		{ID: 20, Nome: "Rio Branco", UF: "AC", Lat: -9.9747, Lng: -67.8243},
-		{ID: 21, Nome: "Rio de Janeiro", UF: "RJ", Lat: -22.9068, Lng: -43.1729},
-		{ID: 22, Nome: "Salvador", UF: "BA", Lat: -12.9714, Lng: -38.5014},
-		{ID: 23, Nome: "São Luís", UF: "MA", Lat: -2.5391, Lng: -44.2829},
-		{ID: 24, Nome: "São Paulo", UF: "SP", Lat: -23.5505, Lng: -46.6333},
-		{ID: 25, Nome: "Teresina", UF: "PI", Lat: -5.0892, Lng: -42.8019},
-		{ID: 26, Nome: "Vitória", UF: "ES", Lat: -20.3155, Lng: -40.3128},
+// GetPreset — busca por ID. Retorna nil se não existe.
+func GetPreset(id string) *Preset {
+	for _, p := range Presets() {
+		if p.ID == id {
+			return &p
+		}
+	}
+	return nil
+}
+
+// =============================================================================
+// 1) Itambé · Coleta de Leite (Triângulo Mineiro)
+// =============================================================================
+
+func presetItambe() Preset {
+	return Preset{
+		ID:        "itambe-leite",
+		Nome:      "Itambé · Coleta de Leite",
+		Descricao: "Caminhão refrigerado coleta leite cru em fazendas do Triângulo",
+		Origem:    "Laticínio Itambé Uberaba (CCPR)",
+		Narrativa: "Cooperativa Central dos Produtores Rurais (CCPR), dona da marca Itambé, " +
+			"opera unidade real em Uberaba que recebe leite cru de centenas de fazendas " +
+			"associadas no Triângulo Mineiro. Caminhões refrigerados saem do laticínio, " +
+			"passam por uma rota de fazendas coletando o leite do dia e voltam pra " +
+			"unidade de pasteurização. " +
+			"\n\n" +
+			"Aqui a rota inclui o laticínio + 12 cidades-município reais ao redor " +
+			"(Sacramento, Conceição das Alagoas, Frutal, Veríssimo, etc.) representando " +
+			"pontos de coleta. A escala (50–250 km) é a típica do dia-a-dia.",
+		LambdaSugerido: 1.5,
+		ModoSugerido:   "osrm",
+		FitnessNota: "Leite tem cadeia fria. λ > 0 penaliza tours com algum trecho muito longo " +
+			"(refrigeração tem limite, motorista precisa parar pra descanso). " +
+			"Modo OSRM porque caminhão segue rodovias — nada de cortar reto pelo pasto.",
+		Cidades: []Cidade{
+			{ID: 0, Nome: "Itambé Uberaba", UF: "MG", Lat: -19.7479, Lng: -47.9381},
+			{ID: 1, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9119, Lng: -48.3858},
+			{ID: 2, Nome: "Veríssimo", UF: "MG", Lat: -19.6803, Lng: -48.3083},
+			{ID: 3, Nome: "Sacramento", UF: "MG", Lat: -19.8650, Lng: -47.4378},
+			{ID: 4, Nome: "Frutal", UF: "MG", Lat: -20.0247, Lng: -48.9408},
+			{ID: 5, Nome: "Planura", UF: "MG", Lat: -20.1389, Lng: -48.6772},
+			{ID: 6, Nome: "Comendador Gomes", UF: "MG", Lat: -19.6919, Lng: -49.1408},
+			{ID: 7, Nome: "Pirajuba", UF: "MG", Lat: -19.9025, Lng: -48.6936},
+			{ID: 8, Nome: "Água Comprida", UF: "MG", Lat: -20.0344, Lng: -48.0850},
+			{ID: 9, Nome: "Conquista", UF: "MG", Lat: -19.9281, Lng: -47.5575},
+			{ID: 10, Nome: "Delta", UF: "MG", Lat: -19.9747, Lng: -47.7864},
+			{ID: 11, Nome: "Campo Florido", UF: "MG", Lat: -19.7711, Lng: -48.5667},
+			{ID: 12, Nome: "Igarapava (SP)", UF: "SP", Lat: -20.0397, Lng: -47.7461},
+		},
+	}
+}
+
+// =============================================================================
+// 2) Mosaic · Distribuição de Fertilizantes (Cerrado Mineiro)
+// =============================================================================
+
+func presetMosaic() Preset {
+	return Preset{
+		ID:        "mosaic-fertilizante",
+		Nome:      "Mosaic · Fertilizantes pelo Cerrado",
+		Descricao: "Caminhão sai da mineração de Araxá pra fazendas do Alto Paranaíba",
+		Origem:    "Mosaic Fertilizantes Araxá",
+		Narrativa: "Mosaic Fertilizantes opera complexo industrial real em Araxá-MG, com " +
+			"mineração de rocha fosfática e produção de fertilizantes (MAP, TSP, " +
+			"superfosfato). O produto sai dali em caminhões pesados pra fazendas de " +
+			"soja, milho e café espalhadas pelo Cerrado Mineiro / Alto Paranaíba. " +
+			"\n\n" +
+			"Esta rota cobre 11 municípios produtores reais da região (Patos de Minas, " +
+			"Patrocínio, São Gotardo, Coromandel, Tapira, Perdizes, etc.). Tapira-MG " +
+			"inclusive abriga outra mineração de fosfato da Vale.",
+		LambdaSugerido: 0,
+		ModoSugerido:   "osrm",
+		FitnessNota: "Fertilizante é volumoso e pesado — o que importa é minimizar quilometragem total " +
+			"(diesel é o maior custo operacional). λ = 0 puro TSP funciona bem. " +
+			"OSRM essencial: caminhão Vanderléia de 30+ ton só anda em rodovia federal/estadual.",
+		Cidades: []Cidade{
+			{ID: 0, Nome: "Mosaic Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
+			{ID: 1, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
+			{ID: 2, Nome: "Patrocínio", UF: "MG", Lat: -18.9442, Lng: -46.9931},
+			{ID: 3, Nome: "São Gotardo", UF: "MG", Lat: -19.3119, Lng: -46.0497},
+			{ID: 4, Nome: "Coromandel", UF: "MG", Lat: -18.4731, Lng: -47.1944},
+			{ID: 5, Nome: "Ibiá", UF: "MG", Lat: -19.4736, Lng: -46.5400},
+			{ID: 6, Nome: "Sacramento", UF: "MG", Lat: -19.8650, Lng: -47.4378},
+			{ID: 7, Nome: "Monte Carmelo", UF: "MG", Lat: -18.7250, Lng: -47.4983},
+			{ID: 8, Nome: "Iraí de Minas", UF: "MG", Lat: -18.9756, Lng: -47.4639},
+			{ID: 9, Nome: "Tapira", UF: "MG", Lat: -19.9114, Lng: -46.8253},
+			{ID: 10, Nome: "Pratinha", UF: "MG", Lat: -19.7314, Lng: -46.9608},
+			{ID: 11, Nome: "Perdizes", UF: "MG", Lat: -19.3458, Lng: -47.2961},
+		},
+	}
+}
+
+// =============================================================================
+// 3) JBS · Carne pra Capitais (longa distância)
+// =============================================================================
+
+func presetJBS() Preset {
+	return Preset{
+		ID:        "jbs-carne",
+		Nome:      "JBS · Carne pra Capitais",
+		Descricao: "Frigorífico em Uberlândia distribui carne pras capitais regionais",
+		Origem:    "JBS Friboi Uberlândia",
+		Narrativa: "JBS opera unidade real em Uberlândia (Friboi) que abate gado e processa " +
+			"carne resfriada/congelada pra distribuição. Caminhões refrigerados saem " +
+			"diariamente pra centros consumidores nas capitais regionais (varejo + atacarejo). " +
+			"\n\n" +
+			"Esta rota inclui 10 capitais ao alcance de 1-2 dias de viagem terrestre saindo " +
+			"de Uberlândia: BH, Brasília, Goiânia, SP, RJ, Curitiba, Cuiabá, Campo Grande, " +
+			"Salvador (mais distante mas tem baldeação), Vitória.",
+		LambdaSugerido: 2,
+		ModoSugerido:   "osrm",
+		FitnessNota: "Cadeia fria + longa distância. λ alto (2) penaliza fortemente tours " +
+			"com algum trecho monstruoso, porque a carne pode estragar e o motorista " +
+			"precisa de descanso pago pelas regras da ANTT. OSRM porque caminhão refrigerado " +
+			"de 20 ton tem rotas obrigatórias por BR.",
+		Cidades: []Cidade{
+			{ID: 0, Nome: "JBS Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
+			{ID: 1, Nome: "Belo Horizonte", UF: "MG", Lat: -19.9167, Lng: -43.9345},
+			{ID: 2, Nome: "Brasília", UF: "DF", Lat: -15.7942, Lng: -47.8825},
+			{ID: 3, Nome: "Goiânia", UF: "GO", Lat: -16.6869, Lng: -49.2648},
+			{ID: 4, Nome: "Cuiabá", UF: "MT", Lat: -15.6014, Lng: -56.0979},
+			{ID: 5, Nome: "Campo Grande", UF: "MS", Lat: -20.4697, Lng: -54.6201},
+			{ID: 6, Nome: "São Paulo", UF: "SP", Lat: -23.5505, Lng: -46.6333},
+			{ID: 7, Nome: "Rio de Janeiro", UF: "RJ", Lat: -22.9068, Lng: -43.1729},
+			{ID: 8, Nome: "Curitiba", UF: "PR", Lat: -25.4284, Lng: -49.2733},
+			{ID: 9, Nome: "Vitória", UF: "ES", Lat: -20.3155, Lng: -40.3128},
+			{ID: 10, Nome: "Salvador", UF: "BA", Lat: -12.9714, Lng: -38.5014},
+		},
+	}
+}
+
+// =============================================================================
+// 4) 27 Capitais BR (cenário acadêmico — sem origem real)
+// =============================================================================
+
+func presetCapitais() Preset {
+	return Preset{
+		ID:        "capitais-br",
+		Nome:      "27 Capitais BR · Acadêmico",
+		Descricao: "Tour pelas 27 capitais brasileiras (sem cenário logístico real)",
+		Origem:    "Sem depot — tour pelo Brasil inteiro",
+		Narrativa: "Cenário didático, não logístico. Distâncias inter-capitais ficam na " +
+			"ordem de milhares de km e nenhuma frota terrestre faz exatamente esse " +
+			"percurso na vida real. Mas serve como referência: 27 cidades é o limite " +
+			"onde busca exaustiva ainda \"quase\" faz sentido na cabeça (e o AG já " +
+			"mostra ganho dramático). " +
+			"\n\n" +
+			"Pra cenários reais de logística terrestre, escolha um dos outros presets.",
+		LambdaSugerido: 0,
+		ModoSugerido:   "haversine",
+		FitnessNota: "Sem cenário operacional, λ = 0 puro TSP. Modo Haversine porque OSRM " +
+			"calcular rotas de carro entre capitais distantes pega rodovias longas, " +
+			"e o ponto aqui é demonstrar o algoritmo, não simular caminhão.",
+		Cidades: []Cidade{
+			{ID: 0, Nome: "Aracaju", UF: "SE", Lat: -10.9472, Lng: -37.0731},
+			{ID: 1, Nome: "Belém", UF: "PA", Lat: -1.4558, Lng: -48.5039},
+			{ID: 2, Nome: "Belo Horizonte", UF: "MG", Lat: -19.9167, Lng: -43.9345},
+			{ID: 3, Nome: "Boa Vista", UF: "RR", Lat: 2.8235, Lng: -60.6758},
+			{ID: 4, Nome: "Brasília", UF: "DF", Lat: -15.7942, Lng: -47.8825},
+			{ID: 5, Nome: "Campo Grande", UF: "MS", Lat: -20.4697, Lng: -54.6201},
+			{ID: 6, Nome: "Cuiabá", UF: "MT", Lat: -15.6014, Lng: -56.0979},
+			{ID: 7, Nome: "Curitiba", UF: "PR", Lat: -25.4284, Lng: -49.2733},
+			{ID: 8, Nome: "Florianópolis", UF: "SC", Lat: -27.5949, Lng: -48.5482},
+			{ID: 9, Nome: "Fortaleza", UF: "CE", Lat: -3.7172, Lng: -38.5434},
+			{ID: 10, Nome: "Goiânia", UF: "GO", Lat: -16.6869, Lng: -49.2648},
+			{ID: 11, Nome: "João Pessoa", UF: "PB", Lat: -7.1153, Lng: -34.8610},
+			{ID: 12, Nome: "Macapá", UF: "AP", Lat: 0.0349, Lng: -51.0694},
+			{ID: 13, Nome: "Maceió", UF: "AL", Lat: -9.6498, Lng: -35.7089},
+			{ID: 14, Nome: "Manaus", UF: "AM", Lat: -3.1190, Lng: -60.0217},
+			{ID: 15, Nome: "Natal", UF: "RN", Lat: -5.7945, Lng: -35.2110},
+			{ID: 16, Nome: "Palmas", UF: "TO", Lat: -10.1689, Lng: -48.3317},
+			{ID: 17, Nome: "Porto Alegre", UF: "RS", Lat: -30.0346, Lng: -51.2177},
+			{ID: 18, Nome: "Porto Velho", UF: "RO", Lat: -8.7619, Lng: -63.9039},
+			{ID: 19, Nome: "Recife", UF: "PE", Lat: -8.0476, Lng: -34.8770},
+			{ID: 20, Nome: "Rio Branco", UF: "AC", Lat: -9.9747, Lng: -67.8243},
+			{ID: 21, Nome: "Rio de Janeiro", UF: "RJ", Lat: -22.9068, Lng: -43.1729},
+			{ID: 22, Nome: "Salvador", UF: "BA", Lat: -12.9714, Lng: -38.5014},
+			{ID: 23, Nome: "São Luís", UF: "MA", Lat: -2.5391, Lng: -44.2829},
+			{ID: 24, Nome: "São Paulo", UF: "SP", Lat: -23.5505, Lng: -46.6333},
+			{ID: 25, Nome: "Teresina", UF: "PI", Lat: -5.0892, Lng: -42.8019},
+			{ID: 26, Nome: "Vitória", UF: "ES", Lat: -20.3155, Lng: -40.3128},
+		},
 	}
 }

@@ -466,6 +466,30 @@ export interface TspCidade {
   lng: number;
 }
 
+// Preset temático: cidades + narrativa + parâmetros sugeridos.
+export interface TspPreset {
+  id: string;
+  nome: string;
+  descricao: string;
+  narrativa: string;
+  origem: string;
+  cidades: TspCidade[];
+  lambdaSugerido: number;
+  modoSugerido: TspDistMode;
+  fitnessNota: string;
+}
+
+// Versão resumida pra dropdown (sem cidades).
+export interface TspPresetMeta {
+  id: string;
+  nome: string;
+  descricao: string;
+  origem: string;
+  lambdaSugerido: number;
+  modoSugerido: TspDistMode;
+  numCidades: number;
+}
+
 export type TspSelecao = 'roleta' | 'torneio';
 export type TspCrossover = 'ox' | 'pmx';
 export type TspMutacao = 'swap' | 'inversao';
