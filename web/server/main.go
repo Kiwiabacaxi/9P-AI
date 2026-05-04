@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"mlp-server/hebb"
 	"mlp-server/imgreg"
@@ -2041,6 +2042,74 @@ func handleTspResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// POST /api/tsp/baseline
+//   body: { "algoritmo": "nn" | "2opt" | "nn+2opt", "inicio": 0 }
+//
+// Roda o baseline pedido sobre a matriz de distâncias atual e retorna
+// o tour resolvido + distância total + tempo de execução.
+//
+// "nn"      — Nearest Neighbor a partir de `inicio` (default 0)
+// "2opt"    — começa de uma permutação aleatória e aplica 2-opt
+// "nn+2opt" — NN gera inicial, 2-opt poliquí
+func handleTspBaseline(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Algoritmo string `json:"algoritmo"`
+		Inicio    int    `json:"inicio"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.RLock()
+	matriz := tspMatriz
+	mu.RUnlock()
+	if matriz == nil {
+		errJSON(w, http.StatusBadRequest, "matriz de distâncias não calculada — chame /api/tsp/distancias primeiro")
+		return
+	}
+
+	t0 := time.Now()
+	var tour []int
+	switch req.Algoritmo {
+	case "", "nn":
+		tour = tsp.NearestNeighbor(matriz, req.Inicio)
+	case "2opt":
+		// começa com um tour identidade e aplica 2-opt
+		n := len(matriz)
+		base := make([]int, n)
+		for i := range base {
+			base[i] = i
+		}
+		tour = tsp.TwoOpt(base, matriz)
+	case "nn+2opt":
+		nn := tsp.NearestNeighbor(matriz, req.Inicio)
+		tour = tsp.TwoOpt(nn, matriz)
+	default:
+		errJSON(w, http.StatusBadRequest, "algoritmo desconhecido: "+req.Algoritmo)
+		return
+	}
+	elapsed := time.Since(t0)
+
+	dist := tsp.CalcularDistanciaTour(tour, matriz)
+	// max-leg
+	maxLeg := 0.0
+	for i := 0; i < len(tour); i++ {
+		d := matriz[tour[i]][tour[(i+1)%len(tour)]]
+		if d > maxLeg {
+			maxLeg = d
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"algoritmo": req.Algoritmo,
+		"tour":      tour,
+		"distancia": dist,
+		"maxLeg":    maxLeg,
+		"tempoMs":   elapsed.Milliseconds(),
+		"tempoUs":   elapsed.Microseconds(),
+	})
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2172,6 +2241,7 @@ func main() {
 	mux.HandleFunc("/api/tsp/train",      cors(handleTspTrain))
 	mux.HandleFunc("/api/tsp/reset",      cors(handleTspReset))
 	mux.HandleFunc("/api/tsp/result",     cors(handleTspResult))
+	mux.HandleFunc("/api/tsp/baseline",   cors(handleTspBaseline))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

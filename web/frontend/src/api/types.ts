@@ -544,6 +544,16 @@ export interface TspLegGeometry {
   paraId: number;               // id da cidade no fim da perna
 }
 
+// Resultado de um baseline determinístico (Nearest Neighbor / 2-opt).
+export interface TspBaselineResult {
+  algoritmo: string;        // "nn" | "2opt" | "nn+2opt"
+  tour: number[];
+  distancia: number;        // km (ou graus se modo euclidiana)
+  maxLeg: number;
+  tempoMs: number;
+  tempoUs: number;
+}
+
 // Geometria curvada da rota retornada pelo OSRM (estradas reais).
 export interface TspRouteGeometry {
   polyline: [number, number][];  // [[lat, lng], ...] tour fechado completo
@@ -557,5 +567,5 @@ export type ViewId =
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
-  | 'genetico' | 'genetico2' | 'tsp'
+  | 'genetico' | 'genetico2' | 'tsp' | 'tsp-compare'
   | 'about';

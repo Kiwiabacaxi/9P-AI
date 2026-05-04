@@ -18,6 +18,7 @@ import TimeSeriesView from './views/TimeSeriesView';
 import GeneticoView from './views/GeneticoView';
 import GeneticoV2View from './views/GeneticoV2View';
 import TspView from './views/TspView';
+import TspCompareView from './views/TspCompareView';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -38,6 +39,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   genetico: GeneticoView,
   genetico2: GeneticoV2View,
   tsp: TspView,
+  'tsp-compare': TspCompareView,
   about: AboutView,
 };
 

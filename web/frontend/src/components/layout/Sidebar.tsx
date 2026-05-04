@@ -90,6 +90,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'✦'}</span>
         GA · TSP (Aula 12)
       </div>
+      <div
+        className={`nav-item${active === 'tsp-compare' ? ' active' : ''}`}
+        onClick={() => onNavigate('tsp-compare')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⚖'}</span>
+        GA · TSP Comparativo
+      </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div
