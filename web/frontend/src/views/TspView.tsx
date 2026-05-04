@@ -451,9 +451,14 @@ export default function TspView() {
             onChange={setPopSize}
             style={{ width: '100%' }}
           />
-          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-            <Select options={PC_OPTIONS} value={probCruz} onChange={setProbCruz} style={{ flex: 1 }} />
-            <Select options={PM_OPTIONS} value={probMut} onChange={setProbMut} style={{ flex: 1 }} />
+          <div style={{ marginTop: 10 }}>
+            <div className="imgreg-select-label">
+              Pc · Pm <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(prob. cruzamento · mutação)</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Select options={PC_OPTIONS} value={probCruz} onChange={setProbCruz} style={{ flex: 1 }} />
+              <Select options={PM_OPTIONS} value={probMut} onChange={setProbMut} style={{ flex: 1 }} />
+            </div>
           </div>
         </Card>
 

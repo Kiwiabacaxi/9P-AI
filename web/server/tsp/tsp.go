@@ -412,6 +412,34 @@ func cloneTour(t []int) []int {
 	return out
 }
 
+// RotateToStart — rotaciona o tour cíclico pra que `startCity` (id) fique
+// na posição 0. O tour fechado é matematicamente o mesmo (rotação não muda
+// distância), só muda onde começamos a leitura.
+//
+// Importante porque o GA encontra um ciclo, mas a narrativa de logística
+// precisa do depot fixo no início (caminhão sai de X, faz a rota, volta a X).
+func RotateToStart(tour []int, startCity int) []int {
+	if len(tour) == 0 {
+		return tour
+	}
+	startIdx := -1
+	for i, c := range tour {
+		if c == startCity {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx <= 0 {
+		return tour
+	}
+	n := len(tour)
+	out := make([]int, n)
+	for i := 0; i < n; i++ {
+		out[i] = tour[(startIdx+i)%n]
+	}
+	return out
+}
+
 func extrairElites(pop []Individuo, p int) []Individuo {
 	if p <= 0 {
 		return nil
@@ -498,16 +526,20 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 		}
 
 		if progressCh != nil {
+			// Ancorar o tour no depot (cidade 0) — não muda a soma cíclica,
+			// mas garante consistência narrativa (o depot é o início da leitura).
+			melhorTourAnc := RotateToStart(cloneTour(pop[melhorIdx].Tour), 0)
+			melhorGlobalAnc := RotateToStart(cloneTour(melhorGlobal.Tour), 0)
 			progressCh <- Step{
 				Geracao:          g + 1,
-				MelhorTour:       cloneTour(pop[melhorIdx].Tour),
+				MelhorTour:       melhorTourAnc,
 				MelhorDist:       melhorDist,
 				MelhorMaxLeg:     pop[melhorIdx].MaxLeg,
 				MelhorCusto:      pop[melhorIdx].Custo,
 				MediaDist:        mediaDist,
 				PiorDist:         piorDist,
 				Diversidade:      div,
-				MelhorGlobal:     cloneTour(melhorGlobal.Tour),
+				MelhorGlobal:     melhorGlobalAnc,
 				MelhorGlobalDist: melhorGlobal.Distancia,
 			}
 		}
@@ -586,7 +618,7 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 
 	return Result{
 		Geracoes:        cfg.MaxGeracoes,
-		MelhorTour:      cloneTour(melhorGlobal.Tour),
+		MelhorTour:      RotateToStart(cloneTour(melhorGlobal.Tour), 0),
 		MelhorDist:      melhorGlobal.Distancia,
 		MelhorMaxLeg:    melhorGlobal.MaxLeg,
 		MelhorCusto:     melhorGlobal.Custo,

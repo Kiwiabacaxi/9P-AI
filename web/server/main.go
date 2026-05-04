@@ -2090,6 +2090,10 @@ func handleTspBaseline(w http.ResponseWriter, r *http.Request) {
 	}
 	elapsed := time.Since(t0)
 
+	// Ancorar tour no depot (cidade 0) — pra coincidir com a narrativa
+	// (depot = origem fixa) e com o que o GA também devolve.
+	tour = tsp.RotateToStart(tour, 0)
+
 	dist := tsp.CalcularDistanciaTour(tour, matriz)
 	// max-leg
 	maxLeg := 0.0
