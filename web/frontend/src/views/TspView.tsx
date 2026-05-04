@@ -147,6 +147,42 @@ export default function TspView() {
   const [displayGen, setDisplayGen] = useState(0);
   const [userScrub, setUserScrub] = useState(false);
 
+  // Evolution playback — auto-advance do slider, animando o melhor de cada
+  // geração (a rota se "estabiliza" enquanto o GA evolui).
+  const [playingEvo, setPlayingEvo] = useState(false);
+  const [evoSpeed, setEvoSpeed] = useState(20); // gerações por segundo
+
+  useEffect(() => {
+    if (!playingEvo || maxGen === 0) return;
+    let last = performance.now();
+    // Se já estamos no fim, recomeça do 1; senão continua de onde está.
+    let acc = displayGen >= maxGen ? 1 : Math.max(1, displayGen);
+    let raf = 0;
+    // Variável local (não ref compartilhado) — evita race em strict mode
+    // onde dois efeitos podem coexistir momentaneamente.
+
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      acc += dt * evoSpeed;
+      const gen = Math.max(1, Math.min(Math.floor(acc), maxGen));
+      setDisplayGen(gen);
+      const t = histTourRef.current[gen - 1];
+      if (t) setTourAtual(t);
+      if (acc >= maxGen) {
+        setPlayingEvo(false);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // displayGen lido só no setup (não disparar re-effect a cada frame).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playingEvo, evoSpeed, maxGen]);
+
   const closeSSE = useRef<(() => void) | null>(null);
 
   // Carrega preset + aplica settings sugeridos + recalcula matriz.
@@ -659,6 +695,7 @@ export default function TspView() {
               className="btn btn-ghost"
               style={{ fontSize: 10, padding: '4px 10px' }}
               onClick={() => {
+                setPlayingEvo(false);
                 setUserScrub(false);
                 setDisplayGen(maxGen);
                 const last = histTourRef.current[maxGen - 1];
@@ -669,6 +706,37 @@ export default function TspView() {
             >
               {'⏭'} latest
             </button>
+            <button
+              className="btn btn-ghost"
+              style={{
+                fontSize: 10, padding: '4px 10px',
+                color: playingEvo ? 'var(--cyan)' : undefined,
+              }}
+              onClick={() => {
+                setUserScrub(true);
+                setPlayingEvo(p => !p);
+              }}
+              title="anima o melhor de cada geração (auto-scrub do slider)"
+            >
+              {playingEvo ? '⏸ evo' : '▶ evo'}
+            </button>
+            <div style={{ display: 'flex', gap: 2, fontSize: 10, fontFamily: 'JetBrains Mono' }}>
+              {[5, 20, 60].map(s => (
+                <button
+                  key={s}
+                  className="btn btn-ghost"
+                  style={{
+                    fontSize: 10, padding: '3px 6px',
+                    color: s === evoSpeed ? 'var(--cyan)' : 'var(--muted)',
+                    fontWeight: s === evoSpeed ? 700 : 400,
+                  }}
+                  onClick={() => setEvoSpeed(s)}
+                  title={`${s} gerações por segundo`}
+                >
+                  {s}/s
+                </button>
+              ))}
+            </div>
             <div style={{
               fontSize: 11,
               fontFamily: 'JetBrains Mono',
@@ -682,7 +750,10 @@ export default function TspView() {
               min={1}
               max={maxGen}
               value={displayGen || 1}
-              onChange={(e) => handleSlider(parseInt(e.target.value))}
+              onChange={(e) => {
+                setPlayingEvo(false); // arrastar slider pausa evolução
+                handleSlider(parseInt(e.target.value));
+              }}
               style={{ flex: 1, accentColor: 'var(--cyan)' }}
             />
             {displayGen > 0 && histMelhor[displayGen - 1] !== undefined && (
