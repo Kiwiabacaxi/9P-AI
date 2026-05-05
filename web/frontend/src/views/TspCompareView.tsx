@@ -262,7 +262,7 @@ export default function TspCompareView() {
         <div>
           <div className="page-title">TSP <span>Comparativo</span></div>
           <div className="page-sub">
-            Mesma matriz · 3 algoritmos lado a lado &mdash; Aula 12
+            Mesma matriz · 3 algoritmos lado a lado
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

@@ -79,10 +79,20 @@ const ELITE_OPTIONS = [
   { value: '6', label: 'p = 6' },
 ];
 
+// Presets de domínio: a função f(x) = -|x sin(√|x|)| tem mínimos cada vez mais
+// profundos conforme x cresce (porque o mínimo escala com |x|), então mudar
+// o domínio muda também o ótimo global. O frontend calcula o ótimo numericamente
+// pra cada domínio (ver useMemo de optimo abaixo).
+const DOMINIO_OPTIONS = [
+  { value: '256',  label: '[0, 256]' },
+  { value: '512',  label: '[0, 512]  (default)' },
+  { value: '768',  label: '[0, 768]' },
+  { value: '1024', label: '[0, 1024]' },
+  { value: '1500', label: '[0, 1500]' },
+  { value: '2250', label: '[0, 2250]' }, // termina logo após (15π)² ≈ 2220, onde |x·sin(√x)|=0
+];
+
 const DOMINIO_MIN = 0;
-const DOMINIO_MAX = 512;
-const X_OPTIMO = 420.9687;
-const F_OPTIMO = -418.9829;
 
 export default function GeneticoV2View() {
   const { show } = useToast();
@@ -97,6 +107,7 @@ export default function GeneticoV2View() {
   const [tamTorneio, setTamTorneio] = useState('3');
   const [pontosCorte, setPontosCorte] = useState('2');
   const [elitismo, setElitismo] = useState('2');
+  const [dominioMax, setDominioMax] = useState('512');
 
   // Training state
   const [training, setTraining] = useState(false);
@@ -150,6 +161,8 @@ export default function GeneticoV2View() {
       tamanhoTorneio: parseInt(tamTorneio),
       pontosCorte: parseInt(pontosCorte) as 1 | 2,
       elitismo: parseInt(elitismo),
+      dominioMin: DOMINIO_MIN,
+      dominioMax: parseFloat(dominioMax),
     };
 
     try {
@@ -271,6 +284,28 @@ export default function GeneticoV2View() {
   }, [histDiv, popSize]);
 
   const isTorneio = selecao === 'torneio';
+
+  // Calcula o ótimo (mínimo) numericamente pro domínio atual amostrando 4000 pontos
+  // — preciso o suficiente pra plotar uma referência visual mesmo em domínios largos.
+  // Em [0, 512] isso acerta x* ≈ 420.97 / f* ≈ -418.98 (valor clássico do Schwefel 1D).
+  const dominioMaxNum = parseFloat(dominioMax) || 512;
+  const optimo = useMemo(() => {
+    const N = 4000;
+    const min = DOMINIO_MIN;
+    const max = dominioMaxNum;
+    const step = (max - min) / (N - 1);
+    let bestX = min;
+    let bestFx = Infinity;
+    for (let i = 0; i < N; i++) {
+      const x = min + i * step;
+      const fx = -Math.abs(x * Math.sin(Math.sqrt(Math.abs(x))));
+      if (fx < bestFx) {
+        bestFx = fx;
+        bestX = x;
+      }
+    }
+    return { x: bestX, fx: bestFx };
+  }, [dominioMaxNum]);
 
   return (
     <div>
@@ -396,11 +431,16 @@ export default function GeneticoV2View() {
         </Card>
 
         <Card style={{ padding: '16px 20px' }}>
-          <div className="imgreg-select-label">Configuração ativa</div>
-          <div style={{ fontSize: 12, lineHeight: 1.7, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
-            <div>seleção: <span style={{ color: 'var(--cyan)' }}>{selecao}</span>{isTorneio && <span> (k={tamTorneio})</span>}</div>
-            <div>cruzamento: <span style={{ color: 'var(--cyan)' }}>{pontosCorte} ponto{pontosCorte === '2' ? 's' : ''}</span></div>
-            <div>elitismo: <span style={{ color: 'var(--cyan)' }}>p = {elitismo}</span></div>
+          <Select
+            label="Domínio de busca x"
+            options={DOMINIO_OPTIONS}
+            value={dominioMax}
+            onChange={setDominioMax}
+            style={{ width: '100%' }}
+          />
+          <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.6, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
+            <div>resolução: <span style={{ color: 'var(--cyan)' }}>{(dominioMaxNum / ((1 << parseInt(bits)) - 1)).toFixed(3)}</span> por bit-step</div>
+            <div>ótimo (numérico): x* ≈ <span style={{ color: 'var(--cyan)' }}>{optimo.x.toFixed(2)}</span>, f* ≈ <span style={{ color: 'var(--pink)' }}>{optimo.fx.toFixed(2)}</span></div>
             <div>casais/geração: <span style={{ color: 'var(--cyan)' }}>{Math.ceil((parseInt(popSize) - parseInt(elitismo)) / 2)}</span></div>
           </div>
         </Card>
@@ -436,9 +476,9 @@ export default function GeneticoV2View() {
           melhor={melhorIndiv}
           globalBest={globalBest}
           dominioMin={DOMINIO_MIN}
-          dominioMax={DOMINIO_MAX}
-          optimoX={X_OPTIMO}
-          optimoFx={F_OPTIMO}
+          dominioMax={dominioMaxNum}
+          optimoX={optimo.x}
+          optimoFx={optimo.fx}
           height={340}
         />
         {maxGen > 0 && (
@@ -540,8 +580,15 @@ export default function GeneticoV2View() {
           (só sem o "tudo via roleta sempre"). Torneio + p≥1 + 2 pontos = configuração mais robusta.
           Compare a curva de diversidade nos dois casos pra ver o efeito visualmente.
           <br /><br />
-          <b>Mesma função objetivo do aula 10:</b> f(x) = -|x · sin(√|x|)| em [0, 512].
-          Mínimo global em <b>x* ≈ 420.97</b> com f(x*) ≈ <b>-418.98</b>.
+          <b>Função objetivo (mesma da aula 10):</b> f(x) = -|x · sin(√|x|)| em <b>[{DOMINIO_MIN}, {dominioMaxNum}]</b>.
+          Mínimo numérico do domínio: <b>x* ≈ {optimo.x.toFixed(2)}</b> com <b>f(x*) ≈ {optimo.fx.toFixed(2)}</b>.
+          {dominioMaxNum !== 512 && (
+            <>
+              {' '}<b>Atenção:</b> mudar o domínio muda também o mínimo global (porque |x · sin(√|x|)| escala com |x|).
+              Aumentar o domínio sem aumentar os bits piora a resolução do passo do x — bom pra discutir o
+              trade-off resolução vs alcance da codificação binária.
+            </>
+          )}
         </div>
       </Card>
     </div>

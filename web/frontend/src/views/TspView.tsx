@@ -487,7 +487,7 @@ export default function TspView() {
         <div>
           <div className="page-title">Caixeiro <span>Viajante</span></div>
           <div className="page-sub">
-            {presetMeta?.descricao ?? 'Roteirização com AG'} &mdash; Aula 12
+            {presetMeta?.descricao ?? 'Roteirização com AG'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

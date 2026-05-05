@@ -149,6 +149,51 @@ export default function AboutView() {
               <td className="td-white">{'Backprop conv + SGD \u00B7 Cross-Entropy'}</td>
               <td className="td-green">Geralmente sim</td>
             </tr>
+            <tr>
+              <td className="td-cyan">GA \u00B7 f(x)</td>
+              <td>10</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>genetico</td>
+              <td>
+                {'cromossomo bin. \u2192 x \u2208 [0, 512] '}
+                <span style={{ color: 'var(--surface-top)' }}>(otim. f(x))</span>
+              </td>
+              <td>{'\u2014'}</td>
+              <td className="td-white">
+                {'Roleta \u00B7 cruz. 1pt \u00B7 mut. bit '}
+                <span style={{ color: 'var(--surface-top)' }}>(s/ elite)</span>
+              </td>
+              <td className="td-pink">Estoc\u00E1stica</td>
+            </tr>
+            <tr>
+              <td className="td-cyan">GA v2 \u00B7 f(x)</td>
+              <td>11</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>genetico2</td>
+              <td>
+                {'cromossomo bin. \u2192 x \u2208 [0, dMax] '}
+                <span style={{ color: 'var(--surface-top)' }}>(dom\u00EDnio configur\u00E1vel)</span>
+              </td>
+              <td>{'\u2014'}</td>
+              <td className="td-white">
+                {'Torneio/roleta \u00B7 cruz. 1\u20132pt \u00B7 elitismo '}
+                <span style={{ color: 'var(--surface-top)' }}>(p melhores)</span>
+              </td>
+              <td className="td-pink">Estoc\u00E1stica</td>
+            </tr>
+            <tr>
+              <td className="td-cyan">GA \u00B7 TSP</td>
+              <td>12</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>tsp</td>
+              <td>
+                {'permuta\u00E7\u00E3o de N cidades '}
+                <span style={{ color: 'var(--surface-top)' }}>(OSRM real)</span>
+              </td>
+              <td>{'\u2014'}</td>
+              <td className="td-white">
+                {'OX/PMX \u00B7 invers\u00E3o \u00B7 fitness composta '}
+                <span style={{ color: 'var(--surface-top)' }}>(\u03BB, \u03C9, \u03B3, \u03BC)</span>
+              </td>
+              <td className="td-pink">Estoc\u00E1stica</td>
+            </tr>
           </tbody>
         </table>
       </Card>
@@ -436,6 +481,108 @@ export default function AboutView() {
           </div>
         </Card>
 
+        <Card title="Aula 10 — GA f(x)">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Otimização de f(x) = -|x · sin(√|x|)|:
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cromossomo:</span>
+              {' bits binários → x ∈ [0, 512]'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Seleção:</span>
+              {'  roleta (proporcional ao fitness)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cruz.:</span>
+              {'   1 ponto · troca cauda'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Mut.:</span>
+              {'    flip por bit (Pm baixo)'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// AG canônico do slide aula 10'}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Aula 11 — GA v2 (parametrizável)">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Mesma f(x), mas com upgrades pedidos no slide:
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Seleção:</span>
+              {'  torneio (k) ou roleta'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cruz.:</span>
+              {'   1 ou 2 pontos'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Elitismo:</span>
+              {' p melhores intactos'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Domínio:</span>
+              {' [0, dMax] configurável'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// + métrica de diversidade'}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Aula 12 — GA TSP">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Caixeiro Viajante — encoding novo:
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cromossomo:</span>
+              {' permutação de N cidades'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cruz.:</span>
+              {'   OX · PMX (válido p/ permut.)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Mut.:</span>
+              {'    inversão (≈ 2-opt)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Custo:</span>
+              {'   d + λ·max + ω·ord + γ·T + μ·OT²'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// 5 presets reais · OSRM real-road'}
+            </div>
+          </div>
+        </Card>
+
         <Card title="Estrutura de Pacotes">
           <div
             style={{
@@ -460,7 +607,10 @@ export default function AboutView() {
             <div>{'\u00A0\u251C\u2500 mlpfunc/'}</div>
             <div>{'\u00A0\u251C\u2500 mlport/'}</div>
             <div>{'\u00A0\u251C\u2500 imgreg/'}</div>
-            <div>{'\u00A0\u2514\u2500 cnn/'}</div>
+            <div>{'\u00A0\u251C\u2500 cnn/'}</div>
+            <div>{'\u00A0\u251C\u2500 genetico/'}</div>
+            <div>{'\u00A0\u251C\u2500 genetico2/'}</div>
+            <div>{'\u00A0\u2514\u2500 tsp/'}</div>
           </div>
         </Card>
       </div>

@@ -88,7 +88,7 @@ export default function Sidebar({ active, onNavigate }: Props) {
         onClick={() => onNavigate('tsp')}
       >
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'✦'}</span>
-        GA · TSP (Aula 12)
+        GA · TSP
       </div>
       <div
         className={`nav-item${active === 'tsp-compare' ? ' active' : ''}`}

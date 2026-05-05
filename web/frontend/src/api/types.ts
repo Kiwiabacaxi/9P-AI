@@ -425,6 +425,8 @@ export interface GA2Config {
   tamanhoTorneio: number;
   pontosCorte: 1 | 2;
   elitismo: number;
+  dominioMin: number;
+  dominioMax: number;
   seed?: number;
 }
 
@@ -455,6 +457,8 @@ export interface GA2Result {
   tamanhoTorneio: number;
   pontosCorte: number;
   elitismo: number;
+  dominioMin: number;
+  dominioMax: number;
 }
 
 // TSP — Caixeiro Viajante (Aula 12)

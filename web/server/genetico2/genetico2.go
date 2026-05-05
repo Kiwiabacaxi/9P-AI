@@ -33,8 +33,8 @@ const (
 	SelRoleta  = "roleta"
 	SelTorneio = "torneio"
 
-	dominioMin = 0.0
-	dominioMax = 512.0
+	dominioMinDefault = 0.0
+	dominioMaxDefault = 512.0
 )
 
 // Config — todos os hiperparâmetros do AG.
@@ -48,6 +48,8 @@ type Config struct {
 	TamanhoTorneio int     `json:"tamanhoTorneio"` // k — só se Selecao = "torneio"
 	PontosCorte    int     `json:"pontosCorte"`    // 1 ou 2
 	Elitismo       int     `json:"elitismo"`       // p melhores preservados (0 = sem elitismo)
+	DominioMin     float64 `json:"dominioMin"`     // limite inferior do x
+	DominioMax     float64 `json:"dominioMax"`     // limite superior do x
 	Seed           int64   `json:"seed,omitempty"` // 0 = aleatório
 }
 
@@ -62,6 +64,8 @@ func DefaultConfig() Config {
 		TamanhoTorneio: 3,
 		PontosCorte:    2,
 		Elitismo:       2,
+		DominioMin:     dominioMinDefault,
+		DominioMax:     dominioMaxDefault,
 	}
 }
 
@@ -100,6 +104,8 @@ type Result struct {
 	TamanhoTorneio  int       `json:"tamanhoTorneio"`
 	PontosCorte     int       `json:"pontosCorte"`
 	Elitismo        int       `json:"elitismo"`
+	DominioMin      float64   `json:"dominioMin"`
+	DominioMax      float64   `json:"dominioMax"`
 }
 
 // =============================================================================
@@ -113,27 +119,27 @@ func F(x float64) float64 {
 func bitsParaDecimal(bits []int) int {
 	dec := 0
 	for _, b := range bits {
-		dec = (dec << 1) | (b & 1)
+		dec = (dec << 1) | (b & 1) // << é um left shift (<<) operator moves the bits of a binary number to the left
 	}
 	return dec
 }
 
-func decimalParaX(dec, bits int) float64 {
-	maxDec := (1 << bits) - 1
+func decimalParaX(dec, bits int, dMin, dMax float64) float64 {
+	maxDec := (1 << bits) - 1 // ex: bits=3 → maxDec=7 (111 binário)
 	if maxDec == 0 {
-		return dominioMin
+		return dMin
 	}
-	return float64(dec)/float64(maxDec)*(dominioMax-dominioMin) + dominioMin
+	return float64(dec)/float64(maxDec)*(dMax-dMin) + dMin
 }
 
-func sincronizarBitsDecX(pop []Individuo, bits int) {
+func sincronizarBitsDecX(pop []Individuo, bits int, dMin, dMax float64) {
 	for i := range pop {
 		pop[i].Dec = bitsParaDecimal(pop[i].Bits)
-		pop[i].X = decimalParaX(pop[i].Dec, bits)
+		pop[i].X = decimalParaX(pop[i].Dec, bits, dMin, dMax)
 	}
 }
 
-func gerarPopulacaoInicial(rng *rand.Rand, popSize, bits int) []Individuo {
+func gerarPopulacaoInicial(rng *rand.Rand, popSize, bits int, dMin, dMax float64) []Individuo {
 	pop := make([]Individuo, popSize)
 	for i := range pop {
 		pop[i].Bits = make([]int, bits)
@@ -141,7 +147,7 @@ func gerarPopulacaoInicial(rng *rand.Rand, popSize, bits int) []Individuo {
 			pop[i].Bits[j] = rng.Intn(2)
 		}
 	}
-	sincronizarBitsDecX(pop, bits)
+	sincronizarBitsDecX(pop, bits, dMin, dMax)
 	return pop
 }
 
@@ -323,7 +329,7 @@ func Treinar(progressCh chan<- Step, cfg Config) Result {
 	}
 	rng := rand.New(rand.NewSource(seed))
 
-	pop := gerarPopulacaoInicial(rng, cfg.PopSize, cfg.Bits)
+	pop := gerarPopulacaoInicial(rng, cfg.PopSize, cfg.Bits, cfg.DominioMin, cfg.DominioMax)
 
 	histMelhor := make([]float64, 0, cfg.MaxGeracoes)
 	histMedia := make([]float64, 0, cfg.MaxGeracoes)
@@ -426,7 +432,7 @@ func Treinar(progressCh chan<- Step, cfg Config) Result {
 
 		// 4) nova população = elites + filhos
 		pop = append(elites, filhos...)
-		sincronizarBitsDecX(pop, cfg.Bits)
+		sincronizarBitsDecX(pop, cfg.Bits, cfg.DominioMin, cfg.DominioMax)
 	}
 
 	return Result{
@@ -445,6 +451,8 @@ func Treinar(progressCh chan<- Step, cfg Config) Result {
 		TamanhoTorneio:  cfg.TamanhoTorneio,
 		PontosCorte:     cfg.PontosCorte,
 		Elitismo:        cfg.Elitismo,
+		DominioMin:      cfg.DominioMin,
+		DominioMax:      cfg.DominioMax,
 	}
 }
 
@@ -487,6 +495,17 @@ func sanitizarConfig(cfg Config) Config {
 	}
 	if cfg.Elitismo >= cfg.PopSize {
 		cfg.Elitismo = cfg.PopSize - 2 // garante espaço pra pelo menos 1 casal de filhos
+	}
+	// Domínio: aceita qualquer min < max, com fallback pro default da aula 10.
+	// Se vier zerado (omitido no JSON antigo) usa o default; se vier inválido
+	// (min >= max) também cai no default pra não dividir por zero em decimalParaX.
+	if cfg.DominioMin == 0 && cfg.DominioMax == 0 {
+		cfg.DominioMin = dominioMinDefault
+		cfg.DominioMax = dominioMaxDefault
+	}
+	if cfg.DominioMin >= cfg.DominioMax {
+		cfg.DominioMin = dominioMinDefault
+		cfg.DominioMax = dominioMaxDefault
 	}
 	return cfg
 }
