@@ -80,6 +80,23 @@ type Config struct {
 	// posição atual de LastVisit e a posição "logo antes do depot".
 	LastVisit int `json:"lastVisit"`
 
+	// Gamma — peso do tempo total na fitness, em "km equivalentes por hora".
+	// γ = 0 → ignora tempo (TSP só de distância);
+	// γ > 0 → cada hora de tour custa γ km na fitness — útil pra cold-chain
+	// (leite/carne) onde o tempo importa mais que a quilometragem.
+	Gamma float64 `json:"gamma"`
+
+	// JornadaMaxSec — jornada máxima do motorista em segundos.
+	// Default 36000 = 10h (limite ANTT). Usado junto com MuOvertime.
+	JornadaMaxSec float64 `json:"jornadaMaxSec"`
+
+	// MuOvertime — coef. da penalidade quadrática por exceder a jornada.
+	// μ = 0 → desliga a penalidade;
+	// μ > 0 → cada hora além da jornada custa μ · h² na fitness — força o
+	// GA a achar tours que cabem num "shift" único, ou a aceitar
+	// pernoites/troca de motorista (refletido no overtime explosivo).
+	MuOvertime float64 `json:"muOvertime"`
+
 	Seed int64 `json:"seed,omitempty"`
 }
 
@@ -96,20 +113,51 @@ func DefaultConfig() Config {
 		Elitismo:       2,
 		LambdaMaxLeg:   0,
 		LastVisit:      -1,
+		Gamma:          0,
+		JornadaMaxSec:  36000, // 10h
+		MuOvertime:     0,
 	}
 }
 
-// Individuo — um tour (permutação) com sua distância e custo já calculados.
+// Individuo — um tour (permutação) com sua distância, tempo e custo já calculados.
 //
 // Distancia = soma "crua" das distâncias percorridas (km reais).
 // MaxLeg    = maior trecho único do tour.
-// Custo     = Distancia + λ · MaxLeg — é o valor que a seleção/elitismo MINIMIZAM.
-//             Quando λ = 0, Custo == Distancia (idêntico ao TSP clássico).
+// TempoSec  = tempo total dirigindo (segundos) — vem da matriz de duração
+//             (real do OSRM ou sintetizada de distância via 70 km/h).
+// Custo     = soma de termos da fitness — é o valor que a seleção/elitismo MINIMIZAM:
+//
+//             Custo = Distancia
+//                   + λ · MaxLeg                   (penaliza trecho gigante)
+//                   + ω · desvio(lastVisit)        (restrição de ordem)
+//                   + γ · (TempoSec / 3600)        (peso do tempo em km equivalentes)
+//                   + μ · max(0, T - Tmax)²        (overtime quadrático)
 type Individuo struct {
 	Tour      []int   `json:"tour"`
 	Distancia float64 `json:"distancia"`
 	MaxLeg    float64 `json:"maxLeg"`
+	TempoSec  float64 `json:"tempoSec"`
 	Custo     float64 `json:"custo"`
+}
+
+// VelMediaKmH — velocidade média assumida pra sintetizar duração quando
+// a matriz de origem é Haversine (não temos dado de OSRM real). 70 km/h é
+// uma estimativa razoável pra rotas mistas BR (rodovia + acesso urbano).
+const VelMediaKmH = 70.0
+
+// SintetizarMatrizDuracao — converte matriz de distâncias (km) em duração
+// (segundos) usando velocidade média constante. Usar quando matDuracao real
+// não está disponível (modos Haversine, fallback OSRM).
+func SintetizarMatrizDuracao(matDist [][]float64) [][]float64 {
+	n := len(matDist)
+	out := make([][]float64, n)
+	for i := range out {
+		out[i] = make([]float64, n)
+		for j := 0; j < n; j++ {
+			out[i][j] = matDist[i][j] / VelMediaKmH * 3600.0
+		}
+	}
+	return out
 }
 
 // Step — payload por geração via SSE.
@@ -118,6 +166,7 @@ type Step struct {
 	MelhorTour       []int   `json:"melhorTour"`
 	MelhorDist       float64 `json:"melhorDist"`
 	MelhorMaxLeg     float64 `json:"melhorMaxLeg"`
+	MelhorTempoSec   float64 `json:"melhorTempoSec"`
 	MelhorCusto      float64 `json:"melhorCusto"`
 	MediaDist        float64 `json:"mediaDist"`
 	PiorDist         float64 `json:"piorDist"`
@@ -131,6 +180,7 @@ type Result struct {
 	MelhorTour      []int     `json:"melhorTour"`
 	MelhorDist      float64   `json:"melhorDist"`
 	MelhorMaxLeg    float64   `json:"melhorMaxLeg"`
+	MelhorTempoSec  float64   `json:"melhorTempoSec"`
 	MelhorCusto     float64   `json:"melhorCusto"`
 	HistMelhor      []float64 `json:"histMelhor"`
 	HistMedia       []float64 `json:"histMedia"`
@@ -203,27 +253,36 @@ func CalcularDistanciaTour(tour []int, matriz [][]float64) float64 {
 	return total
 }
 
-// avaliar — calcula distancia, maxLeg e custo. Custo é o que a seleção do AG
-// minimiza:
+// avaliar — calcula distancia, maxLeg, tempo e custo. Custo é o que a seleção
+// do AG minimiza:
 //
-//	custo = distancia + λ · maxLeg + penalidade_ordem
+//	custo = distancia
+//	      + λ · maxLeg                  (penaliza trecho gigante)
+//	      + ω · desvio(lastVisit)       (restrição de ordem)
+//	      + γ · (T / 3600)              (peso do tempo em km equivalentes)
+//	      + μ · max(0, T - Tmax)²       (overtime quadrático em h²)
 //
-// A penalidade_ordem é zero se lastVisit == -1. Caso contrário, ela é
-// proporcional à distância cíclica entre a posição atual da cidade `lastVisit`
-// no tour e a posição "logo antes do retorno ao depot" (que é onde ela
-// deveria estar pra rota fazer sentido logístico). Cada posição fora do
-// lugar custa 2× a perna média, o que é forte o suficiente pra dominar a
-// otimização sem ser numericamente absurdo.
-func avaliar(tour []int, matriz [][]float64, lambda float64, lastVisit int) (distancia, maxLeg, custo float64) {
+// Termos com matDur == nil (modo Euclidiano) são ignorados — distância em
+// graus não traduz pra unidades de tempo de jeito coerente.
+func avaliar(
+	tour []int,
+	matDist, matDur [][]float64,
+	lambda, gamma, mu, jornadaMaxSec float64,
+	lastVisit int,
+) (distancia, maxLeg, tempoSec, custo float64) {
 	n := len(tour)
 	if n < 2 {
 		return
 	}
 	for i := 0; i < n; i++ {
-		d := matriz[tour[i]][tour[(i+1)%n]]
+		from, to := tour[i], tour[(i+1)%n]
+		d := matDist[from][to]
 		distancia += d
 		if d > maxLeg {
 			maxLeg = d
+		}
+		if matDur != nil {
+			tempoSec += matDur[from][to]
 		}
 	}
 	custo = distancia + lambda*maxLeg
@@ -254,6 +313,21 @@ func avaliar(tour []int, matriz [][]float64, lambda float64, lastVisit int) (dis
 			custo += float64(deviation) * 2.0 * avgLeg
 		}
 	}
+
+	// γ · T (tempo em horas)
+	if gamma > 0 && matDur != nil {
+		custo += gamma * (tempoSec / 3600.0)
+	}
+
+	// μ · max(0, T - Tmax)² (overtime em h²)
+	if mu > 0 && matDur != nil && jornadaMaxSec > 0 {
+		excedeSec := tempoSec - jornadaMaxSec
+		if excedeSec > 0 {
+			excedeH := excedeSec / 3600.0
+			custo += mu * excedeH * excedeH
+		}
+	}
+
 	return
 }
 
@@ -261,12 +335,18 @@ func avaliar(tour []int, matriz [][]float64, lambda float64, lastVisit int) (dis
 // População inicial — N permutações aleatórias.
 // =============================================================================
 
-func gerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matriz [][]float64, lambda float64, lastVisit int) []Individuo {
+func gerarPopulacaoInicial(
+	rng *rand.Rand, popSize, n int,
+	matDist, matDur [][]float64,
+	lambda, gamma, mu, jornadaMaxSec float64,
+	lastVisit int,
+) []Individuo {
 	pop := make([]Individuo, popSize)
 	for i := range pop {
 		tour := rng.Perm(n)
 		pop[i] = Individuo{Tour: tour}
-		pop[i].Distancia, pop[i].MaxLeg, pop[i].Custo = avaliar(tour, matriz, lambda, lastVisit)
+		pop[i].Distancia, pop[i].MaxLeg, pop[i].TempoSec, pop[i].Custo =
+			avaliar(tour, matDist, matDur, lambda, gamma, mu, jornadaMaxSec, lastVisit)
 	}
 	return pop
 }
@@ -454,7 +534,13 @@ func mutacaoInversao(tour []int, prob float64, rng *rand.Rand) {
 func clonarIndividuo(src Individuo) Individuo {
 	tour := make([]int, len(src.Tour))
 	copy(tour, src.Tour)
-	return Individuo{Tour: tour, Distancia: src.Distancia, MaxLeg: src.MaxLeg, Custo: src.Custo}
+	return Individuo{
+		Tour:      tour,
+		Distancia: src.Distancia,
+		MaxLeg:    src.MaxLeg,
+		TempoSec:  src.TempoSec,
+		Custo:     src.Custo,
+	}
 }
 
 func cloneTour(t []int) []int {
@@ -534,8 +620,8 @@ func tourKey(tour []int) string {
 // Treinar — orquestra o AG, emite Step por geração via canal.
 // =============================================================================
 
-func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
-	n := len(matriz)
+func Treinar(progressCh chan<- Step, cfg Config, matDist, matDur [][]float64) Result {
+	n := len(matDist)
 	cfg = sanitizar(cfg, n)
 	seed := cfg.Seed
 	if seed == 0 {
@@ -543,7 +629,12 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 	}
 	rng := rand.New(rand.NewSource(seed))
 
-	pop := gerarPopulacaoInicial(rng, cfg.PopSize, n, matriz, cfg.LambdaMaxLeg, cfg.LastVisit)
+	pop := gerarPopulacaoInicial(
+		rng, cfg.PopSize, n,
+		matDist, matDur,
+		cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
+		cfg.LastVisit,
+	)
 
 	histMelhor := make([]float64, 0, cfg.MaxGeracoes)
 	histMedia := make([]float64, 0, cfg.MaxGeracoes)
@@ -586,6 +677,7 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 				MelhorTour:       melhorTourAnc,
 				MelhorDist:       melhorDist,
 				MelhorMaxLeg:     pop[melhorIdx].MaxLeg,
+				MelhorTempoSec:   pop[melhorIdx].TempoSec,
 				MelhorCusto:      pop[melhorIdx].Custo,
 				MediaDist:        mediaDist,
 				PiorDist:         piorDist,
@@ -656,9 +748,17 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 			}
 
 			f1 := Individuo{Tour: t1}
-			f1.Distancia, f1.MaxLeg, f1.Custo = avaliar(t1, matriz, cfg.LambdaMaxLeg, cfg.LastVisit)
+			f1.Distancia, f1.MaxLeg, f1.TempoSec, f1.Custo = avaliar(
+				t1, matDist, matDur,
+				cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
+				cfg.LastVisit,
+			)
 			f2 := Individuo{Tour: t2}
-			f2.Distancia, f2.MaxLeg, f2.Custo = avaliar(t2, matriz, cfg.LambdaMaxLeg, cfg.LastVisit)
+			f2.Distancia, f2.MaxLeg, f2.TempoSec, f2.Custo = avaliar(
+				t2, matDist, matDur,
+				cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
+				cfg.LastVisit,
+			)
 			filhos = append(filhos, f1, f2)
 		}
 		if len(filhos) > precisamos {
@@ -672,6 +772,7 @@ func Treinar(progressCh chan<- Step, cfg Config, matriz [][]float64) Result {
 		MelhorTour:      RotateToStart(cloneTour(melhorGlobal.Tour), 0),
 		MelhorDist:      melhorGlobal.Distancia,
 		MelhorMaxLeg:    melhorGlobal.MaxLeg,
+		MelhorTempoSec:  melhorGlobal.TempoSec,
 		MelhorCusto:     melhorGlobal.Custo,
 		HistMelhor:      histMelhor,
 		HistMedia:       histMedia,
@@ -733,6 +834,15 @@ func sanitizar(cfg Config, n int) Config {
 		// 0 é o depot — não pode ser também a "última visita"
 		cfg.LastVisit = -1
 	}
+	if cfg.Gamma < 0 {
+		cfg.Gamma = 0
+	}
+	if cfg.MuOvertime < 0 {
+		cfg.MuOvertime = 0
+	}
+	if cfg.JornadaMaxSec <= 0 {
+		cfg.JornadaMaxSec = 36000 // 10h default
+	}
 	return cfg
 }
 
@@ -766,6 +876,14 @@ type Preset struct {
 	// (caminhão coleta soja nos silos primeiro, descarrega no porto por último).
 	LastVisit     int    `json:"lastVisit"`
 	LastVisitNome string `json:"lastVisitNome,omitempty"`
+
+	// GammaSugerido — peso do tempo recomendado pra esse cenário (km/h equiv).
+	// Cold-chain (leite, carne) → alto. Peso de carga (fertilizante, milho) → 0.
+	GammaSugerido float64 `json:"gammaSugerido"`
+
+	// MuOvertimeSugerido — coef. da penalidade quadrática de jornada > Tmax
+	// (km/h² equivalente). Long-haul (Cargill, ~24h) → alto.
+	MuOvertimeSugerido float64 `json:"muOvertimeSugerido"`
 }
 
 // Presets — lista todos os cenários disponíveis.
@@ -810,10 +928,13 @@ func presetItambe() Preset {
 			"pontos de coleta. A escala (50–250 km) é a típica do dia-a-dia.",
 		LambdaSugerido: 1.5,
 		ModoSugerido:   "osrm",
-		FitnessNota: "Leite tem cadeia fria. λ > 0 penaliza tours com algum trecho muito longo " +
-			"(refrigeração tem limite, motorista precisa parar pra descanso). " +
-			"Modo OSRM porque caminhão segue rodovias — nada de cortar reto pelo pasto.",
-		LastVisit: -1,
+		FitnessNota: "Leite tem cadeia fria — γ alto (60 km/h equiv) prioriza tempo " +
+			"sobre quilometragem (ar-condicionado consome combustível por hora, e leite " +
+			"estraga). λ > 0 penaliza tour com algum trecho muito longo. Modo OSRM " +
+			"porque caminhão segue rodovias — nada de cortar reto pelo pasto.",
+		LastVisit:          -1,
+		GammaSugerido:      60,
+		MuOvertimeSugerido: 30,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "Itambé Uberaba", UF: "MG", Lat: -19.7479, Lng: -47.9381},
 			{ID: 1, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9119, Lng: -48.3858},
@@ -853,9 +974,11 @@ func presetMosaic() Preset {
 		LambdaSugerido: 0,
 		ModoSugerido:   "osrm",
 		FitnessNota: "Fertilizante é volumoso e pesado — o que importa é minimizar quilometragem total " +
-			"(diesel é o maior custo operacional). λ = 0 puro TSP funciona bem. " +
-			"OSRM essencial: caminhão Vanderléia de 30+ ton só anda em rodovia federal/estadual.",
-		LastVisit: -1,
+			"(diesel é o maior custo operacional). λ = 0 e γ = 0 — TSP puro de distância " +
+			"funciona perfeito. OSRM essencial: Vanderléia de 30+ ton só anda em BR.",
+		LastVisit:          -1,
+		GammaSugerido:      0,
+		MuOvertimeSugerido: 0,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "Mosaic Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
 			{ID: 1, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
@@ -892,11 +1015,14 @@ func presetJBS() Preset {
 			"Salvador (mais distante mas tem baldeação), Vitória.",
 		LambdaSugerido: 2,
 		ModoSugerido:   "osrm",
-		FitnessNota: "Cadeia fria + longa distância. λ alto (2) penaliza fortemente tours " +
-			"com algum trecho monstruoso, porque a carne pode estragar e o motorista " +
-			"precisa de descanso pago pelas regras da ANTT. OSRM porque caminhão refrigerado " +
-			"de 20 ton tem rotas obrigatórias por BR.",
-		LastVisit: -1,
+		FitnessNota: "Cadeia fria + longa distância. γ alto (50 km/h equiv) porque carne " +
+			"refrigerada estraga em horas — tempo manda. λ alto (2) penaliza tours com " +
+			"algum trecho monstruoso. μ alto (50) porque tour > 10h obriga troca de " +
+			"motorista (descanso ANTT). OSRM porque caminhão refrigerado de 20 ton tem " +
+			"rotas obrigatórias por BR.",
+		LastVisit:          -1,
+		GammaSugerido:      50,
+		MuOvertimeSugerido: 50,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "JBS Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
 			{ID: 1, Nome: "Belo Horizonte", UF: "MG", Lat: -19.9167, Lng: -43.9345},
@@ -936,14 +1062,16 @@ func presetCargillSoja() Preset {
 			"volta a Rondonópolis depois de descarregar) porque é o que o TSP modela.",
 		LambdaSugerido: 1,
 		ModoSugerido:   "osrm",
-		FitnessNota: "Soja é peso → minimizar quilometragem total é o que importa pro fretista. " +
-			"λ = 1 leve dá uma penalizadinha em trecho gigante (motorista da ANTT precisa " +
-			"de descanso obrigatório a cada 5h30 dirigindo). Modo OSRM essencial pra " +
-			"refletir o corredor BR-163 / BR-364 / BR-153 que o caminhão de fato usa. " +
-			"Restrição extra: Porto de Santos é o último ponto da rota antes de voltar " +
-			"a Rondonópolis (caminhão coleta cheio, descarrega no porto, volta vazio).",
-		LastVisit:     10,
-		LastVisitNome: "Porto de Santos",
+		FitnessNota: "Soja é peso → distância manda; γ baixo (20 km/h equiv) só pra " +
+			"considerar tempo no equilíbrio. μ ALTO (80 km/h² equiv) porque o tour bate " +
+			"~24h dirigindo — explode a fitness, forçando o GA a aceitar que essa rota " +
+			"NÃO cabe em uma jornada única (tem que trocar motorista, pernoitar, ou usar " +
+			"comboio). É o famoso problema real do agro brasileiro. " +
+			"Restrição extra: Porto de Santos é o último ponto antes de voltar a Rondonópolis.",
+		LastVisit:          10,
+		LastVisitNome:      "Porto de Santos",
+		GammaSugerido:      20,
+		MuOvertimeSugerido: 80,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "Cargill Rondonópolis", UF: "MT", Lat: -16.4706, Lng: -54.6353},
 			{ID: 1, Nome: "Sorriso", UF: "MT", Lat: -12.5450, Lng: -55.7211},
@@ -983,8 +1111,12 @@ func presetADMMilho() Preset {
 		ModoSugerido:   "osrm",
 		FitnessNota: "Milho a granel é peso, minimizar km importa. λ = 1 modesto pra " +
 			"penalizar trecho fora da curva — o motorista volta no mesmo dia, então cada " +
-			"km a mais empurra a janela de descarga e diminui ciclos por dia.",
-		LastVisit: -1,
+			"km a mais empurra a janela de descarga e diminui ciclos por dia. " +
+			"γ baixo (15 km/h equiv) porque o tempo importa mas não tanto quanto pra " +
+			"cold-chain.",
+		LastVisit:          -1,
+		GammaSugerido:      15,
+		MuOvertimeSugerido: 0,
 		Cidades: []Cidade{
 			{ID: 0, Nome: "ADM Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
 			{ID: 1, Nome: "Patrocínio", UF: "MG", Lat: -18.9442, Lng: -46.9931},

@@ -63,47 +63,52 @@ type osrmTableResp struct {
 	Durations [][]float64 `json:"durations"` // segundos
 }
 
-// FetchOSRMMatrix — matriz N×N em km. Faz uma requisição /table só.
-func FetchOSRMMatrix(cidades []Cidade) ([][]float64, error) {
+// FetchOSRMMatrices — busca matrizes N×N de distância (km) e duração (segundos)
+// em uma única chamada. Antes vinha só distância (annotations=distance);
+// agora pegamos ambas pra alimentar fitness com termos de tempo.
+func FetchOSRMMatrices(cidades []Cidade) (matDist, matDur [][]float64, err error) {
 	if len(cidades) < 2 {
-		return nil, errors.New("matriz OSRM precisa de >= 2 cidades")
+		return nil, nil, errors.New("matriz OSRM precisa de >= 2 cidades")
 	}
 	if len(cidades) > 100 {
-		return nil, errors.New("OSRM demo aceita no máximo 100 cidades por requisição")
+		return nil, nil, errors.New("OSRM demo aceita no máximo 100 cidades por requisição")
 	}
-	url := fmt.Sprintf("%s/table/v1/driving/%s?annotations=distance",
+	url := fmt.Sprintf("%s/table/v1/driving/%s?annotations=distance,duration",
 		osrmBaseURL, formatCoords(cidades, nil))
 
-	resp, err := osrmHTTP.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("OSRM table: %w", err)
+	resp, e := osrmHTTP.Get(url)
+	if e != nil {
+		return nil, nil, fmt.Errorf("OSRM table: %w", e)
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OSRM table HTTP %d: %s", resp.StatusCode, string(body))
+		return nil, nil, fmt.Errorf("OSRM table HTTP %d: %s", resp.StatusCode, string(body))
 	}
 	var data osrmTableResp
-	if err := json.Unmarshal(body, &data); err != nil {
-		return nil, fmt.Errorf("OSRM table parse: %w", err)
+	if e := json.Unmarshal(body, &data); e != nil {
+		return nil, nil, fmt.Errorf("OSRM table parse: %w", e)
 	}
 	if data.Code != "Ok" {
-		return nil, fmt.Errorf("OSRM table erro: %s — %s", data.Code, data.Message)
+		return nil, nil, fmt.Errorf("OSRM table erro: %s — %s", data.Code, data.Message)
 	}
-	if len(data.Distances) != len(cidades) {
-		return nil, fmt.Errorf("OSRM table tamanho inesperado: %d (esperado %d)", len(data.Distances), len(cidades))
+	n := len(cidades)
+	if len(data.Distances) != n || len(data.Durations) != n {
+		return nil, nil, fmt.Errorf("OSRM table tamanho inesperado: dist=%d dur=%d (esperado %d)",
+			len(data.Distances), len(data.Durations), n)
 	}
-	// metros → km
-	n := len(data.Distances)
-	matriz := make([][]float64, n)
-	for i := range matriz {
-		matriz[i] = make([]float64, n)
+	matDist = make([][]float64, n)
+	matDur = make([][]float64, n)
+	for i := 0; i < n; i++ {
+		matDist[i] = make([]float64, n)
+		matDur[i] = make([]float64, n)
 		for j := 0; j < n; j++ {
-			matriz[i][j] = data.Distances[i][j] / 1000.0
+			matDist[i][j] = data.Distances[i][j] / 1000.0 // metros → km
+			matDur[i][j] = data.Durations[i][j]            // já em segundos
 		}
 	}
-	return matriz, nil
+	return matDist, matDur, nil
 }
 
 // =============================================================================

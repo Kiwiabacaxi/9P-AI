@@ -479,6 +479,8 @@ export interface TspPreset {
   fitnessNota: string;
   lastVisit: number;
   lastVisitNome?: string;
+  gammaSugerido: number;
+  muOvertimeSugerido: number;
 }
 
 // Versão resumida pra dropdown (sem cidades).
@@ -509,6 +511,9 @@ export interface TspConfig {
   elitismo: number;
   lambdaMaxLeg: number;
   lastVisit: number;
+  gamma: number;          // peso do tempo (km/h equivalente)
+  jornadaMaxSec: number;  // jornada máxima em segundos (default 36000 = 10h)
+  muOvertime: number;     // coef. da penalidade quadrática de overtime
   seed?: number;
 }
 
@@ -517,6 +522,7 @@ export interface TspStep {
   melhorTour: number[];
   melhorDist: number;
   melhorMaxLeg: number;
+  melhorTempoSec: number;
   melhorCusto: number;
   mediaDist: number;
   piorDist: number;
@@ -530,6 +536,7 @@ export interface TspResult {
   melhorTour: number[];
   melhorDist: number;
   melhorMaxLeg: number;
+  melhorTempoSec: number;
   melhorCusto: number;
   histMelhor: number[];
   histMedia: number[];

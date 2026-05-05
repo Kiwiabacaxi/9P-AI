@@ -127,17 +127,25 @@ var (
 	ga2Training bool
 
 	// TSP (Aula 12 — caixeiro viajante)
-	tspCidades  []tsp.Cidade
-	tspMatriz   [][]float64
-	tspDistMode string
-	tspCfg      *tsp.Config
-	tspRes      *tsp.Result
-	tspTraining bool
+	tspCidades       []tsp.Cidade
+	tspMatriz        [][]float64 // matriz de distância (km)
+	tspMatrizDuracao [][]float64 // matriz de duração (segundos) — pode ser nil em modo Euclidiano
+	tspDistMode      string
+	tspCfg           *tsp.Config
+	tspRes           *tsp.Result
+	tspTraining      bool
 
 	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
-	tspOsrmMatrixCache = map[string][][]float64{}
+	// Pra OSRM cacheamos as DUAS matrizes juntas (distância + duração).
+	tspOsrmMatrixCache = map[string]osrmCacheEntry{}
 	tspOsrmRouteCache  = map[string]*tsp.RouteGeometry{}
 )
+
+// osrmCacheEntry — par (distância, duração) cacheado por hash do conjunto.
+type osrmCacheEntry struct {
+	Dist [][]float64
+	Dur  [][]float64
+}
 
 func init() {
 	hebbRedes = make(map[string]*hebb.HebbResult)
@@ -1873,31 +1881,39 @@ func handleTspDistancias(w http.ResponseWriter, r *http.Request) {
 	copy(cidadesSnap, tspCidades)
 	mu.Unlock()
 
-	var matriz [][]float64
+	var matDist, matDur [][]float64
 	if req.Modo == tsp.DistOSRM {
 		key := hashCidades(cidadesSnap)
 		mu.RLock()
 		cached, ok := tspOsrmMatrixCache[key]
 		mu.RUnlock()
 		if ok {
-			matriz = cached
+			matDist, matDur = cached.Dist, cached.Dur
 		} else {
-			m, err := tsp.FetchOSRMMatrix(cidadesSnap)
+			d, t, err := tsp.FetchOSRMMatrices(cidadesSnap)
 			if err != nil {
 				errJSON(w, http.StatusBadGateway, "OSRM falhou: "+err.Error())
 				return
 			}
-			matriz = m
+			matDist, matDur = d, t
 			mu.Lock()
-			tspOsrmMatrixCache[key] = m
+			tspOsrmMatrixCache[key] = osrmCacheEntry{Dist: d, Dur: t}
 			mu.Unlock()
 		}
+	} else if req.Modo == tsp.DistEuclidiana {
+		// Euclidiana: distâncias em "graus", não traduz pra tempo de jeito coerente.
+		// Mantemos matDur = nil; avaliar() ignora termos de tempo nesse modo.
+		matDist = tsp.CalcularMatrizDistancias(cidadesSnap, req.Modo)
+		matDur = nil
 	} else {
-		matriz = tsp.CalcularMatrizDistancias(cidadesSnap, req.Modo)
+		// Haversine: distâncias em km. Sintetizamos duração via 70 km/h média.
+		matDist = tsp.CalcularMatrizDistancias(cidadesSnap, req.Modo)
+		matDur = tsp.SintetizarMatrizDuracao(matDist)
 	}
 
 	mu.Lock()
-	tspMatriz = matriz
+	tspMatriz = matDist
+	tspMatrizDuracao = matDur
 	tspDistMode = req.Modo
 	mu.Unlock()
 
@@ -1978,6 +1994,7 @@ func handleTspTrain(w http.ResponseWriter, r *http.Request) {
 		cfg = &def
 	}
 	matriz := tspMatriz
+	matDur := tspMatrizDuracao
 	tspTraining = true
 	mu.Unlock()
 
@@ -1998,7 +2015,7 @@ func handleTspTrain(w http.ResponseWriter, r *http.Request) {
 	useCfg := *cfg
 	progressCh := make(chan tsp.Step, 64)
 	go func() {
-		res := tsp.Treinar(progressCh, useCfg, matriz)
+		res := tsp.Treinar(progressCh, useCfg, matriz, matDur)
 		mu.Lock()
 		tspRes = &res
 		tspTraining = false

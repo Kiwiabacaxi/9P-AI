@@ -75,6 +75,24 @@ const ELITE_OPTIONS = [
   { value: '4', label: 'p = 4' },
 ];
 
+const GAMMA_OPTIONS = [
+  { value: '0',   label: 'γ = 0  (sem peso)' },
+  { value: '15',  label: 'γ = 15' },
+  { value: '20',  label: 'γ = 20' },
+  { value: '30',  label: 'γ = 30' },
+  { value: '50',  label: 'γ = 50  (cold-chain)' },
+  { value: '60',  label: 'γ = 60' },
+  { value: '100', label: 'γ = 100  (tempo manda)' },
+];
+
+const MU_OPTIONS = [
+  { value: '10',  label: 'μ = 10  (leve)' },
+  { value: '30',  label: 'μ = 30' },
+  { value: '50',  label: 'μ = 50  (médio)' },
+  { value: '80',  label: 'μ = 80  (forte)' },
+  { value: '150', label: 'μ = 150  (proibitivo)' },
+];
+
 const LAMBDA_OPTIONS = [
   { value: '0',   label: 'λ = 0  (TSP puro)' },
   { value: '0.5', label: 'λ = 0.5' },
@@ -122,12 +140,19 @@ export default function TspView() {
   // Restrição lógica do cenário: cidade que deve ser visitada por último
   // (ex.: porto de descarga). -1 = sem restrição. Vem do preset.
   const [lastVisit, setLastVisit] = useState<number>(-1);
+  // γ — peso do tempo na fitness (km equiv por hora). Vem do preset.
+  const [gamma, setGamma] = useState<string>('0');
+  // μ — coef. da penalidade de overtime (jornada > 10h). Vem do preset.
+  const [muOvertime, setMuOvertime] = useState<string>('0');
+  // Toggle do limite de jornada (10h). Quando off, μ=0 efetivo.
+  const [jornadaAtiva, setJornadaAtiva] = useState<boolean>(false);
 
   // Training state
   const [training, setTraining] = useState(false);
   const [geracao, setGeracao] = useState<string>('—');
   const [melhorDist, setMelhorDist] = useState<string>('—');
   const [melhorMaxLeg, setMelhorMaxLeg] = useState<string>('—');
+  const [melhorTempo, setMelhorTempo] = useState<string>('—');
   const [melhorCusto, setMelhorCusto] = useState<string>('—');
   const [diversidade, setDiversidade] = useState<string>('—');
 
@@ -209,6 +234,9 @@ export default function TspView() {
     if (opts?.aplicarSugestoes !== false) {
       setDistMode(modoEfetivo);
       setLambdaMaxLeg(String(p.lambdaSugerido));
+      setGamma(String(p.gammaSugerido ?? 0));
+      setMuOvertime(String(p.muOvertimeSugerido ?? 0));
+      setJornadaAtiva((p.muOvertimeSugerido ?? 0) > 0);
     }
     // A restrição "última visita" é parte da definição do cenário, não uma
     // sugestão — sempre aplica.
@@ -287,6 +315,7 @@ export default function TspView() {
     setGeracao('—');
     setMelhorDist('—');
     setMelhorMaxLeg('—');
+    setMelhorTempo('—');
     setMelhorCusto('—');
     setDiversidade('—');
     setTourAtual([]);
@@ -333,6 +362,9 @@ export default function TspView() {
       elitismo: parseInt(elitismo),
       lambdaMaxLeg: parseFloat(lambdaMaxLeg),
       lastVisit,
+      gamma: parseFloat(gamma),
+      jornadaMaxSec: 36000, // 10h fixo (regulamentação ANTT)
+      muOvertime: jornadaAtiva ? parseFloat(muOvertime) : 0,
     };
 
     try {
@@ -351,6 +383,9 @@ export default function TspView() {
         setGeracao(step.geracao.toLocaleString());
         setMelhorDist(`${step.melhorDist.toFixed(1)} ${unidade}`);
         setMelhorMaxLeg(`${step.melhorMaxLeg.toFixed(1)} ${unidade}`);
+        setMelhorTempo(step.melhorTempoSec > 0
+          ? `${(step.melhorTempoSec / 3600).toFixed(1)} h`
+          : '—');
         setMelhorCusto(`${step.melhorCusto.toFixed(1)} ${unidade}`);
         setDiversidade(`${step.diversidade}/${cfg.popSize}`);
         setMaxGen(step.geracao);
@@ -369,6 +404,9 @@ export default function TspView() {
         setGeracao(r.geracoes.toLocaleString());
         setMelhorDist(`${r.melhorDist.toFixed(1)} ${unidade}`);
         setMelhorMaxLeg(`${r.melhorMaxLeg.toFixed(1)} ${unidade}`);
+        setMelhorTempo(r.melhorTempoSec > 0
+          ? `${(r.melhorTempoSec / 3600).toFixed(1)} h`
+          : '—');
         setMelhorCusto(`${r.melhorCusto.toFixed(1)} ${unidade}`);
         setTourGlobal(r.melhorTour);
         setGlobalDist(r.melhorDist);
@@ -409,6 +447,7 @@ export default function TspView() {
     setGeracao('—');
     setMelhorDist('—');
     setMelhorMaxLeg('—');
+    setMelhorTempo('—');
     setMelhorCusto('—');
     setDiversidade('—');
     setTourAtual([]);
@@ -606,35 +645,100 @@ export default function TspView() {
             color: 'var(--on-surface)',
           }}>
             <div>fitness(tour) = <span style={{ color: 'var(--cyan)' }}>−custo(tour)</span></div>
-            <div>custo(tour) = <span style={{ color: 'var(--pink)' }}>Σ d(c<sub>i</sub>, c<sub>i+1</sub>)</span> + <span style={{ color: 'var(--pink)' }}>λ · max d(c<sub>i</sub>, c<sub>i+1</sub>)</span></div>
+            <div>custo(tour) = <span style={{ color: 'var(--pink)' }}>Σ d(c<sub>i</sub>, c<sub>i+1</sub>)</span>
+              {' '}+ <span style={{ color: 'var(--pink)' }}>λ · max d(c<sub>i</sub>, c<sub>i+1</sub>)</span>
+              {lastVisit >= 0 && (
+                <> {' '}+ <span style={{ color: '#ffaa00' }}>ω · desvio<sub>lastVisit</sub></span></>
+              )}
+              {parseFloat(gamma) > 0 && (
+                <> {' '}+ <span style={{ color: 'var(--primary-glow)' }}>γ · T<sub>h</sub></span></>
+              )}
+              {jornadaAtiva && parseFloat(muOvertime) > 0 && (
+                <> {' '}+ <span style={{ color: '#ff8800' }}>μ · max(0, T − T<sub>max</sub>)²</span></>
+              )}
+            </div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-              soma fechada (volta a c<sub>0</sub>); d = haversine ou euclidiana, conforme o modo escolhido
+              soma fechada (volta a c<sub>0</sub>); d em km (haversine/OSRM) ou graus (euclidiana);
+              T = tempo em horas (real OSRM ou sintetizado a 70 km/h)
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+
+          {/* Linha 1: λ + γ */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ flex: '0 0 auto', minWidth: 200 }}>
               <Select
-                label="λ (tempero — penaliza max-leg)"
+                label="λ (penaliza max-leg)"
                 options={LAMBDA_OPTIONS}
                 value={lambdaMaxLeg}
                 onChange={setLambdaMaxLeg}
                 style={{ width: '100%' }}
               />
             </div>
+            <div style={{ flex: '0 0 auto', minWidth: 200 }}>
+              <Select
+                label="γ (peso do tempo, km/h equiv)"
+                options={GAMMA_OPTIONS}
+                value={gamma}
+                onChange={setGamma}
+                style={{ width: '100%' }}
+              />
+            </div>
             <div style={{
-              flex: 1, fontSize: 12, color: 'var(--muted)',
-              fontFamily: 'JetBrains Mono', lineHeight: 1.6, minWidth: 280,
+              flex: 1, fontSize: 11, color: 'var(--muted)',
+              fontFamily: 'JetBrains Mono', lineHeight: 1.6, minWidth: 240,
             }}>
-              <b>λ = 0:</b> TSP clássico — só minimiza distância total.<br />
-              <b>λ &gt; 0:</b> também penaliza tours com algum trecho muito longo.
-              Útil pra cenários reais onde o motorista tem autonomia limitada,
-              precisa parar pra descanso ou prefere balancear paradas.
-              {parseFloat(lambdaMaxLeg) > 0 && (
+              <b>γ = 0:</b> só conta distância — TSP clássico.<br />
+              <b>γ &gt; 0:</b> cada hora de tour custa γ km na fitness. Útil
+              em cold-chain (leite/carne) onde tempo importa mais que km.
+              {parseFloat(gamma) > 0 && melhorTempo !== '—' && (
                 <>
                   <br />
-                  <span style={{ color: 'var(--cyan)' }}>
-                    Cada {unidade === 'km' ? 'km' : 'grau'} a mais no maior trecho custa <b>{lambdaMaxLeg} {unidade}</b> equivalentes na fitness.
+                  <span style={{ color: 'var(--primary-glow)' }}>
+                    Tempo atual: <b>{melhorTempo}</b> · custo do tempo: <b>≈ {(parseFloat(gamma) * (parseFloat(melhorTempo) || 0)).toFixed(0)} km equiv</b>
                   </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Linha 2: jornada (overtime) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+              fontSize: 12, fontFamily: 'JetBrains Mono',
+              color: jornadaAtiva ? 'var(--cyan)' : 'var(--muted)',
+            }}>
+              <input
+                type="checkbox"
+                checked={jornadaAtiva}
+                onChange={e => setJornadaAtiva(e.target.checked)}
+                style={{ accentColor: 'var(--cyan)' }}
+              />
+              limitar jornada motorista (10h ANTT)
+            </label>
+            {jornadaAtiva && (
+              <div style={{ minWidth: 180 }}>
+                <Select
+                  label="μ (overtime, km/h² equiv)"
+                  options={MU_OPTIONS}
+                  value={muOvertime}
+                  onChange={setMuOvertime}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
+            <div style={{
+              flex: 1, fontSize: 11, color: 'var(--muted)',
+              fontFamily: 'JetBrains Mono', lineHeight: 1.6, minWidth: 240,
+            }}>
+              {jornadaAtiva ? (
+                <>
+                  Cada hora além de 10h custa μ · h² na fitness (quadrático). Usar pra
+                  forçar tours que cabem num único turno do motorista.
+                </>
+              ) : (
+                <>
+                  Sem limite de jornada — tours podem chegar a 24h+ sem penalidade.
                 </>
               )}
             </div>
@@ -652,17 +756,19 @@ export default function TspView() {
           pulse={training}
         />
         <MetricCard
-          title={parseFloat(lambdaMaxLeg) > 0 ? 'Custo' : 'Distância'}
-          value={parseFloat(lambdaMaxLeg) > 0 ? melhorCusto : melhorDist}
-          label={parseFloat(lambdaMaxLeg) > 0
-            ? `dist + λ·max-leg (real: ${melhorDist})`
+          title={(parseFloat(lambdaMaxLeg) > 0 || parseFloat(gamma) > 0 || (jornadaAtiva && parseFloat(muOvertime) > 0))
+            ? 'Custo' : 'Distância'}
+          value={(parseFloat(lambdaMaxLeg) > 0 || parseFloat(gamma) > 0 || (jornadaAtiva && parseFloat(muOvertime) > 0))
+            ? melhorCusto : melhorDist}
+          label={(parseFloat(lambdaMaxLeg) > 0 || parseFloat(gamma) > 0 || (jornadaAtiva && parseFloat(muOvertime) > 0))
+            ? `fitness com penalidades (real: ${melhorDist})`
             : 'tour mais curto da geração'}
           color="cyan"
         />
         <MetricCard
-          title="Maior trecho"
-          value={melhorMaxLeg}
-          label="leg mais longo do tour"
+          title="Tempo · Maior trecho"
+          value={`${melhorTempo} · ${melhorMaxLeg}`}
+          label="duração total · leg mais longo"
         />
       </div>
 

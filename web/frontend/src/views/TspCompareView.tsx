@@ -202,6 +202,7 @@ export default function TspCompareView() {
         selecao: 'torneio', tamanhoTorneio: 4,
         cruzamento: 'ox', mutacao: 'inversao',
         elitismo: 2, lambdaMaxLeg: 0, lastVisit: -1,
+        gamma: 0, jornadaMaxSec: 36000, muOvertime: 0,
       };
       await apiPost('/tsp/config', cfg);
 
