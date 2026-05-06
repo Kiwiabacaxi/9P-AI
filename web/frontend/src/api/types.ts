@@ -30,6 +30,8 @@ export interface AppStatus {
   ga2Training: boolean;
   tspTrained: boolean;
   tspTraining: boolean;
+  matchingTrained: boolean;
+  matchingTraining: boolean;
 }
 
 // Hebb
@@ -576,10 +578,127 @@ export interface TspRouteGeometry {
   duracao: number;               // segundos totais
 }
 
+// Matching Marketplace (Etapa 1)
+export interface MatchingProducer {
+  id: number;
+  nome: string;
+  municipio: string;
+  uf: string;
+  lat: number;
+  lng: number;
+}
+
+export interface MatchingLot {
+  id: number;
+  producerId: number;
+  volumeT: number;
+  proteina: number;
+  umidade: number;
+  impurezas: number;
+  precoReserva: number;
+  janelaSemana: number;
+}
+
+export interface MatchingTrader {
+  id: number;
+  nome: string;
+  cor: string;
+  hubMunicipio: string;
+  hubLat: number;
+  hubLng: number;
+  capacidadeT: number;
+  proteinaMin: number;
+  umidadeMax: number;
+  impurezasMax: number;
+  precoMaximo: number;
+  janelaSemana: number;
+}
+
+export interface MatchingScenario {
+  id: string;
+  nome: string;
+  descricao: string;
+  producers: MatchingProducer[];
+  lots: MatchingLot[];
+  traders: MatchingTrader[];
+  precoBase: number;
+  portLat: number;
+  portLng: number;
+}
+
+export interface MatchingScenarioMeta {
+  id: string;
+  nome: string;
+  descricao: string;
+}
+
+export interface MatchingConfig {
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  tamanhoTorneio: number;
+  elitismo: number;
+  lambdaLog: number;
+  lambdaQual: number;
+  mBig: number;
+  seed?: number;
+}
+
+export interface MatchingTraderStats {
+  traderId: number;
+  volumeAlocadoT: number;
+  numLotes: number;
+  blendProteina: number;
+  blendUmidade: number;
+  blendImpurezas: number;
+  overCapacity: boolean;
+  underSpec: boolean;
+}
+
+export interface MatchingStep {
+  geracao: number;
+  melhorCrom: number[];
+  melhorFitness: number;
+  mediaFitness: number;
+  piorFitness: number;
+  melhorSuperavit: number;
+  melhorViolacoes: number;
+  traderStats: MatchingTraderStats[];
+  numMatched: number;
+}
+
+export interface MatchingResult {
+  geracoes: number;
+  melhorCrom: number[];
+  melhorFitness: number;
+  histMelhor: number[];
+  histMedia: number[];
+  cfg: MatchingConfig;
+  scenarioId: string;
+}
+
+export interface MatchingFitnessBreakdown {
+  Fitness: number;
+  SuperavitTotal: number;
+  CustoLogTotal: number;
+  PenalidadeQual: number;
+  Violacoes: number;
+  NumMatched: number;
+  TraderStats: MatchingTraderStats[];
+}
+
+export interface MatchingBaselineResp {
+  algoritmo: string;
+  chromosome: number[];
+  breakdown: MatchingFitnessBreakdown;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
   | 'genetico' | 'genetico2' | 'tsp' | 'tsp-compare'
+  | 'matching'
   | 'about';
