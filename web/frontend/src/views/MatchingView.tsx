@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { apiGet, apiPost } from '../api/client';
-import type { MatchingScenario, MatchingScenarioMeta } from '../api/types';
+import { apiGet, apiPost, apiSSE } from '../api/client';
+import type {
+  MatchingScenario, MatchingScenarioMeta,
+  MatchingStep, MatchingResult,
+  MatchingBaselineResp,
+} from '../api/types';
 import MatchingMap from '../components/viz/MatchingMap';
 
 export default function MatchingView() {
@@ -9,6 +13,11 @@ export default function MatchingView() {
   const [scenario, setScenario] = useState<MatchingScenario | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [training, setTraining] = useState(false);
+  const [step, setStep] = useState<MatchingStep | null>(null);
+  const [result, setResult] = useState<MatchingResult | null>(null);
+  const [baseline, setBaseline] = useState<MatchingBaselineResp | null>(null);
 
   useEffect(() => {
     apiGet<MatchingScenarioMeta[]>('/matching/scenarios')
@@ -21,7 +30,7 @@ export default function MatchingView() {
 
   async function loadScenario() {
     if (!scenarioId) return;
-    setLoading(true); setErr(null);
+    setLoading(true); setErr(null); setStep(null); setResult(null); setBaseline(null);
     try {
       const s = await apiPost<MatchingScenario>('/matching/scenario', { id: scenarioId, seed: 42 });
       setScenario(s);
@@ -29,6 +38,34 @@ export default function MatchingView() {
       setErr(String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  function startTrain() {
+    if (!scenario) return;
+    setTraining(true); setStep(null); setResult(null); setErr(null);
+    const stop = apiSSE('/matching/train', {
+      onMessage: (data: unknown) => setStep(data as MatchingStep),
+      onDone: (data: unknown) => {
+        setResult(data as MatchingResult);
+        setTraining(false);
+      },
+      onError: () => {
+        setErr('erro no streaming');
+        setTraining(false);
+      },
+    });
+    void stop;
+  }
+
+  async function runBaseline() {
+    if (!scenario) return;
+    setErr(null);
+    try {
+      const r = await apiPost<MatchingBaselineResp>('/matching/baseline', { algoritmo: 'greedy' });
+      setBaseline(r);
+    } catch (e) {
+      setErr(String(e));
     }
   }
 
@@ -53,7 +90,7 @@ export default function MatchingView() {
           </select>
           <button
             onClick={loadScenario}
-            disabled={loading || !scenarioId}
+            disabled={loading || !scenarioId || training}
             style={{ marginTop: 8, width: '100%' }}
           >
             {loading ? 'Carregando…' : 'Carregar cenário'}
@@ -74,10 +111,57 @@ export default function MatchingView() {
             </ul>
           </div>
         )}
+
+        {scenario && (
+          <div style={{ marginTop: 16 }}>
+            <button
+              onClick={startTrain}
+              disabled={training}
+              style={{ width: '100%', marginBottom: 4 }}
+            >
+              {training ? `Treinando… (gen ${step?.geracao ?? 0})` : 'Treinar GA'}
+            </button>
+            <button onClick={runBaseline} disabled={training} style={{ width: '100%' }}>
+              Rodar baseline (greedy)
+            </button>
+          </div>
+        )}
+
+        {step && (
+          <div style={{ marginTop: 16, fontSize: 12 }}>
+            <h3 style={{ fontSize: 13 }}>Geração {step.geracao}</h3>
+            <div>fitness: {step.melhorFitness.toFixed(0)}</div>
+            <div>superávit: R${step.melhorSuperavit.toFixed(0)}</div>
+            <div>matched: {step.numMatched}/{scenario?.lots.length ?? 0}</div>
+            <div>violações: {step.melhorViolacoes}</div>
+          </div>
+        )}
+
+        {baseline && (
+          <div style={{ marginTop: 16, fontSize: 12, padding: 8, background: '#f6f6f6' }}>
+            <h3 style={{ fontSize: 13 }}>Baseline (greedy)</h3>
+            <div>fitness: {baseline.breakdown.Fitness.toFixed(0)}</div>
+            <div>superávit: R${baseline.breakdown.SuperavitTotal.toFixed(0)}</div>
+            <div>matched: {baseline.breakdown.NumMatched}</div>
+            <div>violações: {baseline.breakdown.Violacoes}</div>
+          </div>
+        )}
+
+        {result && !training && (
+          <div style={{ marginTop: 16, fontSize: 12, padding: 8, background: '#eef9f4' }}>
+            <h3 style={{ fontSize: 13 }}>Resultado final</h3>
+            <div>gerações: {result.geracoes}</div>
+            <div>fitness: {result.melhorFitness.toFixed(0)}</div>
+          </div>
+        )}
       </aside>
 
       <div className="matching-map-area" style={{ height: '100%', minHeight: 500 }}>
-        <MatchingMap scenario={scenario} chromosome={null} traderStats={null} />
+        <MatchingMap
+          scenario={scenario}
+          chromosome={step?.melhorCrom ?? result?.melhorCrom ?? null}
+          traderStats={step?.traderStats ?? null}
+        />
       </div>
     </div>
   );
