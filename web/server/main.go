@@ -24,6 +24,7 @@ import (
 	"mlp-server/cnn"
 	"mlp-server/genetico"
 	"mlp-server/genetico2"
+	"mlp-server/matching"
 	"mlp-server/timeseries"
 	"mlp-server/tsp"
 	perceptronletras "mlp-server/perceptron_letras"
@@ -126,6 +127,12 @@ var (
 	ga2Res      *genetico2.Result
 	ga2Training bool
 
+	// matching marketplace
+	matchingScenario *matching.Scenario
+	matchingCfg      *matching.Config
+	matchingRes      *matching.Result
+	matchingTraining bool
+
 	// TSP (Aula 12 — caixeiro viajante)
 	tspCidades       []tsp.Cidade
 	tspMatriz        [][]float64 // matriz de distância (km)
@@ -211,6 +218,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		Ga2Training     bool `json:"ga2Training"`
 		TspTrained      bool `json:"tspTrained"`
 		TspTraining     bool `json:"tspTraining"`
+		MatchingTrained  bool `json:"matchingTrained"`
+		MatchingTraining bool `json:"matchingTraining"`
 	}
 	writeJSON(w, http.StatusOK, status{
 		MLPTrained:      mlpRede != nil,
@@ -237,6 +246,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		Ga2Training:     ga2Training,
 		TspTrained:      tspRes != nil,
 		TspTraining:     tspTraining,
+		MatchingTrained:  matchingRes != nil,
+		MatchingTraining: matchingTraining,
 	})
 }
 
@@ -2131,6 +2142,174 @@ func handleTspBaseline(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// =============================================================================
+// Matching Marketplace
+// =============================================================================
+
+func handleMatchingScenarios(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, matching.ListScenarios())
+}
+
+func handleMatchingScenario(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		errJSON(w, http.StatusMethodNotAllowed, "use POST")
+		return
+	}
+	var body struct {
+		ID   string `json:"id"`
+		Seed int64  `json:"seed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errJSON(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	s, ok := matching.BuildScenario(body.ID, body.Seed)
+	if !ok {
+		errJSON(w, http.StatusBadRequest, "scenario id desconhecido")
+		return
+	}
+	mu.Lock()
+	matchingScenario = &s
+	matchingRes = nil
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, s)
+}
+
+func handleMatchingConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		mu.RLock()
+		cfg := matching.DefaultConfig()
+		if matchingCfg != nil {
+			cfg = *matchingCfg
+		}
+		mu.RUnlock()
+		writeJSON(w, http.StatusOK, cfg)
+		return
+	}
+	if r.Method == http.MethodPost {
+		var cfg matching.Config
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			errJSON(w, http.StatusBadRequest, "json invalido")
+			return
+		}
+		mu.Lock()
+		matchingCfg = &cfg
+		mu.Unlock()
+		writeJSON(w, http.StatusOK, cfg)
+		return
+	}
+	errJSON(w, http.StatusMethodNotAllowed, "use GET ou POST")
+}
+
+func handleMatchingTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if matchingTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento ja em andamento")
+		return
+	}
+	if matchingScenario == nil {
+		mu.Unlock()
+		errJSON(w, http.StatusBadRequest, "carregue cenario primeiro: POST /api/matching/scenario")
+		return
+	}
+	cfg := matching.DefaultConfig()
+	if matchingCfg != nil {
+		cfg = *matchingCfg
+	}
+	scen := *matchingScenario
+	matchingTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		matchingTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming nao suportado")
+		return
+	}
+
+	progressCh := make(chan matching.Step, 64)
+	go func() {
+		res := matching.Treinar(progressCh, scen, cfg)
+		mu.Lock()
+		matchingRes = &res
+		matchingTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := matchingRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleMatchingBaseline(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	scen := matchingScenario
+	mu.RUnlock()
+	if scen == nil {
+		errJSON(w, http.StatusBadRequest, "carregue cenario primeiro")
+		return
+	}
+	var body struct {
+		Algoritmo string `json:"algoritmo"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Algoritmo == "" {
+		body.Algoritmo = "greedy"
+	}
+	switch body.Algoritmo {
+	case "greedy":
+		c, br := matching.GreedyByReserve(*scen)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"algoritmo":  body.Algoritmo,
+			"chromosome": c,
+			"breakdown":  br,
+		})
+	default:
+		errJSON(w, http.StatusBadRequest, "algoritmo desconhecido")
+	}
+}
+
+func handleMatchingReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	matchingScenario = nil
+	matchingRes = nil
+	matchingCfg = nil
+	matchingTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleMatchingResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := matchingRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "nenhum resultado ainda")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2263,6 +2442,15 @@ func main() {
 	mux.HandleFunc("/api/tsp/reset",      cors(handleTspReset))
 	mux.HandleFunc("/api/tsp/result",     cors(handleTspResult))
 	mux.HandleFunc("/api/tsp/baseline",   cors(handleTspBaseline))
+
+	// Matching Marketplace (Aula 13)
+	mux.HandleFunc("/api/matching/scenarios", cors(handleMatchingScenarios))
+	mux.HandleFunc("/api/matching/scenario",  cors(handleMatchingScenario))
+	mux.HandleFunc("/api/matching/config",    cors(handleMatchingConfig))
+	mux.HandleFunc("/api/matching/train",     cors(handleMatchingTrain))
+	mux.HandleFunc("/api/matching/baseline",  cors(handleMatchingBaseline))
+	mux.HandleFunc("/api/matching/reset",     cors(handleMatchingReset))
+	mux.HandleFunc("/api/matching/result",    cors(handleMatchingResult))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
