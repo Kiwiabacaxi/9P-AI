@@ -2,10 +2,78 @@ import { useEffect, useState } from 'react';
 import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
   MatchingScenario, MatchingScenarioMeta,
-  MatchingStep, MatchingResult,
+  MatchingStep, MatchingResult, MatchingTraderStats,
   MatchingBaselineResp,
 } from '../api/types';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip as RTooltip, ResponsiveContainer,
+} from 'recharts';
 import MatchingMap from '../components/viz/MatchingMap';
+
+function FitnessChart({ history }: { history: MatchingStep[] }) {
+  if (history.length === 0) return null;
+  const data = history.map(s => ({
+    gen: s.geracao,
+    melhor: s.melhorFitness,
+    media: s.mediaFitness,
+  }));
+  return (
+    <div style={{ height: 180, marginTop: 8 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="gen" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <RTooltip />
+          <Line type="monotone" dataKey="melhor" stroke="#2a9d8f" dot={false} />
+          <Line type="monotone" dataKey="media" stroke="#e9c46a" dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TraderCards({ scenario, traderStats }: {
+  scenario: MatchingScenario;
+  traderStats: MatchingTraderStats[] | null;
+}) {
+  if (!traderStats) return null;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h3 style={{ fontSize: 13 }}>Traders</h3>
+      {scenario.traders.map(t => {
+        const st = traderStats.find(s => s.traderId === t.id);
+        if (!st) return null;
+        const pct = (st.volumeAlocadoT / t.capacidadeT) * 100;
+        const status = st.overCapacity ? 'over' : st.underSpec ? 'under' : st.numLotes > 0 ? 'ok' : '—';
+        return (
+          <div key={t.id} style={{
+            padding: 8, marginBottom: 6,
+            border: `2px solid ${t.cor}`, borderRadius: 4, fontSize: 12,
+            background: st.overCapacity ? '#ffe6e6' : st.underSpec ? '#fff5e6' : 'white',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <strong style={{ color: t.cor }}>{t.nome}</strong>
+              <span>{status}</span>
+            </div>
+            <div style={{ marginTop: 4, height: 6, background: '#eee', borderRadius: 3 }}>
+              <div style={{
+                width: `${Math.min(pct, 100)}%`, height: '100%',
+                background: t.cor, borderRadius: 3,
+              }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, color: '#666' }}>
+              <span>{st.volumeAlocadoT.toFixed(0)}/{t.capacidadeT.toFixed(0)} t</span>
+              <span>{st.numLotes} lotes</span>
+            </div>
+            <div style={{ color: '#666' }}>blend prot: {st.blendProteina.toFixed(2)} (≥ {t.proteinaMin})</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function MatchingView() {
   const [scenarios, setScenarios] = useState<MatchingScenarioMeta[]>([]);
@@ -18,6 +86,7 @@ export default function MatchingView() {
   const [step, setStep] = useState<MatchingStep | null>(null);
   const [result, setResult] = useState<MatchingResult | null>(null);
   const [baseline, setBaseline] = useState<MatchingBaselineResp | null>(null);
+  const [history, setHistory] = useState<MatchingStep[]>([]);
 
   useEffect(() => {
     apiGet<MatchingScenarioMeta[]>('/matching/scenarios')
@@ -43,9 +112,13 @@ export default function MatchingView() {
 
   function startTrain() {
     if (!scenario) return;
-    setTraining(true); setStep(null); setResult(null); setErr(null);
+    setTraining(true); setStep(null); setResult(null); setErr(null); setHistory([]);
     const stop = apiSSE('/matching/train', {
-      onMessage: (data: unknown) => setStep(data as MatchingStep),
+      onMessage: (data: unknown) => {
+        const s = data as MatchingStep;
+        setStep(s);
+        setHistory(h => [...h, s]);
+      },
       onDone: (data: unknown) => {
         setResult(data as MatchingResult);
         setTraining(false);
@@ -134,6 +207,7 @@ export default function MatchingView() {
             <div>superávit: R${step.melhorSuperavit.toFixed(0)}</div>
             <div>matched: {step.numMatched}/{scenario?.lots.length ?? 0}</div>
             <div>violações: {step.melhorViolacoes}</div>
+            <FitnessChart history={history} />
           </div>
         )}
 
@@ -154,6 +228,8 @@ export default function MatchingView() {
             <div>fitness: {result.melhorFitness.toFixed(0)}</div>
           </div>
         )}
+
+        {scenario && step && <TraderCards scenario={scenario} traderStats={step.traderStats} />}
       </aside>
 
       <div className="matching-map-area" style={{ height: '100%', minHeight: 500 }}>
