@@ -229,14 +229,19 @@ export default function MatchingView() {
           </div>
         )}
 
-        {scenario && step && <TraderCards scenario={scenario} traderStats={step.traderStats} />}
+        {scenario && (step || result) && (
+          <TraderCards
+            scenario={scenario}
+            traderStats={step?.traderStats ?? result?.traderStats ?? null}
+          />
+        )}
       </aside>
 
       <div className="matching-map-area" style={{ height: '100%', minHeight: 500 }}>
         <MatchingMap
           scenario={scenario}
           chromosome={step?.melhorCrom ?? result?.melhorCrom ?? null}
-          traderStats={step?.traderStats ?? null}
+          traderStats={step?.traderStats ?? result?.traderStats ?? null}
         />
       </div>
     </div>

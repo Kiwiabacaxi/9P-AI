@@ -672,6 +672,8 @@ export interface MatchingResult {
   geracoes: number;
   melhorCrom: number[];
   melhorFitness: number;
+  melhorViolacoes: number;
+  traderStats: MatchingTraderStats[];
   histMelhor: number[];
   histMedia: number[];
   cfg: MatchingConfig;

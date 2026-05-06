@@ -241,14 +241,17 @@ func Treinar(progressCh chan<- Step, s Scenario, cfg Config) Result {
 		pop = newPop
 	}
 
+	finalBr := Evaluate(s, melhorGlobal, cfg)
 	return Result{
-		Geracoes:      cfg.MaxGeracoes,
-		MelhorCrom:    melhorGlobal,
-		MelhorFitness: melhorFitGlobal,
-		HistMelhor:    histMelhor,
-		HistMedia:     histMedia,
-		Cfg:           cfg,
-		ScenarioID:    s.ID,
+		Geracoes:        cfg.MaxGeracoes,
+		MelhorCrom:      melhorGlobal,
+		MelhorFitness:   melhorFitGlobal,
+		MelhorViolacoes: finalBr.Violacoes,
+		TraderStats:     finalBr.TraderStats,
+		HistMelhor:      histMelhor,
+		HistMedia:       histMedia,
+		Cfg:             cfg,
+		ScenarioID:      s.ID,
 	}
 }
 
