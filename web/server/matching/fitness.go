@@ -29,9 +29,10 @@ func premioProteina(proteina float64) float64 {
 	return delta * 1.0
 }
 
-// descontoLog: R$/saca = 0.05 * dist_km (≈ R$3/saca em 60km, escala ok pra demo).
+// descontoLog: R$/saca = 0.005 * dist_km. Calibrado para distâncias MT-GO→hubs (200..1500 km),
+// dando descontos R$1..R$7,50/saca — proporção razoável vs preço base R$138/saca.
 func descontoLog(distKm float64) float64 {
-	return 0.05 * distKm
+	return 0.005 * distKm
 }
 
 // PrecoPago calcula o preço por saca que trader j pagaria pelo lote i.

@@ -9,7 +9,14 @@ interface Props {
 
 export default function MatchingMap({ scenario, chromosome, traderStats }: Props) {
   if (!scenario) {
-    return <div className="map-empty">Carregue um cenário pra começar</div>;
+    return (
+      <div style={{
+        height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--muted)', fontSize: 13,
+      }}>
+        Carregue um cenário pra começar
+      </div>
+    );
   }
   const center: [number, number] = [-18, -52];
 
