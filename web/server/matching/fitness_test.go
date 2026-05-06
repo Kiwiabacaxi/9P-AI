@@ -70,3 +70,14 @@ func TestEvaluateAllToTrader0OverCapacity(t *testing.T) {
 		t.Errorf("expected at least 1 violation")
 	}
 }
+
+func TestGreedyBaselineRespectsCapacity(t *testing.T) {
+	s, _ := BuildScenario(ScenarioBalanceado, 42)
+	_, br := GreedyByReserve(s)
+	for j, st := range br.TraderStats {
+		if st.OverCapacity {
+			t.Errorf("greedy violou capacidade do trader %d (alocado=%.1f, cap=%.1f)",
+				j, st.VolumeAlocadoT, s.Traders[j].CapacidadeT)
+		}
+	}
+}
