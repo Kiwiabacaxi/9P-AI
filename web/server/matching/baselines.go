@@ -2,6 +2,38 @@ package matching
 
 import "sort"
 
+// HungarianUnconstrained: para cada lote, atribui ao trader que paga mais (ignora capacidade).
+// É a relaxação LP do problema sem restrição de capacidade — equivalente a Hungarian
+// na formulação 1-pra-1 estendida com dummies. Provavelmente viola capacidade
+// (todos vão pro trader mais generoso), mas serve como upper bound de superávit
+// não-restrito e mostra o custo de impor restrições.
+func HungarianUnconstrained(s Scenario) (Chromosome, FitnessBreakdown) {
+	N := len(s.Lots)
+	M := len(s.Traders)
+	c := make(Chromosome, N)
+	for i := 0; i < N; i++ {
+		bestJ := -1
+		bestMargin := 0.0
+		first := true
+		for j := 0; j < M; j++ {
+			margin := PrecoPago(s, i, j) - s.Lots[i].PrecoReserva
+			if first || margin > bestMargin {
+				bestMargin = margin
+				bestJ = j
+				first = false
+			}
+		}
+		// só atribui se margem é positiva — caso contrário, desistir é melhor
+		if bestMargin > 0 {
+			c[i] = bestJ
+		} else {
+			c[i] = -1
+		}
+	}
+	br := Evaluate(s, c, DefaultConfig())
+	return c, br
+}
+
 // GreedyByReserve atribui lotes em ordem de preço_reserva DESC ao trader que paga mais
 // e ainda tem capacidade.
 func GreedyByReserve(s Scenario) (Chromosome, FitnessBreakdown) {

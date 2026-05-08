@@ -100,7 +100,8 @@ export default function MatchingView() {
   const [training, setTraining] = useState(false);
   const [step, setStep] = useState<MatchingStep | null>(null);
   const [result, setResult] = useState<MatchingResult | null>(null);
-  const [baseline, setBaseline] = useState<MatchingBaselineResp | null>(null);
+  const [baselineGreedy, setBaselineGreedy] = useState<MatchingBaselineResp | null>(null);
+  const [baselineHungarian, setBaselineHungarian] = useState<MatchingBaselineResp | null>(null);
   const [history, setHistory] = useState<MatchingStep[]>([]);
 
   useEffect(() => {
@@ -114,7 +115,8 @@ export default function MatchingView() {
 
   async function loadScenario() {
     if (!scenarioId) return;
-    setLoading(true); setErr(null); setStep(null); setResult(null); setBaseline(null);
+    setLoading(true); setErr(null); setStep(null); setResult(null);
+    setBaselineGreedy(null); setBaselineHungarian(null);
     try {
       const s = await apiPost<MatchingScenario>('/matching/scenario', { id: scenarioId, seed: 42 });
       setScenario(s);
@@ -128,6 +130,7 @@ export default function MatchingView() {
   function startTrain() {
     if (!scenario) return;
     setTraining(true); setStep(null); setResult(null); setErr(null); setHistory([]);
+    setBaselineGreedy(null); setBaselineHungarian(null);
     const stop = apiSSE('/matching/train', {
       onMessage: (data: unknown) => {
         const s = data as MatchingStep;
@@ -146,12 +149,13 @@ export default function MatchingView() {
     void stop;
   }
 
-  async function runBaseline() {
+  async function runBaseline(algoritmo: 'greedy' | 'hungarian') {
     if (!scenario) return;
     setErr(null);
     try {
-      const r = await apiPost<MatchingBaselineResp>('/matching/baseline', { algoritmo: 'greedy' });
-      setBaseline(r);
+      const r = await apiPost<MatchingBaselineResp>('/matching/baseline', { algoritmo });
+      if (algoritmo === 'greedy') setBaselineGreedy(r);
+      else setBaselineHungarian(r);
     } catch (e) {
       setErr(String(e));
     }
@@ -219,11 +223,19 @@ export default function MatchingView() {
             </button>
             <button
               className="btn btn-ghost"
-              onClick={runBaseline}
+              onClick={() => runBaseline('greedy')}
+              disabled={training}
+              style={{ width: '100%', justifyContent: 'center', marginBottom: 4 }}
+            >
+              Baseline · Greedy
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => runBaseline('hungarian')}
               disabled={training}
               style={{ width: '100%', justifyContent: 'center' }}
             >
-              Rodar baseline (greedy)
+              Baseline · Hungarian (sem cap)
             </button>
           </div>
         )}
@@ -239,13 +251,28 @@ export default function MatchingView() {
           </div>
         )}
 
-        {baseline && (
+        {baselineGreedy && (
           <div style={{ ...cardStyle, borderColor: 'var(--cyan)' }}>
-            <h3 style={{ fontSize: 13, marginBottom: 4, color: 'var(--cyan)' }}>Baseline (greedy)</h3>
-            <div>fitness: {baseline.breakdown.Fitness.toFixed(0)}</div>
-            <div>superávit: R${baseline.breakdown.SuperavitTotal.toFixed(0)}</div>
-            <div>matched: {baseline.breakdown.NumMatched}</div>
-            <div>violações: {baseline.breakdown.Violacoes}</div>
+            <h3 style={{ fontSize: 13, marginBottom: 4, color: 'var(--cyan)' }}>Baseline · Greedy</h3>
+            <div>fitness: {baselineGreedy.breakdown.Fitness.toFixed(0)}</div>
+            <div>superávit: R${baselineGreedy.breakdown.SuperavitTotal.toFixed(0)}</div>
+            <div>matched: {baselineGreedy.breakdown.NumMatched}</div>
+            <div>violações: {baselineGreedy.breakdown.Violacoes}</div>
+          </div>
+        )}
+
+        {baselineHungarian && (
+          <div style={{ ...cardStyle, borderColor: 'var(--pink)' }}>
+            <h3 style={{ fontSize: 13, marginBottom: 4, color: 'var(--pink)' }}>Baseline · Hungarian (sem cap)</h3>
+            <div>fitness: {baselineHungarian.breakdown.Fitness.toFixed(0)}</div>
+            <div>superávit: R${baselineHungarian.breakdown.SuperavitTotal.toFixed(0)}</div>
+            <div>matched: {baselineHungarian.breakdown.NumMatched}</div>
+            <div>violações: {baselineHungarian.breakdown.Violacoes}</div>
+            {baselineHungarian.breakdown.Violacoes > 0 && (
+              <div style={{ marginTop: 4, color: 'var(--pink)', fontSize: 11 }}>
+                ↑ ignora capacidade — viola limites
+              </div>
+            )}
           </div>
         )}
 

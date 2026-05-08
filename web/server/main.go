@@ -2284,6 +2284,13 @@ func handleMatchingBaseline(w http.ResponseWriter, r *http.Request) {
 			"chromosome": c,
 			"breakdown":  br,
 		})
+	case "hungarian":
+		c, br := matching.HungarianUnconstrained(*scen)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"algoritmo":  body.Algoritmo,
+			"chromosome": c,
+			"breakdown":  br,
+		})
 	default:
 		errJSON(w, http.StatusBadRequest, "algoritmo desconhecido")
 	}
