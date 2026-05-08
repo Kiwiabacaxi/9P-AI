@@ -3,8 +3,10 @@ package matching
 import "math/rand"
 
 const (
-	ScenarioBalanceado     = "balanceado"
-	ScenarioCriseQualidade = "crise-qualidade"
+	ScenarioBalanceado        = "balanceado"
+	ScenarioCriseQualidade    = "crise-qualidade"
+	ScenarioCompradorDominante = "comprador-dominante"
+	ScenarioPrecoAlto         = "preco-alto"
 )
 
 // portCoords para Santos.
@@ -124,6 +126,83 @@ func buildCriseQualidade(seed int64) Scenario {
 	}
 }
 
+// buildCompradorDominante: Cargill com 60% da capacidade total, outros 3 pequenos.
+// Mostra como o GA distribui sob pressão de monopolização.
+func buildCompradorDominante(seed int64) Scenario {
+	rng := rand.New(rand.NewSource(seed))
+	prods := baseProducers()
+	traders := baseTraders()
+	// 60% Cargill, 40/3 ≈ 13.3% cada um dos outros
+	traders[0].CapacidadeT = 18000
+	traders[1].CapacidadeT = 4000
+	traders[2].CapacidadeT = 4000
+	traders[3].CapacidadeT = 4000
+
+	lots := make([]Lot, 0, len(prods))
+	for i, p := range prods {
+		volume := 2500 + rng.Float64()*2500
+		lots = append(lots, Lot{
+			ID:           i,
+			ProducerID:   p.ID,
+			VolumeT:      volume,
+			Proteina:     36.0 + rng.Float64()*3.0,
+			Umidade:      12.0 + rng.Float64()*2.0,
+			Impurezas:    0.5 + rng.Float64()*0.5,
+			PrecoReserva: 130 + rng.Float64()*8,
+			JanelaSemana: 1,
+		})
+	}
+	return Scenario{
+		ID:        ScenarioCompradorDominante,
+		Nome:      "Comprador Dominante",
+		Descricao: "Cargill detém 60% da capacidade — clássico do agro brasileiro",
+		Producers: prods,
+		Lots:      lots,
+		Traders:   traders,
+		PrecoBase: 138,
+		PortLat:   PortSantosLat,
+		PortLng:   PortSantosLng,
+	}
+}
+
+// buildPrecoAlto: papel Santos disparou — traders pagam mais, mas produtores também
+// querem mais (preço de reserva sobe), apertando margens.
+func buildPrecoAlto(seed int64) Scenario {
+	rng := rand.New(rand.NewSource(seed))
+	prods := baseProducers()
+	traders := baseTraders()
+	// traders pagam mais
+	for i := range traders {
+		traders[i].PrecoMaximo += 15 // todos +R$15/saca
+	}
+
+	lots := make([]Lot, 0, len(prods))
+	for i, p := range prods {
+		volume := 2500 + rng.Float64()*2500
+		lots = append(lots, Lot{
+			ID:           i,
+			ProducerID:   p.ID,
+			VolumeT:      volume,
+			Proteina:     36.0 + rng.Float64()*3.0,
+			Umidade:      12.0 + rng.Float64()*2.0,
+			Impurezas:    0.5 + rng.Float64()*0.5,
+			PrecoReserva: 145 + rng.Float64()*8, // produtores querem 145..153 (vs 130..138 normal)
+			JanelaSemana: 1,
+		})
+	}
+	return Scenario{
+		ID:        ScenarioPrecoAlto,
+		Nome:      "Preço Alto",
+		Descricao: "Mercado apertado — preços de reserva e de teto subiram, margens estreitas",
+		Producers: prods,
+		Lots:      lots,
+		Traders:   traders,
+		PrecoBase: 152, // base maior também
+		PortLat:   PortSantosLat,
+		PortLng:   PortSantosLng,
+	}
+}
+
 // BuildScenario retorna o cenário pelo ID. Seed default = 42.
 func BuildScenario(id string, seed int64) (Scenario, bool) {
 	if seed == 0 {
@@ -134,6 +213,10 @@ func BuildScenario(id string, seed int64) (Scenario, bool) {
 		return buildBalanceado(seed), true
 	case ScenarioCriseQualidade:
 		return buildCriseQualidade(seed), true
+	case ScenarioCompradorDominante:
+		return buildCompradorDominante(seed), true
+	case ScenarioPrecoAlto:
+		return buildPrecoAlto(seed), true
 	}
 	return Scenario{}, false
 }
@@ -149,5 +232,7 @@ func ListScenarios() []ScenarioMetadata {
 	return []ScenarioMetadata{
 		{ID: ScenarioBalanceado, Nome: "Balanceado", Descricao: "Capacidades simétricas, qualidades razoáveis"},
 		{ID: ScenarioCriseQualidade, Nome: "Crise de Qualidade", Descricao: "40% dos lotes com proteína baixa"},
+		{ID: ScenarioCompradorDominante, Nome: "Comprador Dominante", Descricao: "Cargill com 60% da capacidade total"},
+		{ID: ScenarioPrecoAlto, Nome: "Preço Alto", Descricao: "Mercado apertado — preços e reservas elevados"},
 	}
 }
