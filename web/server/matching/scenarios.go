@@ -45,7 +45,7 @@ func baseTraders() []Trader {
 			PrecoMaximo: 148, JanelaSemana: 1,
 		},
 		{
-			ID: 3, Nome: "COFCO", Cor: "#264653",
+			ID: 3, Nome: "COFCO", Cor: "#a78bfa",
 			HubMunicipio: "Rio Verde", HubLat: -17.79, HubLng: -50.93,
 			CapacidadeT: 6500, ProteinaMin: 36.0, UmidadeMax: 14.0, ImpurezasMax: 1.0,
 			PrecoMaximo: 140, JanelaSemana: 1,

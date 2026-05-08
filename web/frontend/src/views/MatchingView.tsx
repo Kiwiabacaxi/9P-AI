@@ -183,9 +183,10 @@ export default function MatchingView() {
             ))}
           </select>
           <button
+            className="btn btn-primary"
             onClick={loadScenario}
             disabled={loading || !scenarioId || training}
-            style={{ marginTop: 8, width: '100%' }}
+            style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
           >
             {loading ? 'Carregando…' : 'Carregar cenário'}
           </button>
@@ -209,13 +210,19 @@ export default function MatchingView() {
         {scenario && (
           <div style={{ marginTop: 16 }}>
             <button
+              className="btn btn-primary"
               onClick={startTrain}
               disabled={training}
-              style={{ width: '100%', marginBottom: 4 }}
+              style={{ width: '100%', marginBottom: 6, justifyContent: 'center' }}
             >
               {training ? `Treinando… (gen ${step?.geracao ?? 0})` : 'Treinar GA'}
             </button>
-            <button onClick={runBaseline} disabled={training} style={{ width: '100%' }}>
+            <button
+              className="btn btn-ghost"
+              onClick={runBaseline}
+              disabled={training}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
               Rodar baseline (greedy)
             </button>
           </div>

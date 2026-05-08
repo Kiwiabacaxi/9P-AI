@@ -27,10 +27,16 @@ export default function MatchingMap({ scenario, chromosome, traderStats }: Props
   );
 
   return (
-    <MapContainer center={center} zoom={5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
+    <MapContainer
+      center={center}
+      zoom={5}
+      scrollWheelZoom={true}
+      style={{ height: '100%', width: '100%', background: '#0a0a0a' }}
+      attributionControl={false}
+    >
       <TileLayer
-        attribution='&copy; OpenStreetMap'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+        maxZoom={18}
       />
 
       {/* Porto Santos */}
