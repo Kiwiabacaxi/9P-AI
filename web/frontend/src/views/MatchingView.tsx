@@ -93,6 +93,7 @@ const mutedStyle: React.CSSProperties = {
 export default function MatchingView() {
   const [scenarios, setScenarios] = useState<MatchingScenarioMeta[]>([]);
   const [scenarioId, setScenarioId] = useState<string>('');
+  const [scale, setScale] = useState<'small' | 'large'>('small');
   const [scenario, setScenario] = useState<MatchingScenario | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -118,7 +119,7 @@ export default function MatchingView() {
     setLoading(true); setErr(null); setStep(null); setResult(null);
     setBaselineGreedy(null); setBaselineHungarian(null);
     try {
-      const s = await apiPost<MatchingScenario>('/matching/scenario', { id: scenarioId, seed: 42 });
+      const s = await apiPost<MatchingScenario>('/matching/scenario', { id: scenarioId, seed: 42, scale });
       setScenario(s);
     } catch (e) {
       setErr(String(e));
@@ -172,7 +173,7 @@ export default function MatchingView() {
       <aside className="matching-sidebar" style={{ overflowY: 'auto', paddingRight: 4 }}>
         <h2 style={{ marginBottom: 4 }}>Matching · Soja</h2>
         <p style={mutedStyle}>
-          Etapa 1: matching marketplace single-objective (6 produtores × 4 traders → Santos).
+          Matching marketplace single-objective ({scale === 'large' ? '60 produtores × 6 traders' : '6 produtores × 4 traders'} → Santos).
         </p>
 
         <div style={{ marginTop: 16 }}>
@@ -186,6 +187,25 @@ export default function MatchingView() {
               <option key={s.id} value={s.id}>{s.nome}</option>
             ))}
           </select>
+          <label style={{ display: 'block', fontSize: 12, marginTop: 8, marginBottom: 4, color: 'var(--muted)' }}>Escala</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            <button
+              className={scale === 'small' ? 'btn btn-primary' : 'btn btn-ghost'}
+              onClick={() => setScale('small')}
+              disabled={training}
+              style={{ justifyContent: 'center', padding: '6px 8px' }}
+            >
+              6×4
+            </button>
+            <button
+              className={scale === 'large' ? 'btn btn-primary' : 'btn btn-ghost'}
+              onClick={() => setScale('large')}
+              disabled={training}
+              style={{ justifyContent: 'center', padding: '6px 8px' }}
+            >
+              60×6
+            </button>
+          </div>
           <button
             className="btn btn-primary"
             onClick={loadScenario}

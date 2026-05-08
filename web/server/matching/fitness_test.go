@@ -33,7 +33,7 @@ func TestPremioProteina(t *testing.T) {
 }
 
 func TestEvaluateAllUnmatched(t *testing.T) {
-	s, _ := BuildScenario(ScenarioBalanceado, 42)
+	s, _ := BuildScenario(ScenarioBalanceado, 42, ScaleSmall)
 	cfg := DefaultConfig()
 	c := make(Chromosome, len(s.Lots))
 	for i := range c {
@@ -52,7 +52,7 @@ func TestEvaluateAllUnmatched(t *testing.T) {
 }
 
 func TestEvaluateAllToTrader0OverCapacity(t *testing.T) {
-	s, _ := BuildScenario(ScenarioBalanceado, 42)
+	s, _ := BuildScenario(ScenarioBalanceado, 42, ScaleSmall)
 	cfg := DefaultConfig()
 	c := make(Chromosome, len(s.Lots))
 	for i := range c {
@@ -72,7 +72,7 @@ func TestEvaluateAllToTrader0OverCapacity(t *testing.T) {
 }
 
 func TestGreedyBaselineRespectsCapacity(t *testing.T) {
-	s, _ := BuildScenario(ScenarioBalanceado, 42)
+	s, _ := BuildScenario(ScenarioBalanceado, 42, ScaleSmall)
 	_, br := GreedyByReserve(s)
 	for j, st := range br.TraderStats {
 		if st.OverCapacity {

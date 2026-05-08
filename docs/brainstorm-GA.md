@@ -1,9 +1,11 @@
 # Brainstorm — Evolução do TSP soja → matching marketplace
 
-> **Status (atualizado 2026-05-06):** Etapa 1 em andamento na branch `feat/matching-marketplace`.
-> Plano detalhado em [docs/superpowers/plans/2026-05-06-matching-marketplace-v1.md](superpowers/plans/2026-05-06-matching-marketplace-v1.md).
-> Etapa 1 = single-objective + greedy baseline + cenários "Balanceado" e "Crise de Qualidade" (6×4).
-> Próximas etapas (Hungarian, NSGA-II, modo 60×6, dados reais, IOSCO, modal, robustez) ficam para etapas posteriores.
+> **Status (atualizado 2026-05-08):** Etapas 1 e 2 entregues na branch `feat/matching-marketplace`.
+>
+> - **Etapa 1** (plano em [docs/superpowers/plans/2026-05-06-matching-marketplace-v1.md](superpowers/plans/2026-05-06-matching-marketplace-v1.md)) — single-objective GA + greedy baseline + cenários "Balanceado" e "Crise de Qualidade" (6×4) + visualização Leaflet animada com tema dark.
+> - **Etapa 2** — cenários "Comprador Dominante" e "Preço Alto", baseline Hungarian (per-lot argmax sem capacidade) com card pink + warning de violação, modo 60×6 (60 produtores procedurais MT-GO + 6 traders reais incluindo LDC e Amaggi), toggle de escala na UI.
+>
+> Próximas etapas (NSGA-II multi-objetivo, calibração com dados reais Comex/CONAB/CEPEA, OSRM real para rotas matching, IOSCO, modal switching, robustez estocástica) ficam para etapas posteriores.
 
 > Transferência de contexto da conversa entre Kiwi e Claude (claude.ai web) para o ambiente Claude Code. Lê isso pra entender de onde estamos saindo, pra onde vamos, e por quê. Não prescreve stack — adapta às convenções do projeto.
 

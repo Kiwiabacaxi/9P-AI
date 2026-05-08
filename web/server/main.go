@@ -2156,14 +2156,15 @@ func handleMatchingScenario(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID   string `json:"id"`
-		Seed int64  `json:"seed"`
+		ID    string `json:"id"`
+		Seed  int64  `json:"seed"`
+		Scale string `json:"scale"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errJSON(w, http.StatusBadRequest, "json invalido")
 		return
 	}
-	s, ok := matching.BuildScenario(body.ID, body.Seed)
+	s, ok := matching.BuildScenario(body.ID, body.Seed, body.Scale)
 	if !ok {
 		errJSON(w, http.StatusBadRequest, "scenario id desconhecido")
 		return
