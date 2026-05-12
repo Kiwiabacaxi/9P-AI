@@ -14,7 +14,7 @@ import type {
 //
 // Cromossomo = matriz [slot × turma], cada célula guarda o ID do professor.
 // Cruzamento: troca de LINHAS inteiras entre pais.
-// Fitness: + bigeminadas, − choques, − matérias faltando.
+// Fitness: + aulas encadeadas, − choques, − matérias faltando.
 // =============================================================================
 
 const PROF_OPTIONS = [
@@ -93,14 +93,14 @@ const ELITE_OPTIONS = [
 const FITNESS_PRESETS: Record<string, { bonus: number; choque: number; variedade: number }> = {
   equilibrado: { bonus: 3,  choque: 10, variedade: 1  },
   choque:      { bonus: 1,  choque: 50, variedade: 0  },
-  bigeminada:  { bonus: 20, choque: 5,  variedade: 0  },
+  encadeada:   { bonus: 20, choque: 5,  variedade: 0  },
   curriculo:   { bonus: 3,  choque: 10, variedade: 10 },
 };
 
 const FITNESS_PRESET_OPTIONS = [
   { value: 'equilibrado', label: 'Equilibrado (default)' },
   { value: 'choque',      label: 'Anti-conflito' },
-  { value: 'bigeminada',  label: 'Aulas agrupadas' },
+  { value: 'encadeada',   label: 'Aulas encadeadas' },
   { value: 'curriculo',   label: 'Cobertura completa' },
   { value: 'custom',      label: 'Personalizado' },
 ];
@@ -491,7 +491,7 @@ export default function HorarioView() {
               marginTop: 8,
             }}>
               <FitnessInput
-                label="bigem"
+                label="encad"
                 sign="+"
                 color="var(--green)"
                 value={bonusGeminada}
@@ -523,7 +523,7 @@ export default function HorarioView() {
           }}>
             <div>
               <span style={{ color: 'var(--green)' }}>+{bonusGeminada}</span>
-              {' por aula bigeminada (mesma matéria 2× consecutivas)'}
+              {' por aula encadeada (mesma matéria 2× consecutivas)'}
             </div>
             <div>
               <span style={{ color: 'var(--pink)' }}>−{penChoque}</span>
@@ -549,7 +549,7 @@ export default function HorarioView() {
         <MetricCard
           title="Fitness"
           value={melhorFit}
-          label={`bigeminadas: ${bonus}`}
+          label={`encadeadas: ${bonus}`}
           valueStyle={{ color: statusColor }}
         />
         <MetricCard
@@ -697,7 +697,7 @@ export default function HorarioView() {
           <br /><br />
           <b>Fitness composta (a "criatividade" da modelagem):</b>
           <ul style={{ marginLeft: 18 }}>
-            <li><b>+3 por bigeminada:</b> bônus quando a mesma matéria aparece em 2 horários consecutivos do mesmo dia numa turma.</li>
+            <li><b>+3 por aula encadeada:</b> bônus quando a mesma matéria aparece em 2 horários consecutivos do mesmo dia numa turma.</li>
             <li><b>−10 por choque:</b> mesmo professor em &gt; 1 turma no mesmo slot — fisicamente impossível.</li>
             <li><b>−1 por matéria faltante:</b> cada matéria do catálogo deveria aparecer ao menos 1× em cada turma.</li>
           </ul>

@@ -190,7 +190,7 @@ export default function AboutView() {
               <td>{'\u2014'}</td>
               <td className="td-white">
                 {'Torneio \u00B7 troca de linhas \u00B7 flip por c\u00E9lula '}
-                <span style={{ color: 'var(--surface-top)' }}>(b\u00F4nus geminada \u2212 choque)</span>
+                <span style={{ color: 'var(--surface-top)' }}>(b\u00F4nus encadeada \u2212 choque)</span>
               </td>
               <td className="td-pink">Estoc\u00E1stica</td>
             </tr>
@@ -590,7 +590,7 @@ export default function AboutView() {
             </div>
             <div>
               <span style={{ color: 'var(--pink)' }}>Fitness:</span>
-              {' +bigem. − choques − faltas'}
+              {' +encad. − choques − faltas'}
             </div>
             <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
               {'// 29 profs · 3 turmas · 10 slots (slide)'}

@@ -23,13 +23,13 @@ import (
 //   → para cada linha (slot), filho herda a linha inteira de um dos pais.
 //
 // Fitness ("dependerá da criatividade"):
-//   + BÔNUS por aulas geminadas (mesma matéria do mesmo prof em slots
+//   + BÔNUS por aulas encadeadas (mesma matéria do mesmo prof em slots
 //     consecutivos do MESMO dia, no MÁXIMO 2 horários)
 //   − PENALIDADE por choque de horário (mesmo prof em > 1 turma no mesmo slot)
 //   − PENALIDADE por turmas com gargalo de professor (pouca variedade)
 //
 // Cada professor tem UMA matéria associada (mapeamento prof→matéria pré-fixo),
-// o que permite calcular "bigeminada por matéria" mesmo guardando só o prof.
+// o que permite calcular "encadeamento por matéria" mesmo guardando só o prof.
 // =============================================================================
 
 // Config — hiperparâmetros do AG + dimensões do problema.
@@ -52,7 +52,7 @@ type Config struct {
 	Elitismo       int     `json:"elitismo"`
 
 	// Pesos da fitness (a "criatividade" do slide):
-	BonusGeminada   float64 `json:"bonusGeminada"`   // + por aula bigeminada válida
+	BonusGeminada   float64 `json:"bonusGeminada"`   // + por aula encadeada válida
 	PenChoque       float64 `json:"penChoque"`       // − por choque de horário
 	PenSemVariedade float64 `json:"penSemVariedade"` // − por matéria que falta na turma
 
@@ -100,7 +100,7 @@ type Individuo struct {
 	Matriz   []int   `json:"matriz"`   // flat slot-major
 	Fitness  float64 `json:"fitness"`
 	Choques  int     `json:"choques"`
-	Bonus    int     `json:"bonus"`    // # de bigeminadas reconhecidas
+	Bonus    int     `json:"bonus"`    // # de aulas encadeadas reconhecidas
 	Faltando int     `json:"faltando"` // # de (turma × matéria) sem cobertura
 }
 
@@ -228,7 +228,7 @@ func itoa(n int) string {
 
 // avaliar calcula fitness + diagnostics. O slide sugere:
 //
-//   + bônus por aulas geminadas (mesma matéria em até 2 horários consecutivos)
+//   + bônus por aulas encadeadas (mesma matéria em até 2 horários consecutivos)
 //   − penalidade por choque (mesmo prof em mais de uma turma no mesmo slot)
 //   − (extra didático) penalidade por turma sem cobertura completa de matérias
 //
@@ -252,7 +252,7 @@ func avaliar(matriz []int, profs []Professor, cfg Config) (fit float64, choques,
 		}
 	}
 
-	// 2) Bônus por aula geminada (mesma matéria, mesmo dia, slots consecutivos,
+	// 2) Bônus por aula encadeada (mesma matéria, mesmo dia, slots consecutivos,
 	//    no máximo 2 horários — pareamento simples não-sobreposto).
 	for t := 0; t < turmas; t++ {
 		for d := 0; d < cfg.DiasDaSemana; d++ {
