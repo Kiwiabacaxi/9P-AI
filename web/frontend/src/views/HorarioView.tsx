@@ -288,6 +288,18 @@ export default function HorarioView() {
     return m;
   }, [professores]);
 
+  // Agrupa professores por matéria pra renderizar o catálogo em colunas
+  // separadas por disciplina (mais fácil de ler com 30+ profs).
+  const profsPorMateria = useMemo(() => {
+    const grupos = new Map<number, HorarioProfessor[]>();
+    for (const p of professores) {
+      const arr = grupos.get(p.materia);
+      if (arr) arr.push(p);
+      else grupos.set(p.materia, [p]);
+    }
+    return Array.from(grupos.entries()).sort(([a], [b]) => a - b);
+  }, [professores]);
+
   // Detecta choques por slot (mesmo prof em + de uma turma no mesmo slot)
   // para destacar células em vermelho na visualização.
   const choquesPorSlot = useMemo(() => {
@@ -524,36 +536,62 @@ export default function HorarioView() {
         <GaEvoChart histMelhor={histMelhor} histMedia={histMedia} />
       </Card>
 
-      {/* Catálogo de professores */}
+      {/* Catálogo de professores — agrupado por matéria */}
       {professores.length > 0 && (
         <Card title={`Catálogo de Professores (${professores.length})`} style={{ marginBottom: 16 }}>
           <div style={{
             padding: 12,
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-            gap: 6,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 10,
             fontSize: 11,
             fontFamily: 'JetBrains Mono',
           }}>
-            {professores.map(p => (
-              <div key={p.id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 8px',
-                background: 'var(--surface-2)',
-                borderRadius: 4,
-              }}>
-                <span style={{
-                  display: 'inline-block',
-                  width: 8, height: 8,
-                  background: corMateria(p.materia),
-                  borderRadius: 2,
-                }} />
-                <span style={{ color: 'var(--on-surface)' }}>{nomesReais ? p.nomeReal : p.nome}</span>
-                <span style={{ color: 'var(--muted)', fontSize: 10 }}>{p.materiaNome}</span>
-              </div>
-            ))}
+            {profsPorMateria.map(([materiaId, profs]) => {
+              const cor = corMateria(materiaId);
+              return (
+                <div
+                  key={materiaId}
+                  style={{
+                    background: 'var(--surface-2)',
+                    borderLeft: `4px solid ${cor}`,
+                    borderRadius: 4,
+                    padding: '8px 10px',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginBottom: 6,
+                    paddingBottom: 6,
+                    borderBottom: '1px solid var(--surface-top)',
+                  }}>
+                    <span style={{
+                      display: 'inline-block',
+                      width: 10, height: 10,
+                      background: cor,
+                      borderRadius: 2,
+                    }} />
+                    <span style={{ color: cor, fontWeight: 600 }}>{profs[0].materiaNome}</span>
+                    <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 'auto' }}>
+                      {profs.length}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {profs.map(p => (
+                      <div
+                        key={p.id}
+                        style={{ color: 'var(--on-surface)' }}
+                        title={`${p.nome} · ${p.nomeReal}`}
+                      >
+                        {nomesReais ? p.nomeReal : p.nome}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
