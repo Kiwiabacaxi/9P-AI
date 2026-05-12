@@ -84,6 +84,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         GA · Aula 11
       </div>
       <div
+        className={`nav-item${active === 'horario' ? ' active' : ''}`}
+        onClick={() => onNavigate('horario')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'▦'}</span>
+        GA · Horário (Aula 12)
+      </div>
+      <div
         className={`nav-item${active === 'tsp' ? ' active' : ''}`}
         onClick={() => onNavigate('tsp')}
       >

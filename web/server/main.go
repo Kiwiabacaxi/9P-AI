@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"mlp-server/cnn"
 	"mlp-server/genetico"
 	"mlp-server/genetico2"
+	"mlp-server/horario"
 	"mlp-server/timeseries"
 	"mlp-server/tsp"
 	perceptronletras "mlp-server/perceptron_letras"
@@ -126,7 +128,12 @@ var (
 	ga2Res      *genetico2.Result
 	ga2Training bool
 
-	// TSP (Aula 12 — caixeiro viajante)
+	// Horário Escolar (Aula 12 — cromossomo matricial)
+	horarioCfg      *horario.Config
+	horarioRes      *horario.Result
+	horarioTraining bool
+
+	// TSP (Aula 13 — caixeiro viajante)
 	tspCidades       []tsp.Cidade
 	tspMatriz        [][]float64 // matriz de distância (km)
 	tspMatrizDuracao [][]float64 // matriz de duração (segundos) — pode ser nil em modo Euclidiano
@@ -1757,7 +1764,114 @@ func handleGa2Result(w http.ResponseWriter, r *http.Request) {
 }
 
 // =============================================================================
-// TSP — Caixeiro Viajante (Aula 12)
+// Horário Escolar (Aula 12 — cromossomo matricial)
+// =============================================================================
+
+func handleHorarioConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg horario.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	horarioCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleHorarioProfessores(w http.ResponseWriter, r *http.Request) {
+	// preview do catálogo de professores que será usado dado N profs e N matérias.
+	// Útil pra UI mostrar as cores/nomes antes de treinar.
+	q := r.URL.Query()
+	np := 29
+	if v, err := strconv.Atoi(q.Get("profs")); err == nil && v > 0 {
+		np = v
+	}
+	nm := 10
+	if v, err := strconv.Atoi(q.Get("materias")); err == nil && v > 0 {
+		nm = v
+	}
+	writeJSON(w, http.StatusOK, horario.BuildProfessores(np, nm))
+}
+
+func handleHorarioTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if horarioTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	cfg := horarioCfg
+	if cfg == nil {
+		def := horario.DefaultConfig()
+		cfg = &def
+	}
+	horarioTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		horarioTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan horario.Step, 64)
+	go func() {
+		res := horario.Treinar(progressCh, useCfg)
+		mu.Lock()
+		horarioRes = &res
+		horarioTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := horarioRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleHorarioReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	horarioRes = nil
+	horarioCfg = nil
+	horarioTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleHorarioResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := horarioRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "Horário não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// =============================================================================
+// TSP — Caixeiro Viajante (Aula 13)
 // =============================================================================
 
 // GET /api/tsp/presets — lista todos os cenários disponíveis (sem cidades pra
@@ -2252,7 +2366,14 @@ func main() {
 	mux.HandleFunc("/api/genetico2/reset",  cors(handleGa2Reset))
 	mux.HandleFunc("/api/genetico2/result", cors(handleGa2Result))
 
-	// TSP — Caixeiro Viajante (Aula 12)
+	// Horário Escolar (Aula 12 — cromossomo matricial)
+	mux.HandleFunc("/api/horario/config",      cors(handleHorarioConfig))
+	mux.HandleFunc("/api/horario/professores", cors(handleHorarioProfessores))
+	mux.HandleFunc("/api/horario/train",       cors(handleHorarioTrain))
+	mux.HandleFunc("/api/horario/reset",       cors(handleHorarioReset))
+	mux.HandleFunc("/api/horario/result",      cors(handleHorarioResult))
+
+	// TSP — Caixeiro Viajante (Aula 13)
 	mux.HandleFunc("/api/tsp/preset",     cors(handleTspPreset))
 	mux.HandleFunc("/api/tsp/presets",    cors(handleTspPresetsList))
 	mux.HandleFunc("/api/tsp/cities",     cors(handleTspCities))

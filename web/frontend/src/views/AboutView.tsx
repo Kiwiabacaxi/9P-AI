@@ -180,8 +180,23 @@ export default function AboutView() {
               <td className="td-pink">Estoc\u00E1stica</td>
             </tr>
             <tr>
-              <td className="td-cyan">GA \u00B7 TSP</td>
+              <td className="td-cyan">GA \u00B7 Hor\u00E1rio</td>
               <td>12</td>
+              <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>horario</td>
+              <td>
+                {'matriz [slot \u00D7 turma] '}
+                <span style={{ color: 'var(--surface-top)' }}>(cromossomo 2D)</span>
+              </td>
+              <td>{'\u2014'}</td>
+              <td className="td-white">
+                {'Torneio \u00B7 troca de linhas \u00B7 flip por c\u00E9lula '}
+                <span style={{ color: 'var(--surface-top)' }}>(b\u00F4nus geminada \u2212 choque)</span>
+              </td>
+              <td className="td-pink">Estoc\u00E1stica</td>
+            </tr>
+            <tr>
+              <td className="td-cyan">GA \u00B7 TSP</td>
+              <td>13</td>
               <td style={{ color: 'var(--on-surface)', fontSize: 10 }}>tsp</td>
               <td>
                 {'permuta\u00E7\u00E3o de N cidades '}
@@ -549,7 +564,41 @@ export default function AboutView() {
           </div>
         </Card>
 
-        <Card title="Aula 12 — GA TSP">
+        <Card title="Aula 12 — GA Horário (matriz)">
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--on-surface)',
+              lineHeight: 2,
+            }}
+          >
+            <div style={{ color: 'var(--on-surface)', marginBottom: 4 }}>
+              Cromossomo 2D — outro tipo de codificação:
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cromossomo:</span>
+              {' matriz [slot × turma] = id prof'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Cruz.:</span>
+              {'   troca de LINHAS entre pais'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Mut.:</span>
+              {'    flip por célula (prof aleatório)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>Fitness:</span>
+              {' +bigem. − choques − faltas'}
+            </div>
+            <div style={{ color: 'var(--surface-top)', marginTop: 4 }}>
+              {'// 29 profs · 3 turmas · 10 slots (slide)'}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Aula 13 — GA TSP">
           <div
             style={{
               fontFamily: 'var(--font-mono)',
@@ -610,6 +659,7 @@ export default function AboutView() {
             <div>{'\u00A0\u251C\u2500 cnn/'}</div>
             <div>{'\u00A0\u251C\u2500 genetico/'}</div>
             <div>{'\u00A0\u251C\u2500 genetico2/'}</div>
+            <div>{'\u00A0\u251C\u2500 horario/'}</div>
             <div>{'\u00A0\u2514\u2500 tsp/'}</div>
           </div>
         </Card>

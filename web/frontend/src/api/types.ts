@@ -581,5 +581,60 @@ export type ViewId =
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
-  | 'genetico' | 'genetico2' | 'tsp' | 'tsp-compare'
+  | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare'
   | 'about';
+
+// Horário Escolar (Aula 12 — cromossomo matricial)
+export interface HorarioProfessor {
+  id: number;
+  nome: string;
+  materia: number;
+  materiaNome: string;
+}
+
+export interface HorarioConfig {
+  numProfessores: number;
+  numTurmas: number;
+  aulasPorDia: number;
+  diasDaSemana: number;
+  numMaterias: number;
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  tamanhoTorneio: number;
+  elitismo: number;
+  bonusGeminada: number;
+  penChoque: number;
+  penSemVariedade: number;
+  seed?: number;
+}
+
+export interface HorarioIndividuo {
+  matriz: number[];   // flat slot-major: M[slot*numTurmas + turma]
+  fitness: number;
+  choques: number;
+  bonus: number;
+  faltando: number;
+}
+
+export interface HorarioStep {
+  geracao: number;
+  melhorFit: number;
+  melhorIndiv: HorarioIndividuo;
+  mediaFit: number;
+  choques: number;
+  bonus: number;
+  faltando: number;
+}
+
+export interface HorarioResult {
+  geracoes: number;
+  melhorIndiv: HorarioIndividuo;
+  histMelhor: number[];
+  histMedia: number[];
+  histChoques: number[];
+  histBonus: number[];
+  professores: HorarioProfessor[];
+  cfg: HorarioConfig;
+}
