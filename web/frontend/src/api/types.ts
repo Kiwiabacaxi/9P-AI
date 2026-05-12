@@ -587,7 +587,8 @@ export type ViewId =
 // Horário Escolar (Aula 12 — cromossomo matricial)
 export interface HorarioProfessor {
   id: number;
-  nome: string;
+  nome: string;       // código curto P01..Pnn
+  nomeReal: string;   // nome brasileiro
   materia: number;
   materiaNome: string;
 }

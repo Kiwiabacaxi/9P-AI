@@ -13,21 +13,21 @@ import type {
 // HorarioView — GA com cromossomo MATRICIAL (Aula 12)
 //
 // Cromossomo = matriz [slot × turma], cada célula guarda o ID do professor.
-// Cruzamento: troca de LINHAS inteiras entre pais (fiel ao slide).
+// Cruzamento: troca de LINHAS inteiras entre pais.
 // Fitness: + bigeminadas, − choques, − matérias faltando.
 // =============================================================================
 
 const PROF_OPTIONS = [
   { value: '10', label: '10' },
   { value: '20', label: '20' },
-  { value: '29', label: '29 (slide)' },
+  { value: '29', label: '29 (default)' },
   { value: '40', label: '40' },
   { value: '60', label: '60' },
 ];
 
 const TURMA_OPTIONS = [
   { value: '2', label: '2 turmas' },
-  { value: '3', label: '3 turmas (slide)' },
+  { value: '3', label: '3 turmas (default)' },
   { value: '4', label: '4 turmas' },
   { value: '5', label: '5 turmas' },
   { value: '6', label: '6 turmas' },
@@ -35,12 +35,12 @@ const TURMA_OPTIONS = [
 
 const AULAS_OPTIONS = [
   { value: '4', label: '4 aulas/dia' },
-  { value: '5', label: '5 aulas/dia (slide)' },
+  { value: '5', label: '5 aulas/dia (default)' },
   { value: '6', label: '6 aulas/dia' },
 ];
 
 const DIAS_OPTIONS = [
-  { value: '2', label: '2 dias (slide)' },
+  { value: '2', label: '2 dias (default)' },
   { value: '3', label: '3 dias' },
   { value: '5', label: '5 dias (sem.)' },
 ];
@@ -55,7 +55,7 @@ const MAT_OPTIONS = [
 const POP_OPTIONS = [
   { value: '20',  label: '20' },
   { value: '50',  label: '50' },
-  { value: '100', label: '100 (slide)' },
+  { value: '100', label: '100 (default)' },
   { value: '200', label: '200' },
 ];
 
@@ -77,7 +77,7 @@ const PC_OPTIONS = [
 const PM_OPTIONS = [
   { value: '0.02', label: 'Pm 0.02' },
   { value: '0.05', label: 'Pm 0.05' },
-  { value: '0.10', label: 'Pm 0.10 (slide)' },
+  { value: '0.10', label: 'Pm 0.10 (default)' },
   { value: '0.20', label: 'Pm 0.20' },
 ];
 
@@ -137,6 +137,9 @@ export default function HorarioView() {
   const [maxGen, setMaxGen] = useState(0);
   const [displayGen, setDisplayGen] = useState(0);
   const [userScrub, setUserScrub] = useState(false);
+
+  // Toggle de exibição do nome: false = código curto (P01..Pnn), true = nome brasileiro.
+  const [nomesReais, setNomesReais] = useState(false);
 
   const closeSSE = useRef<(() => void) | null>(null);
 
@@ -212,7 +215,7 @@ export default function HorarioView() {
         setStatusColor('var(--primary-glow)');
         setTraining(false);
         closeSSE.current = null;
-        show('Horário evoluído — arraste o slider pra ver a evolução');
+        show('Horário evoluído — arraste a barra pra ver a evolução');
       },
       onError() {
         setTraining(false);
@@ -292,6 +295,14 @@ export default function HorarioView() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className="btn"
+            onClick={() => setNomesReais(v => !v)}
+            style={{ fontSize: 11, padding: '6px 12px' }}
+            title="Alternar entre código (P01) e nome brasileiro (Patrício)"
+          >
+            {nomesReais ? '⇋ NOMES' : '⇋ CÓDIGOS'}
+          </button>
           <button
             className="btn"
             onClick={handleReset}
@@ -438,6 +449,7 @@ export default function HorarioView() {
               turmas={turmasNum}
               aulasPorDia={parseInt(aulasPorDia)}
               choquesSet={choquesPorSlot}
+              nomesReais={nomesReais}
             />
           ) : (
             <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'JetBrains Mono' }}>
@@ -515,7 +527,7 @@ export default function HorarioView() {
                   background: corMateria(p.materia),
                   borderRadius: 2,
                 }} />
-                <span style={{ color: 'var(--on-surface)' }}>{p.nome}</span>
+                <span style={{ color: 'var(--on-surface)' }}>{nomesReais ? p.nomeReal : p.nome}</span>
                 <span style={{ color: 'var(--muted)', fontSize: 10 }}>{p.materiaNome.slice(0, 4)}</span>
               </div>
             ))}
@@ -528,14 +540,14 @@ export default function HorarioView() {
         <div style={{ padding: 12, fontSize: 14, color: 'var(--muted)', lineHeight: 1.7 }}>
           <b>Cromossomo matricial.</b> Cada indivíduo é uma matriz <code>slot × turma</code>,
           onde cada célula guarda o ID de um professor. Diferente da aula 11 (bits) e da aula 13
-          (permutação do TSP), aqui o cromossomo é um <i>grid</i> bidimensional — exatamente o que
-          o slide chama de "outros tipos de codificação".
+          (permutação do TSP), aqui o cromossomo é um <i>grid</i> bidimensional — exatamente o
+          ponto da Aula 12: "outros tipos de codificação".
           <br /><br />
           <b>Cruzamento por troca de linhas.</b> Para cada <i>linha</i> da matriz (um slot de
           horário inteiro), o filho sorteia de qual pai herda — preservando consistência dentro
-          do mesmo horário. É o operador específico que o slide propõe pra esse encoding.
+          do mesmo horário. É o operador específico pra esse encoding.
           <br /><br />
-          <b>Fitness composta (sugestão do slide, "criatividade"):</b>
+          <b>Fitness composta (a "criatividade" da modelagem):</b>
           <ul style={{ marginLeft: 18 }}>
             <li><b>+3 por bigeminada:</b> bônus quando a mesma matéria aparece em 2 horários consecutivos do mesmo dia numa turma.</li>
             <li><b>−10 por choque:</b> mesmo professor em &gt; 1 turma no mesmo slot — fisicamente impossível.</li>
@@ -560,9 +572,10 @@ interface MatrixProps {
   turmas: number;
   aulasPorDia: number;
   choquesSet: Set<number>;
+  nomesReais: boolean;
 }
 
-function HorarioMatrix({ indiv, profMap, slots, turmas, aulasPorDia, choquesSet }: MatrixProps) {
+function HorarioMatrix({ indiv, profMap, slots, turmas, aulasPorDia, choquesSet, nomesReais }: MatrixProps) {
   const headerStyle: React.CSSProperties = {
     padding: '6px 10px',
     background: 'var(--surface-2)',
@@ -621,9 +634,11 @@ function HorarioMatrix({ indiv, profMap, slots, turmas, aulasPorDia, choquesSet 
                       color: 'var(--on-surface)',
                       borderLeft: `3px solid ${cor}`,
                     }}
-                    title={prof ? `${prof.nome} · ${prof.materiaNome}${choque ? ' · ⚠ CHOQUE' : ''}` : `prof ${profId}`}
+                    title={prof ? `${prof.nome} · ${prof.nomeReal} · ${prof.materiaNome}${choque ? ' · ⚠ CHOQUE' : ''}` : `prof ${profId}`}
                   >
-                    <div style={{ color: cor, fontWeight: 600 }}>{prof?.nome ?? `P${profId}`}</div>
+                    <div style={{ color: cor, fontWeight: 600, fontSize: nomesReais ? 9 : 11 }}>
+                      {prof ? (nomesReais ? prof.nomeReal : prof.nome) : `P${profId}`}
+                    </div>
                     <div style={{ fontSize: 9, color: 'var(--muted)' }}>{prof?.materiaNome.slice(0, 5) ?? '—'}</div>
                   </td>
                 );

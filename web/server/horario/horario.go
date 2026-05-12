@@ -81,11 +81,15 @@ func DefaultConfig() Config {
 // Professor — entidade educativa. O cromossomo só guarda o ID; o resto vive
 // num catálogo lateral pra renderizar nomes/cores na UI e mapear prof→matéria
 // na avaliação do fitness.
+//
+// Servimos sempre os DOIS nomes (código curto "P01" + nome real "Patrício")
+// e deixamos o frontend escolher qual exibir via toggle.
 type Professor struct {
-	ID      int    `json:"id"`
-	Nome    string `json:"nome"`
-	Materia int    `json:"materia"`     // 0..NumMaterias-1
-	MatNome string `json:"materiaNome"`
+	ID       int    `json:"id"`
+	Nome     string `json:"nome"`      // código curto P01..Pnn
+	NomeReal string `json:"nomeReal"`  // nome brasileiro (sorteado de catálogo)
+	Materia  int    `json:"materia"`   // 0..NumMaterias-1
+	MatNome  string `json:"materiaNome"`
 }
 
 // Individuo — uma matriz de horário avaliada.
@@ -131,8 +135,37 @@ var materiasCatalogo = []string{
 	"Filosofia", "Sociologia", "Literatura", "Informática", "Espanhol",
 }
 
+// nomesReaisCatalogo — pool de nomes brasileiros pros professores. Quando
+// numProf > len(catalogo), repete com sufixo numérico ("Patrício 2").
+var nomesReaisCatalogo = []string{
+	"Patrício", "Aluísio", "Heloísa", "Tarcísio", "Custódia",
+	"Belmiro", "Sebastiana", "Adauto", "Iracema", "Quirino",
+	"Joaquina", "Onofre", "Cândida", "Genésio", "Berenice",
+	"Damião", "Eulália", "Marcílio", "Olímpia", "Severino",
+	"Conceição", "Anselmo", "Ofélia", "Plácido", "Filomena",
+	"Hermínio", "Gertrudes", "Raimundo", "Nazaré", "Edmundo",
+	"Aparecida", "Casemiro", "Lourdes", "Inácio", "Zenaide",
+	"Bartolomeu", "Etelvina", "Walfrido", "Lindalva", "Vicente",
+	"Madalena", "Hipólito", "Sebastião", "Otília", "Florisbela",
+	"Geraldo", "Antônia", "Augusto", "Benedita", "Saturnino",
+	"Esmeralda", "Donato", "Vitória", "Romualdo", "Aurora",
+	"Pedrina", "Frederico", "Idalina", "Camilo", "Margarida",
+}
+
+// nomeReal — devolve o i-ésimo nome real, com wrap e sufixo se passou do catálogo.
+func nomeReal(i int) string {
+	base := nomesReaisCatalogo[i%len(nomesReaisCatalogo)]
+	ciclo := i / len(nomesReaisCatalogo)
+	if ciclo == 0 {
+		return base
+	}
+	return base + " " + itoa(ciclo+1)
+}
+
 // BuildProfessores — distribui NumProfessores entre NumMaterias de forma
 // balanceada (round-robin). Garante pelo menos 1 prof por matéria.
+// Sempre preenche os dois nomes (código curto + nome real); o frontend
+// decide qual exibir.
 func BuildProfessores(numProf, numMat int) []Professor {
 	if numMat < 1 {
 		numMat = 1
@@ -147,10 +180,11 @@ func BuildProfessores(numProf, numMat int) []Professor {
 	for i := 0; i < numProf; i++ {
 		m := i % numMat
 		out[i] = Professor{
-			ID:      i,
-			Nome:    professorNome(i),
-			Materia: m,
-			MatNome: materiasCatalogo[m],
+			ID:       i,
+			Nome:     professorNome(i),
+			NomeReal: nomeReal(i),
+			Materia:  m,
+			MatNome:  materiasCatalogo[m],
 		}
 	}
 	return out
