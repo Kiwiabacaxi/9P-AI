@@ -88,6 +88,23 @@ const ELITE_OPTIONS = [
   { value: '8', label: 'p = 8' },
 ];
 
+// Presets de fitness — pedagógicos, ilustram como mudar os pesos altera
+// completamente o comportamento do AG (Aula 12 "a criatividade da modelagem").
+const FITNESS_PRESETS: Record<string, { bonus: number; choque: number; variedade: number }> = {
+  equilibrado: { bonus: 3,  choque: 10, variedade: 1  },
+  choque:      { bonus: 1,  choque: 50, variedade: 0  },
+  bigeminada:  { bonus: 20, choque: 5,  variedade: 0  },
+  curriculo:   { bonus: 3,  choque: 10, variedade: 10 },
+};
+
+const FITNESS_PRESET_OPTIONS = [
+  { value: 'equilibrado', label: 'Equilibrado (default)' },
+  { value: 'choque',      label: 'Choque-obsessivo' },
+  { value: 'bigeminada',  label: 'Bigeminada-feliz' },
+  { value: 'curriculo',   label: 'Currículo rígido' },
+  { value: 'custom',      label: 'Custom' },
+];
+
 const DIAS_NOMES = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
 // paleta determinística por matéria — cores legíveis no tema dark.
@@ -138,6 +155,23 @@ export default function HorarioView() {
   const [probCruz, setProbCruz] = useState('0.85');
   const [probMut, setProbMut] = useState('0.10');
   const [elitismo, setElitismo] = useState('2');
+
+  // Fitness — preset + 3 pesos editáveis em modo Custom.
+  const [fitnessPreset, setFitnessPreset] = useState('equilibrado');
+  const [bonusGeminada, setBonusGeminada] = useState(3);
+  const [penChoque, setPenChoque] = useState(10);
+  const [penSemVariedade, setPenSemVariedade] = useState(1);
+
+  function applyPreset(key: string) {
+    setFitnessPreset(key);
+    if (key === 'custom') return;
+    const p = FITNESS_PRESETS[key];
+    if (p) {
+      setBonusGeminada(p.bonus);
+      setPenChoque(p.choque);
+      setPenSemVariedade(p.variedade);
+    }
+  }
 
   // Training state
   const [training, setTraining] = useState(false);
@@ -192,9 +226,9 @@ export default function HorarioView() {
       probMutacao: parseFloat(probMut),
       tamanhoTorneio: 4,
       elitismo: parseInt(elitismo),
-      bonusGeminada: 3,
-      penChoque: 10,
-      penSemVariedade: 1,
+      bonusGeminada: bonusGeminada,
+      penChoque: penChoque,
+      penSemVariedade: penSemVariedade,
     };
 
     try {
@@ -441,11 +475,64 @@ export default function HorarioView() {
         </Card>
 
         <Card style={{ padding: '16px 20px' }}>
-          <div className="imgreg-select-label">Fitness ativa</div>
-          <div style={{ fontSize: 11, lineHeight: 1.7, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
-            <div><span style={{ color: 'var(--green)' }}>+3</span> por aula bigeminada (mesma matéria 2× consecutivas)</div>
-            <div><span style={{ color: 'var(--pink)' }}>−10</span> por choque (prof em &gt; 1 turma no mesmo slot)</div>
-            <div><span style={{ color: 'var(--pink)' }}>−1</span> por matéria não-coberta numa turma</div>
+          <Select
+            label="Fitness ativa"
+            options={FITNESS_PRESET_OPTIONS}
+            value={fitnessPreset}
+            onChange={applyPreset}
+            style={{ width: '100%' }}
+          />
+
+          {fitnessPreset === 'custom' && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: 6,
+              marginTop: 8,
+            }}>
+              <FitnessInput
+                label="bigem"
+                sign="+"
+                color="var(--green)"
+                value={bonusGeminada}
+                onChange={setBonusGeminada}
+              />
+              <FitnessInput
+                label="choque"
+                sign="−"
+                color="var(--pink)"
+                value={penChoque}
+                onChange={setPenChoque}
+              />
+              <FitnessInput
+                label="variedade"
+                sign="−"
+                color="var(--pink)"
+                value={penSemVariedade}
+                onChange={setPenSemVariedade}
+              />
+            </div>
+          )}
+
+          <div style={{
+            fontSize: 11,
+            lineHeight: 1.7,
+            fontFamily: 'JetBrains Mono',
+            color: 'var(--muted)',
+            marginTop: 10,
+          }}>
+            <div>
+              <span style={{ color: 'var(--green)' }}>+{bonusGeminada}</span>
+              {' por aula bigeminada (mesma matéria 2× consecutivas)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>−{penChoque}</span>
+              {' por choque (prof em > 1 turma no mesmo slot)'}
+            </div>
+            <div>
+              <span style={{ color: 'var(--pink)' }}>−{penSemVariedade}</span>
+              {' por matéria não-coberta numa turma'}
+            </div>
           </div>
         </Card>
       </div>
@@ -618,6 +705,54 @@ export default function HorarioView() {
           células mostram o professor (P01..Pnn) com cor pela matéria. Choques ficam destacados em vermelho.
         </div>
       </Card>
+    </div>
+  );
+}
+
+// =============================================================================
+// Input compacto pra editar peso de um termo da fitness (modo Custom)
+// =============================================================================
+
+interface FitnessInputProps {
+  label: string;
+  sign: string;
+  color: string;
+  value: number;
+  onChange: (v: number) => void;
+}
+
+function FitnessInput({ label, sign, color, value, onChange }: FitnessInputProps) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 2,
+      alignItems: 'center',
+    }}>
+      <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'JetBrains Mono' }}>
+        {sign} {label}
+      </span>
+      <input
+        type="number"
+        min={0}
+        step={1}
+        value={value}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          onChange(Number.isFinite(v) ? Math.max(0, v) : 0);
+        }}
+        style={{
+          width: '100%',
+          padding: '3px 6px',
+          fontSize: 12,
+          fontFamily: 'JetBrains Mono',
+          background: 'var(--surface-2)',
+          border: `1px solid ${color}`,
+          color: color,
+          borderRadius: 3,
+          textAlign: 'center',
+        }}
+      />
     </div>
   );
 }
