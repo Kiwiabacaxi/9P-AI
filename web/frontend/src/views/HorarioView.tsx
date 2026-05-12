@@ -99,10 +99,10 @@ const FITNESS_PRESETS: Record<string, { bonus: number; choque: number; variedade
 
 const FITNESS_PRESET_OPTIONS = [
   { value: 'equilibrado', label: 'Equilibrado (default)' },
-  { value: 'choque',      label: 'Choque-obsessivo' },
-  { value: 'bigeminada',  label: 'Bigeminada-feliz' },
-  { value: 'curriculo',   label: 'Currículo rígido' },
-  { value: 'custom',      label: 'Custom' },
+  { value: 'choque',      label: 'Anti-conflito' },
+  { value: 'bigeminada',  label: 'Aulas agrupadas' },
+  { value: 'curriculo',   label: 'Cobertura completa' },
+  { value: 'custom',      label: 'Personalizado' },
 ];
 
 const DIAS_NOMES = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
