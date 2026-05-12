@@ -101,6 +101,29 @@ function corMateria(materiaId: number): string {
   return PALETA[materiaId % PALETA.length];
 }
 
+// Abreviações curtas pra caber na célula da matriz sem cortar acentos.
+const MATERIA_ABREV: Record<string, string> = {
+  'Matemática': 'Mat',
+  'Português': 'Por',
+  'História': 'Hist',
+  'Geografia': 'Geo',
+  'Biologia': 'Bio',
+  'Física': 'Fis',
+  'Química': 'Quim',
+  'Inglês': 'Ing',
+  'Educação Física': 'Educ',
+  'Artes': 'Art',
+  'Filosofia': 'Filo',
+  'Sociologia': 'Soc',
+  'Literatura': 'Lit',
+  'Informática': 'Info',
+  'Espanhol': 'Esp',
+};
+
+function abreviarMateria(nome: string): string {
+  return MATERIA_ABREV[nome] ?? nome.slice(0, 4);
+}
+
 export default function HorarioView() {
   const { show } = useToast();
 
@@ -528,7 +551,7 @@ export default function HorarioView() {
                   borderRadius: 2,
                 }} />
                 <span style={{ color: 'var(--on-surface)' }}>{nomesReais ? p.nomeReal : p.nome}</span>
-                <span style={{ color: 'var(--muted)', fontSize: 10 }}>{p.materiaNome.slice(0, 4)}</span>
+                <span style={{ color: 'var(--muted)', fontSize: 10 }}>{p.materiaNome}</span>
               </div>
             ))}
           </div>
@@ -639,7 +662,7 @@ function HorarioMatrix({ indiv, profMap, slots, turmas, aulasPorDia, choquesSet,
                     <div style={{ color: cor, fontWeight: 600, fontSize: nomesReais ? 9 : 11 }}>
                       {prof ? (nomesReais ? prof.nomeReal : prof.nome) : `P${profId}`}
                     </div>
-                    <div style={{ fontSize: 9, color: 'var(--muted)' }}>{prof?.materiaNome.slice(0, 5) ?? '—'}</div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)' }}>{prof ? abreviarMateria(prof.materiaNome) : '—'}</div>
                   </td>
                 );
               })}
