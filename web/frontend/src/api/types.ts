@@ -696,6 +696,34 @@ export interface MatchingBaselineResp {
   breakdown: MatchingFitnessBreakdown;
 }
 
+// NSGA-II (Etapa 3)
+export interface MatchingFrontPoint {
+  chrom: number[];
+  superavit: number;
+  inclusao: number;
+  diversidade: number;
+  violacoes: number;
+  numMatched: number;
+  traderStats: MatchingTraderStats[];
+}
+
+export interface MatchingStepNSGA {
+  geracao: number;
+  frontSize: number;
+  front: MatchingFrontPoint[];
+  bestSuperavit: number;
+  bestInclusao: number;
+  bestDiversidade: number;
+  numFeasible: number;
+}
+
+export interface MatchingResultNSGA {
+  geracoes: number;
+  front: MatchingFrontPoint[];
+  cfg: MatchingConfig;
+  scenarioId: string;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'

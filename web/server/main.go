@@ -2202,6 +2202,62 @@ func handleMatchingConfig(w http.ResponseWriter, r *http.Request) {
 	errJSON(w, http.StatusMethodNotAllowed, "use GET ou POST")
 }
 
+func handleMatchingTrainNSGA(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if matchingTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "treinamento ja em andamento")
+		return
+	}
+	if matchingScenario == nil {
+		mu.Unlock()
+		errJSON(w, http.StatusBadRequest, "carregue cenario primeiro")
+		return
+	}
+	cfg := matching.DefaultConfig()
+	if matchingCfg != nil {
+		cfg = *matchingCfg
+	}
+	scen := *matchingScenario
+	matchingTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		matchingTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming nao suportado")
+		return
+	}
+
+	progressCh := make(chan matching.StepNSGA, 64)
+	resultCh := make(chan matching.ResultNSGA, 1)
+	go func() {
+		res := matching.TreinarNSGA(progressCh, scen, cfg)
+		close(progressCh)
+		mu.Lock()
+		matchingTraining = false
+		mu.Unlock()
+		resultCh <- res
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+	res := <-resultCh
+	data, _ := json.Marshal(res)
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+	flusher.Flush()
+}
+
 func handleMatchingTrain(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	if matchingTraining {
@@ -2455,8 +2511,9 @@ func main() {
 	mux.HandleFunc("/api/matching/scenarios", cors(handleMatchingScenarios))
 	mux.HandleFunc("/api/matching/scenario",  cors(handleMatchingScenario))
 	mux.HandleFunc("/api/matching/config",    cors(handleMatchingConfig))
-	mux.HandleFunc("/api/matching/train",     cors(handleMatchingTrain))
-	mux.HandleFunc("/api/matching/baseline",  cors(handleMatchingBaseline))
+	mux.HandleFunc("/api/matching/train",       cors(handleMatchingTrain))
+	mux.HandleFunc("/api/matching/train-nsga2", cors(handleMatchingTrainNSGA))
+	mux.HandleFunc("/api/matching/baseline",    cors(handleMatchingBaseline))
 	mux.HandleFunc("/api/matching/reset",     cors(handleMatchingReset))
 	mux.HandleFunc("/api/matching/result",    cors(handleMatchingResult))
 
