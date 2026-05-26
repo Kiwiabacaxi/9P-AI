@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, type CSSProperties } from 'react';
 import type { TspCidade, TspMigracao } from '../../api/types';
 
 // Paleta de cores por ilha — neon, distinta, casa com o tema do app.
@@ -157,7 +157,7 @@ export function GeneStrip({ cidades, tour, color, activeIdx = -1, highlight, hig
   );
 }
 
-// Botõezinhos de transporte reutilizados (play/pause/step/speed).
+// Botõezinhos pequenos (velocidade etc).
 function ctrlBtn(label: string, onClick: () => void, active = false, title?: string) {
   return (
     <button
@@ -168,6 +168,33 @@ function ctrlBtn(label: string, onClick: () => void, active = false, title?: str
     >
       {label}
     </button>
+  );
+}
+
+// PlayerControls — player limpo: ◀ (anterior) · botão central play/pause · ▶ (próximo).
+function PlayerControls({ playing, onPlayPause, onPrev, onNext, prevTitle, nextTitle }: {
+  playing: boolean; onPlayPause: () => void; onPrev: () => void; onNext: () => void;
+  prevTitle?: string; nextTitle?: string;
+}) {
+  const side: CSSProperties = {
+    width: 38, height: 38, borderRadius: '50%', cursor: 'pointer', fontSize: 14,
+    background: 'var(--surface-2)', color: 'var(--cyan)', border: '1px solid #2a2a2a',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+  };
+  const center: CSSProperties = {
+    width: 50, height: 50, borderRadius: '50%', cursor: 'pointer', fontSize: 19,
+    background: 'var(--cyan)', color: '#06121a', border: 'none', fontWeight: 700,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+    boxShadow: '0 0 16px rgba(0,204,255,0.45)',
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+      <button style={side} onClick={onPrev} title={prevTitle} aria-label="anterior">⏮</button>
+      <button style={center} onClick={onPlayPause} title={playing ? 'pausar' : 'tocar'} aria-label="play/pause">
+        {playing ? '⏸' : '▶'}
+      </button>
+      <button style={side} onClick={onNext} title={nextTitle} aria-label="próximo">⏭</button>
+    </div>
   );
 }
 
@@ -195,19 +222,25 @@ export function ChromosomeFollower({ cidades, tour, color }: { cidades: TspCidad
   return (
     <div>
       <GeneStrip cidades={cidades} tour={tour} color={color} activeIdx={idx} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-        {ctrlBtn('⏮', () => stepTo(0), false, 'reiniciar')}
-        {ctrlBtn('◀', () => stepTo(idx - 1), false, 'voltar')}
-        {ctrlBtn(playing ? '⏸' : '▶', () => setPlaying(p => !p), playing, playing ? 'pausar' : 'tocar')}
-        {ctrlBtn('▶|', () => stepTo(idx + 1), false, 'avançar')}
-        <div style={{ display: 'flex', gap: 2, marginLeft: 4 }}>
-          {[1, 3, 6].map(s => ctrlBtn(`${s}/s`, () => setSpeed(s), s === speed, `${s} genes por segundo`))}
-        </div>
-        <div style={{ marginLeft: 8, fontSize: 11, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
-          passo <span style={{ color }}>{idx + 1}</span>/{n}:{' '}
-          <b style={{ color }}>{atual?.nome ?? '—'}</b>
-          <span style={{ color: '#444' }}> → </span>
-          {prox?.nome ?? '—'}
+      <div style={{ marginTop: 12 }}>
+        <PlayerControls
+          playing={playing}
+          onPlayPause={() => setPlaying(p => !p)}
+          onPrev={() => stepTo(idx - 1)}
+          onNext={() => stepTo(idx + 1)}
+          prevTitle="gene anterior"
+          nextTitle="próximo gene"
+        />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[1, 3, 6].map(s => ctrlBtn(`${s}/s`, () => setSpeed(s), s === speed, `${s} genes por segundo`))}
+          </div>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
+            passo <span style={{ color }}>{idx + 1}</span>/{n}:{' '}
+            <b style={{ color }}>{atual?.nome ?? '—'}</b>
+            <span style={{ color: '#444' }}> → </span>
+            {prox?.nome ?? '—'}
+          </div>
         </div>
       </div>
     </div>
@@ -348,24 +381,49 @@ function buildMating(
   return { frames };
 }
 
+interface Pai { tour: number[]; label: string; color: string }
+
 interface OperatorLabProps {
   cidades: TspCidade[];
-  pais: { tour: number[]; label: string; color: string }[]; // >=2 candidatos a pai
+  pais: Pai[]; // candidatos a pai (todas as ilhas, ordenadas por aptidão)
   cruzamento: 'ox' | 'pmx';
   mutacao: 'swap' | 'inversao';
   probMut: number;
 }
 
-export function OperatorLab({ cidades, pais, cruzamento, mutacao, probMut }: OperatorLabProps) {
+// pickParents — garante DOIS pais distintos. Pega o melhor (pais[0]) e o primeiro
+// com tour diferente; se todas as ilhas convergiram pro mesmo tour, deriva o 2º
+// pai perturbando o 1º (alguns swaps) pra o cruzamento ter o que fazer.
+function pickParents(pais: Pai[]): { p1: Pai; p2: Pai } {
   const p1 = pais[0];
-  const p2 = pais[1] ?? pais[0];
+  const sig = (t: number[]) => t.join(',');
+  const diff = pais.slice(1).find(p => sig(p.tour) !== sig(p1.tour));
+  if (diff) return { p1, p2: diff };
+  // todas iguais → perturba uma cópia do melhor
+  const t = p1.tour.slice();
+  const n = t.length;
+  const swaps = Math.max(3, Math.floor(n / 8));
+  for (let s = 0; s < swaps; s++) {
+    const i = Math.floor(Math.random() * n);
+    const j = Math.floor(Math.random() * n);
+    [t[i], t[j]] = [t[j], t[i]];
+  }
+  return { p1, p2: { tour: t, label: 'variação (ilhas convergiram → 2º pai perturbado)', color: '#ff00aa' } };
+}
 
+export function OperatorLab({ cidades, pais, cruzamento, mutacao, probMut }: OperatorLabProps) {
   const [seqKey, setSeqKey] = useState(0); // muda → gera nova reprodução
+
+  const paisSig = pais.map(p => p.tour.join(',')).join('#');
+  const { p1, p2 } = useMemo(
+    () => pickParents(pais),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [paisSig, seqKey],
+  );
   const { frames } = useMemo(
     () => buildMating(p1.tour, p2.tour, cruzamento, mutacao, probMut),
-    // seqKey força regenerar; tours/operadores também
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [seqKey, p1.tour, p2.tour, cruzamento, mutacao, probMut],
+    [p1, p2, cruzamento, mutacao, probMut, seqKey],
   );
 
   const [fi, setFi] = useState(0);
@@ -413,16 +471,21 @@ export function OperatorLab({ cidades, pais, cruzamento, mutacao, probMut }: Ope
       </div>
 
       {/* controles */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-        {ctrlBtn('⏮', () => stepTo(0), false, 'início')}
-        {ctrlBtn('◀', () => stepTo(fi - 1), false, 'voltar etapa')}
-        {ctrlBtn(playing ? '⏸' : '▶', () => setPlaying(p => !p), playing, playing ? 'pausar' : 'tocar etapas')}
-        {ctrlBtn('▶|', () => stepTo(fi + 1), false, 'avançar etapa')}
-        <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: 'var(--muted)', marginLeft: 4 }}>
-          etapa {fi + 1}/{frames.length}
-        </span>
-        <div style={{ flex: 1 }} />
-        {ctrlBtn('🧬 gerar novo filho', () => { setSeqKey(k => k + 1); }, false, 'sortear novos cortes/mutação')}
+      <div style={{ marginTop: 12 }}>
+        <PlayerControls
+          playing={playing}
+          onPlayPause={() => { if (fi >= frames.length - 1) setFi(0); setPlaying(p => !p); }}
+          onPrev={() => stepTo(fi - 1)}
+          onNext={() => stepTo(fi + 1)}
+          prevTitle="etapa anterior"
+          nextTitle="próxima etapa"
+        />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
+            etapa {fi + 1}/{frames.length}
+          </span>
+          {ctrlBtn('🧬 gerar novo filho', () => setSeqKey(k => k + 1), false, 'sortear novos pais/cortes/mutação')}
+        </div>
       </div>
     </div>
   );

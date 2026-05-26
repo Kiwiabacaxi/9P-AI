@@ -721,7 +721,6 @@ export default function TspMultiView() {
               cidades={cidades}
               pais={[...ilhasAtuais]
                 .sort((a, b) => a.melhorDist - b.melhorDist)
-                .slice(0, 2)
                 .map(il => ({ tour: il.melhorTour, label: `Ilha ${il.ilha + 1} (${il.melhorDist.toFixed(0)} ${unidade})`, color: islandColor(il.ilha) }))}
               cruzamento={cruzamento}
               mutacao={mutacao}
