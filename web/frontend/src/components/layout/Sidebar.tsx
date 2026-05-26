@@ -104,6 +104,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⚖'}</span>
         GA · TSP Comparativo
       </div>
+      <div
+        className={`nav-item${active === 'tsp-multi' ? ' active' : ''}`}
+        onClick={() => onNavigate('tsp-multi')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'🏝'}</span>
+        GA · TSP Multi-ilhas
+      </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div

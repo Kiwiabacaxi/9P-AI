@@ -576,12 +576,69 @@ export interface TspRouteGeometry {
   duracao: number;               // segundos totais
 }
 
+// TSP Multi-populacional — modelo de ilhas (Aula 14 / Trabalho 12)
+export interface TspMultiConfig {
+  numIlhas: number;
+  tamIlha: number;
+  maxGeracoes: number;
+  intervaloMigracao: number;
+  numMigrantes: number;
+  topologia: string;          // "anel"
+  compararPopUnica: boolean;
+  seed?: number;
+  ga: TspConfig;
+}
+
+export interface TspIlhaStep {
+  ilha: number;
+  melhorTour: number[];
+  melhorDist: number;
+  melhorCusto: number;
+  mediaDist: number;
+  diversidade: number;
+}
+
+export interface TspMigracao {
+  de: number;
+  para: number;
+  migranteTour?: number[];
+}
+
+export interface TspMultiStep {
+  geracao: number;
+  ilhas: TspIlhaStep[];
+  melhorGlobalTour: number[];
+  melhorGlobalDist: number;
+  ilhaVencedora: number;
+  geracoesSemMelhora: number;
+  diversidadeGlobal: number;
+  migrou: boolean;
+  migracoes?: TspMigracao[];
+  refUnicaDist?: number;
+  refUnicaDiv?: number;
+}
+
+export interface TspMultiResult {
+  geracoes: number;
+  melhorGlobalTour: number[];
+  melhorGlobalDist: number;
+  ilhaVencedora: number;
+  histGlobal: number[];
+  histIlhas: number[][];
+  histDiversidade: number[];
+  geracoesMigracao: number[];
+  histRefUnica?: number[];
+  histRefUnicaDiv?: number[];
+  melhorRefUnicaDist?: number;
+  cfg: TspMultiConfig;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
-  | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare'
+  | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare' | 'tsp-multi'
   | 'about';
 
 // Horário Escolar (Aula 12 — cromossomo matricial)
