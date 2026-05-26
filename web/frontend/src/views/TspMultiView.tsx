@@ -7,7 +7,7 @@ import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
 import Select from '../components/shared/Select';
 import TspMap from '../components/viz/TspMap';
-import { MiniRoute, RingDiagram, GeneStrip, ChromosomeFollower, islandColor } from '../components/viz/IslandViz';
+import { MiniRoute, RingDiagram, GeneStrip, ChromosomeFollower, OperatorLab, islandColor } from '../components/viz/IslandViz';
 import { useToast } from '../components/shared/Toast';
 import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
@@ -702,6 +702,31 @@ export default function TspMultiView() {
                 <GeneStrip cidades={cidades} tour={il.melhorTour} color={islandColor(il.ilha)} />
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Laboratório de operadores — seleção → cruzamento → mutação passo a passo */}
+      {ilhasAtuais.length >= 2 && (
+        <Card title="Laboratório de operadores — veja seleção, cruzamento e mutação passo a passo" style={{ marginBottom: 16 }}>
+          <div style={{ padding: 12 }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 12 }}>
+              Pega dois pais reais (os melhores de duas ilhas) e mostra como nasce um filho, na ordem do AG:
+              <b style={{ color: 'var(--cyan)' }}> seleção</b> →
+              <b style={{ color: '#ff00aa' }}> cruzamento ({cruzamento.toUpperCase()})</b> →
+              <b style={{ color: '#ff8a3d' }}> mutação ({mutacao})</b>. Use ◀ ▶ pra navegar as etapas, ▶ pra tocar,
+              e "gerar novo filho" pra sortear outros cortes. Troque os operadores nos controles do topo pra ver a diferença.
+            </div>
+            <OperatorLab
+              cidades={cidades}
+              pais={[...ilhasAtuais]
+                .sort((a, b) => a.melhorDist - b.melhorDist)
+                .slice(0, 2)
+                .map(il => ({ tour: il.melhorTour, label: `Ilha ${il.ilha + 1} (${il.melhorDist.toFixed(0)} ${unidade})`, color: islandColor(il.ilha) }))}
+              cruzamento={cruzamento}
+              mutacao={mutacao}
+              probMut={parseFloat(probMut)}
+            />
           </div>
         </Card>
       )}
