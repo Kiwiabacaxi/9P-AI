@@ -177,15 +177,15 @@ function PlayerControls({ playing, onPlayPause, onPrev, onNext, prevTitle, nextT
   prevTitle?: string; nextTitle?: string;
 }) {
   const side: CSSProperties = {
-    width: 38, height: 38, borderRadius: '50%', cursor: 'pointer', fontSize: 14,
+    width: 38, height: 34, borderRadius: 6, cursor: 'pointer', fontSize: 14,
     background: 'var(--surface-2)', color: 'var(--cyan)', border: '1px solid #2a2a2a',
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
   };
   const center: CSSProperties = {
-    width: 50, height: 50, borderRadius: '50%', cursor: 'pointer', fontSize: 19,
+    width: 48, height: 34, borderRadius: 6, cursor: 'pointer', fontSize: 16,
     background: 'var(--cyan)', color: '#06121a', border: 'none', fontWeight: 700,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-    boxShadow: '0 0 16px rgba(0,204,255,0.45)',
+    boxShadow: '0 0 10px rgba(0,204,255,0.35)',
   };
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
