@@ -300,6 +300,21 @@ Componentes (visual rico + pedagógico):
    comprimento de `HistGlobal` e a pop única usa exatamente `NumIlhas × TamIlha`
    indivíduos e a mesma seed-base (comparação justa).
 
+## 8.1 Resultado observado (pós-implementação)
+
+Medição honesta no problema de 20 cidades (haversine, seeds variadas): a
+multi-ilhas e a população única (mesmo total de indivíduos) **convergem para o
+mesmo ótimo (~1215 km)** — às vezes a multi fica marginalmente atrás por
+fragmentação. O problema é fácil demais e a mutação por inversão (2-opt) é forte,
+então não sobra mínimo local pra multi escapar. A UI reporta isso com honestidade
+("praticamente empate") em vez de forçar uma vitória.
+
+O que **é** visível e real: (a) cada ilha converge para uma rota distinta nos
+small multiples; (b) a diversidade das ilhas dá saltos logo após cada migração
+(reinjeção de variedade). O ganho de qualidade do modelo de ilhas cresce com a
+dificuldade/tamanho do problema — não aparece em 20 cidades. Decisão: manter o
+comparativo como ferramenta honesta, sem oversell.
+
 ## 9. Fora de escopo (YAGNI)
 
 - Topologias de migração além do anel (estrela, all-to-all, aleatória).
