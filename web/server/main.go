@@ -28,6 +28,7 @@ import (
 	"mlp-server/horario"
 	"mlp-server/timeseries"
 	"mlp-server/tsp"
+	"mlp-server/tspmulti"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -141,6 +142,10 @@ var (
 	tspCfg           *tsp.Config
 	tspRes           *tsp.Result
 	tspTraining      bool
+
+	tspmCfg      *tspmulti.MultiConfig
+	tspmRes      *tspmulti.MultiResult
+	tspmTraining bool
 
 	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
 	// Pra OSRM cacheamos as DUAS matrizes juntas (distância + duração).
@@ -2245,6 +2250,107 @@ func handleTspBaseline(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// =============================================================================
+// TSP Multi-populacional (Trabalho 12 / Aula 14) — modelo de ilhas.
+// Reaproveita o conjunto de cidades + matriz de distâncias do TSP (mesmo fluxo
+// de /api/tsp/preset + /api/tsp/distancias), trocando só o algoritmo.
+// =============================================================================
+
+func handleTspMultiConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg tspmulti.MultiConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	tspmCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleTspMultiTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if tspmTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	if len(tspCidades) < 3 || tspMatriz == nil {
+		mu.Unlock()
+		errJSON(w, http.StatusBadRequest, "carregue cidades e calcule a matriz antes de treinar (use o cenário Triângulo 20)")
+		return
+	}
+	cfg := tspmCfg
+	if cfg == nil {
+		def := tspmulti.DefaultMultiConfig()
+		cfg = &def
+	}
+	matriz := tspMatriz
+	matDur := tspMatrizDuracao
+	tspmTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		tspmTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan tspmulti.MultiStep, 64)
+	go func() {
+		res := tspmulti.Treinar(progressCh, useCfg, matriz, matDur)
+		mu.Lock()
+		tspmRes = &res
+		tspmTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := tspmRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleTspMultiReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	tspmRes = nil
+	tspmCfg = nil
+	tspmTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleTspMultiResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := tspmRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "TSP multi-populacional não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2384,6 +2490,11 @@ func main() {
 	mux.HandleFunc("/api/tsp/reset",      cors(handleTspReset))
 	mux.HandleFunc("/api/tsp/result",     cors(handleTspResult))
 	mux.HandleFunc("/api/tsp/baseline",   cors(handleTspBaseline))
+
+	mux.HandleFunc("/api/tspmulti/config", cors(handleTspMultiConfig))
+	mux.HandleFunc("/api/tspmulti/train",  cors(handleTspMultiTrain))
+	mux.HandleFunc("/api/tspmulti/reset",  cors(handleTspMultiReset))
+	mux.HandleFunc("/api/tspmulti/result", cors(handleTspMultiResult))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)
