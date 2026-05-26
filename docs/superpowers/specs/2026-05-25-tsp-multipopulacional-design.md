@@ -29,7 +29,9 @@ Defaults do exemplo do professor: **3 ilhas × 20 indivíduos**, migração a ca
 | Cidades | 20 cidades do **mapa** do slide, coords reais, matriz via haversine/OSRM |
 | Cidade nº 14 (rótulo ilegível) | Preenchida com **Nova Ponte** (trocável) |
 | Modelo de paralelismo | **A — Lockstep paralelo** (orquestrador comanda gerações; ilhas evoluem 1 passo concorrentes via goroutines + WaitGroup; migração em intervalos fixos) |
-| Visualização | **Rica** — mapa do melhor global + small-multiples por ilha + convergência multi-linha + animação de migração + tabela por ilha |
+| Visualização | **Rica + pedagógica** — mapa do melhor global + small-multiples por ilha + convergência multi-linha + animação de migração + tabela por ilha |
+| Comparativo | **Pop única vs multi-ilhas** (toggle): roda em paralelo um AG de população única com o MESMO total de indivíduos e seed, sobrepõe as curvas para evidenciar a multi escapando do mínimo local |
+| Reforços pedagógicos | Medidor de diversidade (salto pós-migração); anotações de "salto" na curva; cor de gene migrante; painel "melhor de todas" com contador de estagnação |
 
 ### Por que lockstep paralelo (A)?
 
@@ -74,6 +76,7 @@ type MultiConfig struct {
     IntervaloMigracao int        `json:"intervaloMigracao"` // default 10
     NumMigrantes      int        `json:"numMigrantes"`      // default 1
     Topologia         string     `json:"topologia"`         // "anel" (único por ora)
+    CompararPopUnica  bool       `json:"compararPopUnica"`  // roda baseline de pop única em paralelo
     Seed              int64      `json:"seed,omitempty"`
     GA                tsp.Config `json:"ga"`                // seleção, cruzamento, mutação, probs, elitismo
 }
@@ -99,14 +102,18 @@ type MultiStep struct {
     Ilhas            []IlhaStep `json:"ilhas"`
     MelhorGlobalTour []int      `json:"melhorGlobalTour"`
     MelhorGlobalDist float64    `json:"melhorGlobalDist"`
-    IlhaVencedora    int        `json:"ilhaVencedora"`    // qual ilha tem o melhor global agora
-    Migrou           bool       `json:"migrou"`           // true na geração em que houve migração
-    Migracoes        []Migracao `json:"migracoes,omitempty"` // de→para nesta geração (pra animação)
+    IlhaVencedora    int        `json:"ilhaVencedora"`     // qual ilha tem o melhor global agora
+    GeracoesSemMelhora int      `json:"geracoesSemMelhora"` // estagnação do melhor global (painel "melhor de todas")
+    DiversidadeGlobal  int      `json:"diversidadeGlobal"`  // tours únicos somando todas as ilhas
+    Migrou           bool       `json:"migrou"`            // true na geração em que houve migração
+    Migracoes        []Migracao `json:"migracoes,omitempty"` // de→para nesta geração (animação + cor de gene)
+    RefUnicaDist     float64    `json:"refUnicaDist,omitempty"` // melhor da pop única nesta geração (se comparando)
 }
 
 type Migracao struct {
-    De   int `json:"de"`
-    Para int `json:"para"`
+    De         int   `json:"de"`
+    Para       int   `json:"para"`
+    MigranteTour []int `json:"migranteTour,omitempty"` // tour do migrante (destaca o gene migrante no destino)
 }
 
 type MultiResult struct {
@@ -116,7 +123,10 @@ type MultiResult struct {
     IlhaVencedora    int          `json:"ilhaVencedora"`
     HistGlobal       []float64    `json:"histGlobal"`       // melhor global por geração
     HistIlhas        [][]float64  `json:"histIlhas"`        // [ilha][geracao] melhor da ilha
+    HistDiversidade  []int        `json:"histDiversidade"`  // diversidade global por geração
     GeracoesMigracao []int        `json:"geracoesMigracao"` // gerações em que houve migração
+    HistRefUnica     []float64    `json:"histRefUnica,omitempty"` // baseline pop única (se comparando)
+    MelhorRefUnicaDist float64    `json:"melhorRefUnicaDist,omitempty"`
     Cfg              MultiConfig  `json:"cfg"`
 }
 ```
@@ -162,6 +172,17 @@ simultânea ("dança de cadeiras") e não encadeada.
 **Determinismo:** cada ilha recebe um `*rand.Rand` derivado da seed base
 (ex: `seed + i`), garantindo reprodutibilidade independente do escalonamento das
 goroutines (a estrutura lockstep evita corrida nos dados compartilhados).
+
+### 3.5 Baseline de população única (comparativo)
+
+Quando `CompararPopUnica = true`, o orquestrador mantém **uma população única
+extra** de tamanho `NumIlhas × TamIlha` (mesmo total de indivíduos das ilhas
+somadas), com a mesma seed-base e os mesmos params de GA, evoluída em lockstep
+junto com as ilhas (mais uma goroutine na barreira de cada geração). Ela **não
+participa de migração** — é a testemunha "sem multipopulacional". Seu melhor por
+geração vai em `RefUnicaDist`/`HistRefUnica`. Reusa diretamente
+`tsp.EvoluirUmaGeracao`, deixando a comparação justa: mesmo orçamento de
+indivíduos e avaliações, única diferença = ter ilhas + migração.
 
 ## 4. Cidades — preset `triangulo20`
 
@@ -219,21 +240,40 @@ Nova entrada no `Sidebar` na seção "Algoritmo Genético", depois de "TSP
 Comparativo". Novo `ViewId` `tsp-multi`, tipos em `api/types.ts`, consumo via
 `apiSSE` (mesmo helper do TSP).
 
-Componentes (visual rico):
+**Identidade de cor por ilha:** cada ilha recebe uma cor fixa (paleta de N
+cores). Essa cor é usada de ponta a ponta — borda do small-multiple, linha na
+curva de convergência, token de migração e destaque do gene migrante — para o
+olho amarrar "ilha → cor" em todos os painéis.
+
+Componentes (visual rico + pedagógico):
 
 1. **Mapa** (reusa `TspMap`/leaflet): melhor rota **global**, ancorada no depot.
-2. **Small multiples**: um mini-painel por ilha mostrando a rota atual daquela
-   ilha — dá pra ver cada ilha "se especializando" num caminho diferente.
-3. **Convergência multi-linha** (reusa/estende `GaChart`): uma linha por ilha +
-   uma linha do melhor global, com **marcadores verticais** nas gerações de
-   migração.
-4. **Animação de migração**: na geração de migração, um pulso/seta entre os
-   painéis das ilhas, no sentido do anel ("dança de cadeiras").
-5. **Tabela por ilha**: melhor distância/fitness e diversidade de cada ilha, com
+2. **Small multiples**: um mini-painel por ilha (na cor da ilha) mostrando a rota
+   atual daquela ilha — dá pra ver cada ilha "se especializando" num caminho
+   diferente.
+3. **Convergência multi-linha** (reusa/estende `GaChart`): uma linha por ilha (na
+   cor da ilha) + linha grossa do melhor **global**. Quando `CompararPopUnica`,
+   sobrepõe a linha **pontilhada cinza da população única** — o contraste mostra
+   a multi mergulhando abaixo enquanto a única empaca num platô (mínimo local).
+   - **Marcadores verticais** nas gerações de migração.
+   - **Anotações de "salto"**: quando uma migração é seguida de melhora do
+     global dentro de poucas gerações, rotular o ponto ("migração → melhorou").
+4. **Animação de migração**: na geração de migração, um **token colorido** (cor
+   da ilha de origem) viaja entre os painéis no sentido do anel — a "dança de
+   cadeiras". No painel de destino, o **gene migrante** (rota recém-chegada,
+   `MigranteTour`) pisca na cor da origem por alguns frames.
+5. **Medidor de diversidade**: sparkline/barra da diversidade global por geração,
+   com realce do **salto logo após cada migração** (o efeito que o slide promete
+   — injeção de diversidade evita estagnação).
+6. **Painel "melhor de todas"**: card de destaque com a melhor distância global,
+   **qual ilha** a detém (na cor dela) e **há quantas gerações não melhora**
+   (contador de estagnação) — torna visível quando a migração "destrava" o ótimo.
+7. **Tabela por ilha**: melhor distância/fitness e diversidade de cada ilha, com
    destaque na ilha vencedora.
-6. **Controles**: nº de ilhas, tamanho da ilha, intervalo de migração, nº de
-   migrantes, gerações, + params de GA (seleção, cruzamento, mutação, probs,
-   elitismo) e modo de distância (haversine/OSRM).
+8. **Controles**: nº de ilhas, tamanho da ilha, intervalo de migração, nº de
+   migrantes, gerações, **toggle "comparar com população única"**, + params de GA
+   (seleção, cruzamento, mutação, probs, elitismo) e modo de distância
+   (haversine/OSRM).
 
 ## 7. Tratamento de erros
 
@@ -256,6 +296,9 @@ Componentes (visual rico):
    escalonamento das goroutines.
 5. **Regressão do `tsp`:** após extrair `EvoluirUmaGeracao`, `tsp.Treinar`
    produz resultado idêntico com a mesma seed (o Trabalho 11 não regride).
+6. **Baseline comparativo:** com `CompararPopUnica`, o `HistRefUnica` tem o mesmo
+   comprimento de `HistGlobal` e a pop única usa exatamente `NumIlhas × TamIlha`
+   indivíduos e a mesma seed-base (comparação justa).
 
 ## 9. Fora de escopo (YAGNI)
 
