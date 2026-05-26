@@ -688,83 +688,7 @@ func Treinar(progressCh chan<- Step, cfg Config, matDist, matDur [][]float64) Re
 		}
 
 		// === próxima geração ===
-		elites := extrairElites(pop, cfg.Elitismo)
-		precisamos := cfg.PopSize - len(elites)
-		numCasais := (precisamos + 1) / 2
-
-		var cumul []float64
-		if cfg.Selecao == SelRoleta {
-			fits := fitnessRoleta(pop)
-			cumul = make([]float64, len(fits))
-			soma := 0.0
-			for i, f := range fits {
-				soma += f
-				cumul[i] = soma
-			}
-		}
-
-		filhos := make([]Individuo, 0, 2*numCasais)
-		for c := 0; c < numCasais; c++ {
-			var paiA, paiB Individuo
-			if cfg.Selecao == SelTorneio {
-				paiA, paiB = selecionarTorneio(pop, cfg.TamanhoTorneio, rng)
-			} else {
-				paiA = selecionarRoleta(pop, cumul, rng)
-				paiB = selecionarRoleta(pop, cumul, rng)
-			}
-
-			var t1, t2 []int
-			if rng.Float64() < cfg.ProbCruzamento {
-				cut1 := rng.Intn(n)
-				cut2 := rng.Intn(n)
-				if cut1 > cut2 {
-					cut1, cut2 = cut2, cut1
-				}
-				if cut1 == cut2 {
-					cut2 = (cut2 + 1) % n
-					if cut1 > cut2 {
-						cut1, cut2 = cut2, cut1
-					}
-				}
-				if cfg.Cruzamento == CrossPMX {
-					t1 = cruzamentoPMX(paiA.Tour, paiB.Tour, cut1, cut2)
-					t2 = cruzamentoPMX(paiB.Tour, paiA.Tour, cut1, cut2)
-				} else {
-					t1 = cruzamentoOX(paiA.Tour, paiB.Tour, cut1, cut2)
-					t2 = cruzamentoOX(paiB.Tour, paiA.Tour, cut1, cut2)
-				}
-			} else {
-				t1 = cloneTour(paiA.Tour)
-				t2 = cloneTour(paiB.Tour)
-			}
-
-			// mutação só nos filhos (Obs 03 da aula 10)
-			if cfg.Mutacao == MutSwap {
-				mutacaoSwap(t1, cfg.ProbMutacao, rng)
-				mutacaoSwap(t2, cfg.ProbMutacao, rng)
-			} else {
-				mutacaoInversao(t1, cfg.ProbMutacao, rng)
-				mutacaoInversao(t2, cfg.ProbMutacao, rng)
-			}
-
-			f1 := Individuo{Tour: t1}
-			f1.Distancia, f1.MaxLeg, f1.TempoSec, f1.Custo = avaliar(
-				t1, matDist, matDur,
-				cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
-				cfg.LastVisit,
-			)
-			f2 := Individuo{Tour: t2}
-			f2.Distancia, f2.MaxLeg, f2.TempoSec, f2.Custo = avaliar(
-				t2, matDist, matDur,
-				cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
-				cfg.LastVisit,
-			)
-			filhos = append(filhos, f1, f2)
-		}
-		if len(filhos) > precisamos {
-			filhos = filhos[:precisamos]
-		}
-		pop = append(elites, filhos...)
+		pop = EvoluirUmaGeracao(pop, cfg, rng, matDist, matDur)
 	}
 
 	return Result{
@@ -779,6 +703,118 @@ func Treinar(progressCh chan<- Step, cfg Config, matDist, matDur [][]float64) Re
 		HistDiversidade: histDiv,
 		Cfg:             cfg,
 	}
+}
+
+// EvoluirUmaGeracao — produz a próxima geração a partir de `pop`: elitismo +
+// seleção + cruzamento + mutação + avaliação. Encapsula o que antes era o corpo
+// do loop de Treinar, pra ser reutilizado pelo AG multi-populacional (uma ilha
+// = uma chamada por geração). `cfg.PopSize` define o tamanho da geração de saída.
+//
+// Determinístico dado o mesmo `rng` e a mesma `pop` de entrada.
+func EvoluirUmaGeracao(pop []Individuo, cfg Config, rng *rand.Rand, matDist, matDur [][]float64) []Individuo {
+	n := len(matDist)
+
+	elites := extrairElites(pop, cfg.Elitismo)
+	precisamos := cfg.PopSize - len(elites)
+	numCasais := (precisamos + 1) / 2
+
+	var cumul []float64
+	if cfg.Selecao == SelRoleta {
+		fits := fitnessRoleta(pop)
+		cumul = make([]float64, len(fits))
+		soma := 0.0
+		for i, f := range fits {
+			soma += f
+			cumul[i] = soma
+		}
+	}
+
+	filhos := make([]Individuo, 0, 2*numCasais)
+	for c := 0; c < numCasais; c++ {
+		var paiA, paiB Individuo
+		if cfg.Selecao == SelTorneio {
+			paiA, paiB = selecionarTorneio(pop, cfg.TamanhoTorneio, rng)
+		} else {
+			paiA = selecionarRoleta(pop, cumul, rng)
+			paiB = selecionarRoleta(pop, cumul, rng)
+		}
+
+		var t1, t2 []int
+		if rng.Float64() < cfg.ProbCruzamento {
+			cut1 := rng.Intn(n)
+			cut2 := rng.Intn(n)
+			if cut1 > cut2 {
+				cut1, cut2 = cut2, cut1
+			}
+			if cut1 == cut2 {
+				cut2 = (cut2 + 1) % n
+				if cut1 > cut2 {
+					cut1, cut2 = cut2, cut1
+				}
+			}
+			if cfg.Cruzamento == CrossPMX {
+				t1 = cruzamentoPMX(paiA.Tour, paiB.Tour, cut1, cut2)
+				t2 = cruzamentoPMX(paiB.Tour, paiA.Tour, cut1, cut2)
+			} else {
+				t1 = cruzamentoOX(paiA.Tour, paiB.Tour, cut1, cut2)
+				t2 = cruzamentoOX(paiB.Tour, paiA.Tour, cut1, cut2)
+			}
+		} else {
+			t1 = cloneTour(paiA.Tour)
+			t2 = cloneTour(paiB.Tour)
+		}
+
+		// mutação só nos filhos (Obs 03 da aula 10)
+		if cfg.Mutacao == MutSwap {
+			mutacaoSwap(t1, cfg.ProbMutacao, rng)
+			mutacaoSwap(t2, cfg.ProbMutacao, rng)
+		} else {
+			mutacaoInversao(t1, cfg.ProbMutacao, rng)
+			mutacaoInversao(t2, cfg.ProbMutacao, rng)
+		}
+
+		f1 := Individuo{Tour: t1}
+		f1.Distancia, f1.MaxLeg, f1.TempoSec, f1.Custo = avaliar(
+			t1, matDist, matDur,
+			cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
+			cfg.LastVisit,
+		)
+		f2 := Individuo{Tour: t2}
+		f2.Distancia, f2.MaxLeg, f2.TempoSec, f2.Custo = avaliar(
+			t2, matDist, matDur,
+			cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec,
+			cfg.LastVisit,
+		)
+		filhos = append(filhos, f1, f2)
+	}
+	if len(filhos) > precisamos {
+		filhos = filhos[:precisamos]
+	}
+	return append(elites, filhos...)
+}
+
+// Diversidade — número de tours únicos numa população (wrapper exportado de
+// `diversidade`, usado pelo orquestrador multi-populacional).
+func Diversidade(pop []Individuo) int {
+	return diversidade(pop)
+}
+
+// Avaliar — calcula distância/maxLeg/tempo/custo de um tour (wrapper exportado
+// de `avaliar`, pra montar Individuo fora do pacote, ex: migrantes).
+func Avaliar(tour []int, matDist, matDur [][]float64, cfg Config) (dist, maxLeg, tempoSec, custo float64) {
+	return avaliar(tour, matDist, matDur, cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec, cfg.LastVisit)
+}
+
+// GerarPopulacaoInicial — wrapper exportado de gerarPopulacaoInicial, pra o
+// orquestrador multi-populacional semear cada ilha.
+func GerarPopulacaoInicial(rng *rand.Rand, popSize, n int, matDist, matDur [][]float64, cfg Config) []Individuo {
+	return gerarPopulacaoInicial(rng, popSize, n, matDist, matDur, cfg.LambdaMaxLeg, cfg.Gamma, cfg.MuOvertime, cfg.JornadaMaxSec, cfg.LastVisit)
+}
+
+// Sanitizar — wrapper exportado de sanitizar (corrige uma Config de GA pros
+// limites válidos dado n cidades).
+func Sanitizar(cfg Config, n int) Config {
+	return sanitizar(cfg, n)
 }
 
 func sanitizar(cfg Config, n int) Config {
@@ -894,6 +930,7 @@ func Presets() []Preset {
 		presetJBS(),
 		presetCargillSoja(),
 		presetADMMilho(),
+		presetTriangulo20(),
 	}
 }
 
@@ -1129,6 +1166,68 @@ func presetADMMilho() Preset {
 			{ID: 8, Nome: "Capinópolis", UF: "MG", Lat: -18.6822, Lng: -49.5697},
 			{ID: 9, Nome: "Frutal", UF: "MG", Lat: -20.0247, Lng: -48.9408},
 			{ID: 10, Nome: "Iturama", UF: "MG", Lat: -19.7283, Lng: -50.1969},
+		},
+	}
+}
+
+// =============================================================================
+// 6) Triângulo 20 · Roteamento de Caminhão (Trabalho 12 — AG multi-populacional)
+//
+// As 20 cidades do mapa do slide da Aula 14. Depot = Uberlândia (ID 0, maior
+// cidade e hub natural da região). Coordenadas reais aproximadas (centro
+// municipal) — o modo OSRM resolve a distância por estrada. A cidade nº 14 do
+// mapa estava ilegível; preenchida com Nova Ponte (coerente geograficamente,
+// no vão central-leste entre Iraí de Minas, Santa Juliana e Serra do Salitre).
+// =============================================================================
+
+func presetTriangulo20() Preset {
+	return Preset{
+		ID:        "triangulo20",
+		Nome:      "Triângulo 20 · Caminhão (multipopulacional)",
+		Descricao: "Roteamento de um caminhão por 20 cidades do Triângulo Mineiro",
+		Origem:    "Uberlândia",
+		Narrativa: "Cenário do Trabalho 12 (Aula 14): um caminhão precisa percorrer 20 " +
+			"cidades da região do Triângulo Mineiro saindo e voltando a Uberlândia, " +
+			"minimizando a distância total percorrida. " +
+			"\n\n" +
+			"Com 20 cidades existem 20! ≈ 2,4 · 10¹⁸ tours possíveis — busca exaustiva " +
+			"é inviável. Aqui o problema é resolvido por um Algoritmo Genético " +
+			"multi-populacional (modelo de ilhas): várias subpopulações evoluem em " +
+			"paralelo (goroutines) e, de tempos em tempos, trocam seus melhores " +
+			"indivíduos (migração em anel — a \"dança de cadeiras\"). A ideia é manter " +
+			"diversidade e escapar de mínimos locais onde uma população única empacaria." +
+			"\n\n" +
+			"As 20 cidades são as do mapa sugerido em aula. Use o modo OSRM para " +
+			"distâncias por estrada reais (BR-050, BR-365, BR-452, etc.).",
+		LambdaSugerido: 0,
+		ModoSugerido:   DistHaversine,
+		FitnessNota: "TSP puro do enunciado: minimizar só a distância total (λ = 0, γ = 0, " +
+			"sem restrição de última visita). Haversine roda offline; troque pra OSRM " +
+			"pra distâncias por estrada reais.",
+		LastVisit:          -1,
+		GammaSugerido:      0,
+		MuOvertimeSugerido: 0,
+		Cidades: []Cidade{
+			{ID: 0, Nome: "Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
+			{ID: 1, Nome: "Tupaciguara", UF: "MG", Lat: -18.5917, Lng: -48.7053},
+			{ID: 2, Nome: "Araguari", UF: "MG", Lat: -18.6486, Lng: -48.1872},
+			{ID: 3, Nome: "Monte Carmelo", UF: "MG", Lat: -18.7264, Lng: -47.4986},
+			{ID: 4, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
+			{ID: 5, Nome: "Ituiutaba", UF: "MG", Lat: -18.9686, Lng: -49.4650},
+			{ID: 6, Nome: "Iturama", UF: "MG", Lat: -19.7281, Lng: -50.1958},
+			{ID: 7, Nome: "Prata", UF: "MG", Lat: -19.3072, Lng: -48.9244},
+			{ID: 8, Nome: "Campina Verde", UF: "MG", Lat: -19.5378, Lng: -49.4869},
+			{ID: 9, Nome: "Campo Florido", UF: "MG", Lat: -19.7656, Lng: -48.5703},
+			{ID: 10, Nome: "Itapagipe", UF: "MG", Lat: -19.9047, Lng: -49.3789},
+			{ID: 11, Nome: "Indianópolis", UF: "MG", Lat: -19.0319, Lng: -47.9181},
+			{ID: 12, Nome: "Iraí de Minas", UF: "MG", Lat: -18.9869, Lng: -47.4592},
+			{ID: 13, Nome: "Nova Ponte", UF: "MG", Lat: -19.1419, Lng: -47.6803},
+			{ID: 14, Nome: "Serra do Salitre", UF: "MG", Lat: -19.1097, Lng: -46.6914},
+			{ID: 15, Nome: "Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
+			{ID: 16, Nome: "Perdizes", UF: "MG", Lat: -19.3525, Lng: -47.2914},
+			{ID: 17, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9142, Lng: -48.3878},
+			{ID: 18, Nome: "Campos Altos", UF: "MG", Lat: -19.6953, Lng: -46.1719},
+			{ID: 19, Nome: "Santa Juliana", UF: "MG", Lat: -19.3119, Lng: -47.5331},
 		},
 	}
 }
