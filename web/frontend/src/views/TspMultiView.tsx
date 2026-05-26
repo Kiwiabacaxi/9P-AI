@@ -7,11 +7,11 @@ import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
 import Select from '../components/shared/Select';
 import TspMap from '../components/viz/TspMap';
-import { MiniRoute, RingDiagram, islandColor } from '../components/viz/IslandViz';
+import { MiniRoute, RingDiagram, GeneStrip, ChromosomeFollower, islandColor } from '../components/viz/IslandViz';
 import { useToast } from '../components/shared/Toast';
 import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
-  TspCidade, TspPreset, TspDistMode,
+  TspCidade, TspPreset, TspDistMode, TspRouteGeometry,
   TspSelecao, TspCrossover, TspMutacao,
   TspMultiConfig, TspMultiStep, TspMultiResult, TspMigracao,
 } from '../api/types';
@@ -125,6 +125,8 @@ export default function TspMultiView() {
   const [migracaoGens, setMigracaoGens] = useState<number[]>([]);
   const [globalTour, setGlobalTour] = useState<number[]>([]);
   const [result, setResult] = useState<TspMultiResult | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<TspRouteGeometry | null>(null);
+  const [geometryLoading, setGeometryLoading] = useState(false);
 
   // Highlight de migração (segurado por ~1.2s pra ficar visível mesmo se o
   // streaming for rápido).
@@ -194,6 +196,24 @@ export default function TspMultiView() {
     setGlobalTour([]);
     setResult(null);
     setMigracaoFlash(null);
+    setRouteGeometry(null);
+  }
+
+  // Busca a geometria curvada (estradas reais via OSRM) da melhor rota global.
+  // Independe do modo de distância — é só pra desenhar a rota no mapa seguindo
+  // as estradas, em vez de linhas retas entre cidades.
+  async function fetchRouteGeometry(tour: number[]) {
+    if (tour.length < 3) return;
+    setGeometryLoading(true);
+    try {
+      const geo = await apiPost<TspRouteGeometry>('/tsp/geometry', { tour });
+      setRouteGeometry(geo);
+      show(`Rota real: ${geo.distancia.toFixed(0)} km por estrada (${(geo.duracao / 3600).toFixed(1)} h dirigindo)`);
+    } catch (e) {
+      show('OSRM indisponível — mapa fica em linha reta. ' + (e instanceof Error ? e.message : ''));
+    } finally {
+      setGeometryLoading(false);
+    }
   }
 
   function triggerFlash(gen: number, migracoes: TspMigracao[]) {
@@ -281,6 +301,7 @@ export default function TspMultiView() {
         setMigracaoGens(r.geracoesMigracao);
         setTraining(false);
         closeSSE.current = null;
+        void fetchRouteGeometry(r.melhorGlobalTour);
         const cmp = r.melhorRefUnicaDist
           ? ` · pop única: ${r.melhorRefUnicaDist.toFixed(1)} ${unidade}`
           : '';
@@ -428,8 +449,24 @@ export default function TspMultiView() {
           </div>
         </Card>
 
-        <Card title="Melhor rota global no mapa">
-          <TspMap cidades={cidades} tour={globalTour} globalTour={globalTour} height={300} />
+        <Card title={routeGeometry
+          ? `Melhor rota global (estradas reais — ${routeGeometry.distancia.toFixed(0)} km / ${(routeGeometry.duracao / 3600).toFixed(1)} h)`
+          : 'Melhor rota global no mapa'}>
+          {geometryLoading && (
+            <div style={{
+              padding: '6px 12px', marginBottom: 8, background: 'var(--surface-2)', borderRadius: 6,
+              fontSize: 11, color: 'var(--cyan)', fontFamily: 'JetBrains Mono',
+            }}>
+              <span className="spin" /> consultando OSRM (estradas reais)…
+            </div>
+          )}
+          <TspMap
+            cidades={cidades}
+            tour={globalTour}
+            globalTour={globalTour}
+            routeGeometry={routeGeometry ?? undefined}
+            height={300}
+          />
         </Card>
       </div>
 
@@ -634,6 +671,37 @@ export default function TspMultiView() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Desenho do cromossomo — animação seguindo o melhor + comparação entre ilhas */}
+      {globalTour.length > 0 && (
+        <Card title="Cromossomo — como a rota é codificada (animação seguindo o melhor)" style={{ marginBottom: 16 }}>
+          <div style={{ padding: 12 }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 12 }}>
+              Cada indivíduo é um <b>cromossomo = permutação</b> das {cidades.length} cidades — a ordem em que o
+              caminhão visita. Diferente das aulas 10–11 (cromossomo binário), aqui cada <b>gene é uma cidade</b>
+              {' '}(o número é o id; o depot Uberlândia = <span style={{ color: '#ff00aa' }}>0</span>, em rosa). O
+              destaque amarelo percorre os genes na ordem do tour — é o caminhão "lendo" o cromossomo.
+            </div>
+            <div style={{ marginBottom: 6, fontSize: 11, fontFamily: 'JetBrains Mono', color: '#ffff00' }}>
+              ★ melhor cromossomo global
+            </div>
+            <ChromosomeFollower cidades={cidades} tour={globalTour} color="#ffff00" />
+
+            <div style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 10 }}>
+              E abaixo, o melhor cromossomo de <b>cada ilha</b> agora — repare como diferem (cada uma achou uma
+              ordem própria) e como vão ficando parecidos perto das gerações de migração:
+            </div>
+            {ilhasAtuais.map(il => (
+              <div key={il.ilha} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: islandColor(il.ilha), marginBottom: 4 }}>
+                  ● Ilha {il.ilha + 1} — {il.melhorDist.toFixed(0)} {unidade}
+                </div>
+                <GeneStrip cidades={cidades} tour={il.melhorTour} color={islandColor(il.ilha)} />
+              </div>
+            ))}
           </div>
         </Card>
       )}

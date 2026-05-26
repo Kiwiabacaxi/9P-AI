@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import type { TspCidade, TspMigracao } from '../../api/types';
 
 // Paleta de cores por ilha — neon, distinta, casa com o tema do app.
@@ -96,6 +96,79 @@ export function MiniRoute({
         />
       ))}
     </svg>
+  );
+}
+
+// =============================================================================
+// GeneStrip — desenha um cromossomo (tour = permutação) como uma fita de genes.
+// Cada gene = uma cidade (mostra o id); depot (0) em rosa; gene em activeIdx
+// destacado na cor da ilha. É o "desenho do cromossomo".
+// =============================================================================
+
+interface GeneStripProps {
+  cidades: TspCidade[];
+  tour: number[];
+  color: string;
+  activeIdx?: number; // gene destacado (-1 = nenhum)
+}
+
+export function GeneStrip({ cidades, tour, color, activeIdx = -1 }: GeneStripProps) {
+  const byId = useMemo(() => new Map(cidades.map(c => [c.id, c])), [cidades]);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+      {tour.map((id, i) => {
+        const isDepot = id === 0;
+        const active = i === activeIdx;
+        const c = byId.get(id);
+        return (
+          <div
+            key={i}
+            title={c ? `${i + 1}º · ${c.nome}` : String(id)}
+            style={{
+              minWidth: 20, height: 20, padding: '0 3px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 3, fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700,
+              background: active ? color : 'var(--surface-2)',
+              color: active ? '#0a0a0a' : (isDepot ? '#ff00aa' : color),
+              border: `1px solid ${isDepot ? '#ff00aa' : active ? color : '#222'}`,
+              boxShadow: active ? `0 0 8px ${color}` : 'none',
+              transition: 'background 0.15s, box-shadow 0.15s, color 0.15s',
+            }}
+          >
+            {id}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ChromosomeFollower — fita de genes com um "playhead" que percorre o tour na
+// ordem (animação seguindo o melhor), mostrando cidade atual → próxima.
+export function ChromosomeFollower({ cidades, tour, color }: { cidades: TspCidade[]; tour: number[]; color: string }) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setIdx(0);
+    if (tour.length === 0) return;
+    const t = setInterval(() => setIdx(p => (p + 1) % tour.length), 320);
+    return () => clearInterval(t);
+  }, [tour]);
+
+  const byId = useMemo(() => new Map(cidades.map(c => [c.id, c])), [cidades]);
+  if (tour.length === 0) return null;
+  const atual = byId.get(tour[idx]);
+  const prox = byId.get(tour[(idx + 1) % tour.length]);
+
+  return (
+    <div>
+      <GeneStrip cidades={cidades} tour={tour} color={color} activeIdx={idx} />
+      <div style={{ marginTop: 8, fontSize: 11, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
+        passo <span style={{ color }}>{idx + 1}</span>/{tour.length}:{' '}
+        <b style={{ color }}>{atual?.nome ?? '—'}</b>
+        <span style={{ color: '#444' }}> → </span>
+        {prox?.nome ?? '—'}
+      </div>
+    </div>
   );
 }
 
