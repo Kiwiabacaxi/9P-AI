@@ -16,7 +16,16 @@ import type {
   TspMultiConfig, TspMultiStep, TspMultiResult, TspMigracao,
 } from '../api/types';
 
-const PRESET = 'triangulo20';
+const PRESET_OPTIONS = [
+  { value: 'triangulo50', label: 'Triângulo 50 cidades (complexo)' },
+  { value: 'triangulo20', label: 'Triângulo 20 cidades (enunciado)' },
+];
+const LAMBDA_OPTIONS = [
+  { value: '0',   label: 'λ = 0 (TSP puro)' },
+  { value: '0.5', label: 'λ = 0.5' },
+  { value: '1',   label: 'λ = 1' },
+  { value: '1.5', label: 'λ = 1.5 (penaliza trecho longo)' },
+];
 
 const DIST_OPTIONS = [
   { value: 'haversine',  label: 'Haversine (linha reta)' },
@@ -88,14 +97,15 @@ export default function TspMultiView() {
   const { show } = useToast();
 
   // Cidades / matriz (reusa o pipeline do TSP)
+  const [preset, setPreset] = useState('triangulo50');
   const [cidades, setCidades] = useState<TspCidade[]>([]);
   const [distMode, setDistMode] = useState<TspDistMode>('haversine');
   const [matrizPronta, setMatrizPronta] = useState(false);
 
   // Config multi
   const [numIlhas, setNumIlhas] = useState('3');
-  const [tamIlha, setTamIlha] = useState('20');
-  const [maxGeracoes, setMaxGeracoes] = useState('100');
+  const [tamIlha, setTamIlha] = useState('30');
+  const [maxGeracoes, setMaxGeracoes] = useState('200');
   const [intervalo, setIntervalo] = useState('10');
   const [numMigrantes, setNumMigrantes] = useState('1');
   const [comparar, setComparar] = useState(true);
@@ -106,6 +116,7 @@ export default function TspMultiView() {
   const [mutacao, setMutacao] = useState<TspMutacao>('inversao');
   const [probCruz, setProbCruz] = useState('0.85');
   const [probMut, setProbMut] = useState('0.15');
+  const [lambda, setLambda] = useState('0');
 
   // Estado de treino
   const [training, setTraining] = useState(false);
@@ -124,9 +135,9 @@ export default function TspMultiView() {
   const unidade = distMode === 'euclidiana' ? 'graus' : 'km';
   const nIlhas = parseInt(numIlhas);
 
-  async function carregarPreset(modo: TspDistMode) {
+  async function carregarPreset(name: string, modo: TspDistMode) {
     setMatrizPronta(false);
-    const p = await apiGet<TspPreset>(`/tsp/preset?name=${PRESET}`);
+    const p = await apiGet<TspPreset>(`/tsp/preset?name=${name}`);
     await apiPost('/tsp/cities', p.cidades);
     await apiPost('/tsp/distancias', { modo });
     setCidades(p.cidades);
@@ -137,7 +148,7 @@ export default function TspMultiView() {
     let cancelled = false;
     (async () => {
       try {
-        await carregarPreset('haversine');
+        await carregarPreset(preset, 'haversine');
         if (cancelled) return;
       } catch (e) {
         show('Erro ao carregar cenário: ' + (e instanceof Error ? e.message : String(e)));
@@ -150,6 +161,18 @@ export default function TspMultiView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handlePresetChange(novo: string) {
+    setPreset(novo);
+    limparEstado();
+    try {
+      await carregarPreset(novo, distMode);
+      const n = novo === 'triangulo50' ? 50 : 20;
+      show(`Cenário: ${n} cidades carregado`);
+    } catch (e) {
+      show('Erro: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
 
   async function handleDistModeChange(novo: string) {
     const modo = novo as TspDistMode;
@@ -205,7 +228,7 @@ export default function TspMultiView() {
         cruzamento,
         mutacao,
         elitismo: 2,
-        lambdaMaxLeg: 0,
+        lambdaMaxLeg: parseFloat(lambda),
         lastVisit: -1,
         gamma: 0,
         jornadaMaxSec: 36000,
@@ -299,7 +322,7 @@ export default function TspMultiView() {
         <div>
           <div className="page-title">TSP <span>Multi-ilhas</span></div>
           <div className="page-sub">
-            AG multipopulacional (modelo de ilhas) — Trabalho 12 · Aula 14 · 20 cidades do Triângulo Mineiro
+            AG multipopulacional (modelo de ilhas) — Trabalho 12 · Aula 14 · {cidades.length} cidades do Triângulo Mineiro
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -337,25 +360,29 @@ export default function TspMultiView() {
         </Card>
       </div>
 
-      {/* Config linha 2 — GA */}
+      {/* Config linha 2 — cenário + GA */}
       <div className="grid-3" style={{ marginBottom: 16 }}>
         <Card style={{ padding: '16px 20px' }}>
-          <Select label="Modo de distância" options={DIST_OPTIONS} value={distMode} onChange={handleDistModeChange} style={{ width: '100%' }} />
+          <Select label="Cenário (nº de cidades)" options={PRESET_OPTIONS} value={preset} onChange={handlePresetChange} style={{ width: '100%' }} />
           <div style={{ marginTop: 10 }}>
-            <Select label="Seleção" options={SELECAO_OPTIONS} value={selecao} onChange={(v) => setSelecao(v as TspSelecao)} style={{ width: '100%' }} />
+            <Select label="Modo de distância" options={DIST_OPTIONS} value={distMode} onChange={handleDistModeChange} style={{ width: '100%' }} />
           </div>
         </Card>
         <Card style={{ padding: '16px 20px' }}>
-          <Select label="Cruzamento" options={CRUZAMENTO_OPTIONS} value={cruzamento} onChange={(v) => setCruzamento(v as TspCrossover)} style={{ width: '100%' }} />
+          <Select label="Seleção" options={SELECAO_OPTIONS} value={selecao} onChange={(v) => setSelecao(v as TspSelecao)} style={{ width: '100%' }} />
           <div style={{ marginTop: 10 }}>
             <Select label="Mutação" options={MUTACAO_OPTIONS} value={mutacao} onChange={(v) => setMutacao(v as TspMutacao)} style={{ width: '100%' }} />
           </div>
         </Card>
         <Card style={{ padding: '16px 20px' }}>
-          <div className="imgreg-select-label">Pc · Pm <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(cruzamento · mutação)</span></div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Select options={PC_OPTIONS} value={probCruz} onChange={setProbCruz} style={{ flex: 1 }} />
-            <Select options={PM_OPTIONS} value={probMut} onChange={setProbMut} style={{ flex: 1 }} />
+          <Select label="Cruzamento" options={CRUZAMENTO_OPTIONS} value={cruzamento} onChange={(v) => setCruzamento(v as TspCrossover)} style={{ width: '100%' }} />
+          <div style={{ marginTop: 10 }}>
+            <div className="imgreg-select-label">Pc · Pm <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· λ</span></div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Select options={PC_OPTIONS} value={probCruz} onChange={setProbCruz} style={{ flex: 1 }} />
+              <Select options={PM_OPTIONS} value={probMut} onChange={setProbMut} style={{ flex: 1 }} />
+              <Select options={LAMBDA_OPTIONS} value={lambda} onChange={setLambda} style={{ flex: 1 }} />
+            </div>
           </div>
         </Card>
       </div>
@@ -535,8 +562,9 @@ export default function TspMultiView() {
                   </b>
                   <br />
                   <span style={{ fontStyle: 'italic' }}>
-                    Em 20 cidades o problema é fácil e ambas costumam achar (quase) o mesmo ótimo. A vantagem do modelo de
-                    ilhas — manter diversidade e escapar de mínimos locais — cresce em problemas maiores/mais difíceis.
+                    {cidades.length <= 25
+                      ? <>Com poucas cidades o problema é fácil e ambas costumam achar (quase) o mesmo ótimo. Troque pro cenário de 50 cidades pra ver a vantagem do modelo de ilhas aparecer.</>
+                      : <>Com {cidades.length} cidades a paisagem tem muitos mínimos locais: a população única tende a convergir cedo e travar, enquanto as ilhas mantêm diversidade e escapam via migração.</>}
                   </span>
                 </div>
               );

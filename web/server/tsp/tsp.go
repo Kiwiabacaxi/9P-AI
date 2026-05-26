@@ -931,6 +931,7 @@ func Presets() []Preset {
 		presetCargillSoja(),
 		presetADMMilho(),
 		presetTriangulo20(),
+		presetTriangulo50(),
 	}
 }
 
@@ -1228,6 +1229,94 @@ func presetTriangulo20() Preset {
 			{ID: 17, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9142, Lng: -48.3878},
 			{ID: 18, Nome: "Campos Altos", UF: "MG", Lat: -19.6953, Lng: -46.1719},
 			{ID: 19, Nome: "Santa Juliana", UF: "MG", Lat: -19.3119, Lng: -47.5331},
+		},
+	}
+}
+
+// =============================================================================
+// 7) Triângulo 50 · Roteamento expandido (Trabalho 12 — versão complexa)
+//
+// ~50 municípios reais do Triângulo Mineiro + Alto Paranaíba + entorno. Mesmo
+// tema da Aula 14, mas com N grande o suficiente pra paisagem ter muitos mínimos
+// locais — é aqui que o ganho do AG multi-populacional aparece de verdade
+// (uma população única converge cedo e trava; as ilhas mantêm diversidade).
+// Coords aproximadas do centro municipal; depot = Uberlândia (ID 0).
+// =============================================================================
+
+func presetTriangulo50() Preset {
+	return Preset{
+		ID:        "triangulo50",
+		Nome:      "Triângulo 50 · Roteamento complexo (multipopulacional)",
+		Descricao: "50 municípios do Triângulo Mineiro + Alto Paranaíba — onde as ilhas brilham",
+		Origem:    "Uberlândia",
+		Narrativa: "Versão expandida do Trabalho 12: em vez de 20 cidades, o caminhão precisa " +
+			"percorrer ~50 municípios reais do Triângulo Mineiro e do Alto Paranaíba, " +
+			"saindo e voltando a Uberlândia. " +
+			"\n\n" +
+			"Com 50 cidades há 50! ≈ 3 · 10⁶⁴ tours — a paisagem de busca fica cheia de " +
+			"mínimos locais. É exatamente o regime em que o AG multi-populacional mostra " +
+			"sua vantagem: uma população única tende a convergir cedo e travar, enquanto " +
+			"as ilhas mantêm diversidade e, via migração, escapam dos mínimos locais. " +
+			"Compare as duas curvas — aqui a multipopulacional costuma ganhar 10–20%.",
+		LambdaSugerido: 0,
+		ModoSugerido:   DistHaversine,
+		FitnessNota: "TSP puro (minimizar distância total). Aumente as gerações (200+) pra dar " +
+			"tempo das ilhas convergirem; ligue λ (max-leg) pra deixar a paisagem ainda mais " +
+			"acidentada (penaliza trechos longos).",
+		LastVisit:          -1,
+		GammaSugerido:      0,
+		MuOvertimeSugerido: 0,
+		Cidades: []Cidade{
+			{ID: 0, Nome: "Uberlândia", UF: "MG", Lat: -18.9128, Lng: -48.2755},
+			{ID: 1, Nome: "Uberaba", UF: "MG", Lat: -19.7479, Lng: -47.9381},
+			{ID: 2, Nome: "Araguari", UF: "MG", Lat: -18.6486, Lng: -48.1872},
+			{ID: 3, Nome: "Araxá", UF: "MG", Lat: -19.5933, Lng: -46.9406},
+			{ID: 4, Nome: "Patos de Minas", UF: "MG", Lat: -18.5789, Lng: -46.5181},
+			{ID: 5, Nome: "Ituiutaba", UF: "MG", Lat: -18.9686, Lng: -49.4650},
+			{ID: 6, Nome: "Patrocínio", UF: "MG", Lat: -18.9436, Lng: -46.9925},
+			{ID: 7, Nome: "Monte Carmelo", UF: "MG", Lat: -18.7264, Lng: -47.4986},
+			{ID: 8, Nome: "Frutal", UF: "MG", Lat: -20.0247, Lng: -48.9408},
+			{ID: 9, Nome: "Tupaciguara", UF: "MG", Lat: -18.5917, Lng: -48.7053},
+			{ID: 10, Nome: "Prata", UF: "MG", Lat: -19.3072, Lng: -48.9244},
+			{ID: 11, Nome: "Sacramento", UF: "MG", Lat: -19.8650, Lng: -47.4378},
+			{ID: 12, Nome: "Campina Verde", UF: "MG", Lat: -19.5378, Lng: -49.4869},
+			{ID: 13, Nome: "Iturama", UF: "MG", Lat: -19.7281, Lng: -50.1958},
+			{ID: 14, Nome: "Conceição das Alagoas", UF: "MG", Lat: -19.9142, Lng: -48.3878},
+			{ID: 15, Nome: "Coromandel", UF: "MG", Lat: -18.4733, Lng: -47.2003},
+			{ID: 16, Nome: "Santa Vitória", UF: "MG", Lat: -18.8419, Lng: -50.1219},
+			{ID: 17, Nome: "Capinópolis", UF: "MG", Lat: -18.6822, Lng: -49.5697},
+			{ID: 18, Nome: "Indianópolis", UF: "MG", Lat: -19.0319, Lng: -47.9181},
+			{ID: 19, Nome: "Nova Ponte", UF: "MG", Lat: -19.1419, Lng: -47.6803},
+			{ID: 20, Nome: "Serra do Salitre", UF: "MG", Lat: -19.1097, Lng: -46.6914},
+			{ID: 21, Nome: "Perdizes", UF: "MG", Lat: -19.3525, Lng: -47.2914},
+			{ID: 22, Nome: "Campos Altos", UF: "MG", Lat: -19.6953, Lng: -46.1719},
+			{ID: 23, Nome: "Santa Juliana", UF: "MG", Lat: -19.3119, Lng: -47.5331},
+			{ID: 24, Nome: "Iraí de Minas", UF: "MG", Lat: -18.9869, Lng: -47.4592},
+			{ID: 25, Nome: "Campo Florido", UF: "MG", Lat: -19.7656, Lng: -48.5703},
+			{ID: 26, Nome: "Itapagipe", UF: "MG", Lat: -19.9047, Lng: -49.3789},
+			{ID: 27, Nome: "Carmo do Paranaíba", UF: "MG", Lat: -19.0006, Lng: -46.3158},
+			{ID: 28, Nome: "Rio Paranaíba", UF: "MG", Lat: -19.1875, Lng: -46.2453},
+			{ID: 29, Nome: "São Gotardo", UF: "MG", Lat: -19.3108, Lng: -46.0489},
+			{ID: 30, Nome: "Ibiá", UF: "MG", Lat: -19.4789, Lng: -46.5394},
+			{ID: 31, Nome: "Tapira", UF: "MG", Lat: -19.9056, Lng: -46.8267},
+			{ID: 32, Nome: "Pedrinópolis", UF: "MG", Lat: -19.2192, Lng: -47.4622},
+			{ID: 33, Nome: "Pratinha", UF: "MG", Lat: -19.7156, Lng: -46.4344},
+			{ID: 34, Nome: "Conquista", UF: "MG", Lat: -19.9281, Lng: -47.5575},
+			{ID: 35, Nome: "Delta", UF: "MG", Lat: -19.9747, Lng: -47.7864},
+			{ID: 36, Nome: "Planura", UF: "MG", Lat: -20.1389, Lng: -48.6772},
+			{ID: 37, Nome: "Veríssimo", UF: "MG", Lat: -19.6803, Lng: -48.3083},
+			{ID: 38, Nome: "Água Comprida", UF: "MG", Lat: -20.0344, Lng: -48.0850},
+			{ID: 39, Nome: "Pirajuba", UF: "MG", Lat: -19.9025, Lng: -48.6936},
+			{ID: 40, Nome: "Comendador Gomes", UF: "MG", Lat: -19.6919, Lng: -49.1408},
+			{ID: 41, Nome: "Fronteira", UF: "MG", Lat: -20.2747, Lng: -49.2008},
+			{ID: 42, Nome: "São Francisco de Sales", UF: "MG", Lat: -19.8581, Lng: -49.7689},
+			{ID: 43, Nome: "Monte Alegre de Minas", UF: "MG", Lat: -18.8694, Lng: -48.8806},
+			{ID: 44, Nome: "Canápolis", UF: "MG", Lat: -18.7236, Lng: -49.2056},
+			{ID: 45, Nome: "Centralina", UF: "MG", Lat: -18.5856, Lng: -49.2017},
+			{ID: 46, Nome: "Cachoeira Dourada", UF: "MG", Lat: -18.5131, Lng: -49.4878},
+			{ID: 47, Nome: "Gurinhatã", UF: "MG", Lat: -19.2367, Lng: -49.7861},
+			{ID: 48, Nome: "Estrela do Sul", UF: "MG", Lat: -18.7411, Lng: -47.6906},
+			{ID: 49, Nome: "Abadia dos Dourados", UF: "MG", Lat: -18.4869, Lng: -47.4022},
 		},
 	}
 }
