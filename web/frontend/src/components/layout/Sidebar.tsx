@@ -111,6 +111,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'🏝'}</span>
         GA · TSP Multi-ilhas
       </div>
+      <div
+        className={`nav-item${active === 'rastrigin' ? ' active' : ''}`}
+        onClick={() => onNavigate('rastrigin')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⛰'}</span>
+        GA · Rastrigin 3D (reais)
+      </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div

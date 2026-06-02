@@ -29,6 +29,7 @@ import (
 	"mlp-server/timeseries"
 	"mlp-server/tsp"
 	"mlp-server/tspmulti"
+	"mlp-server/agrastrigin"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -146,6 +147,10 @@ var (
 	tspmCfg      *tspmulti.MultiConfig
 	tspmRes      *tspmulti.MultiResult
 	tspmTraining bool
+
+	rastCfg      *agrastrigin.Config
+	rastRes      *agrastrigin.Result
+	rastTraining bool
 
 	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
 	// Pra OSRM cacheamos as DUAS matrizes juntas (distância + duração).
@@ -2351,6 +2356,98 @@ func handleTspMultiResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// =============================================================================
+// AG com cromossomos REAIS — Rastrigin 3D (Trabalho 13 / Aula 15)
+// =============================================================================
+
+func handleRastConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg agrastrigin.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	rastCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleRastTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if rastTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	cfg := rastCfg
+	if cfg == nil {
+		def := agrastrigin.DefaultConfig()
+		cfg = &def
+	}
+	rastTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		rastTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan agrastrigin.Step, 64)
+	go func() {
+		res := agrastrigin.Treinar(progressCh, useCfg)
+		mu.Lock()
+		rastRes = &res
+		rastTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := rastRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleRastReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	rastRes = nil
+	rastCfg = nil
+	rastTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleRastResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := rastRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "AG Rastrigin não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2495,6 +2592,11 @@ func main() {
 	mux.HandleFunc("/api/tspmulti/train",  cors(handleTspMultiTrain))
 	mux.HandleFunc("/api/tspmulti/reset",  cors(handleTspMultiReset))
 	mux.HandleFunc("/api/tspmulti/result", cors(handleTspMultiResult))
+
+	mux.HandleFunc("/api/agrastrigin/config", cors(handleRastConfig))
+	mux.HandleFunc("/api/agrastrigin/train",  cors(handleRastTrain))
+	mux.HandleFunc("/api/agrastrigin/reset",  cors(handleRastReset))
+	mux.HandleFunc("/api/agrastrigin/result", cors(handleRastResult))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

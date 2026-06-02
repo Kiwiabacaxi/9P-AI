@@ -633,12 +633,59 @@ export interface TspMultiResult {
   cfg: TspMultiConfig;
 }
 
+// AG Rastrigin — cromossomos reais (Aula 15 / Trabalho 13)
+export type RastSelecao = 'roleta' | 'torneio';
+export type RastCruzamento = 'radcliff' | 'wright';
+
+export interface RastConfig {
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  selecao: RastSelecao;
+  tamanhoTorneio: number;
+  cruzamento: RastCruzamento;
+  elitismo: number;
+  dominioMin: number;
+  dominioMax: number;
+  seed?: number;
+}
+
+export interface RastIndividuo {
+  x: number[];        // [x, y, z]
+  fx: number;         // valor de Rastrigin(x)
+  fitness?: number;
+}
+
+export interface RastStep {
+  geracao: number;
+  melhorFx: number;
+  melhorX: number[];
+  mediaFx: number;
+  piorFx: number;
+  diversidade: number;
+  populacao: RastIndividuo[];
+  melhorGlobalFx: number;
+  melhorGlobalX: number[];
+}
+
+export interface RastResult {
+  geracoes: number;
+  melhorFx: number;
+  melhorX: number[];
+  histMelhor: number[];
+  histMedia: number[];
+  histDiversidade: number[];
+  cfg: RastConfig;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
   | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare' | 'tsp-multi'
+  | 'rastrigin'
   | 'about';
 
 // Horário Escolar (Aula 12 — cromossomo matricial)

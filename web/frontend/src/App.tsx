@@ -21,6 +21,7 @@ import HorarioView from './views/HorarioView';
 import TspView from './views/TspView';
 import TspCompareView from './views/TspCompareView';
 import TspMultiView from './views/TspMultiView';
+import RastriginView from './views/RastriginView';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -44,6 +45,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   tsp: TspView,
   'tsp-compare': TspCompareView,
   'tsp-multi': TspMultiView,
+  rastrigin: RastriginView,
   about: AboutView,
 };
 
