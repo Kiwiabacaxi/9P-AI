@@ -139,6 +139,52 @@ function refineMin1D(n: number): number {
 const SLICE_VALUES = [-2, -1, 0, 1, 2];
 type Modo = 'superficie' | 'espaco';
 
+// Cor aproximada do colormap Jet pra t∈[0,1] (azul→verde→vermelho).
+function jetColor(t: number): string {
+  t = Math.max(0, Math.min(1, t));
+  const r = Math.round(255 * Math.max(0, Math.min(1, 1.5 - Math.abs(4 * t - 3))));
+  const g = Math.round(255 * Math.max(0, Math.min(1, 1.5 - Math.abs(4 * t - 2))));
+  const b = Math.round(255 * Math.max(0, Math.min(1, 1.5 - Math.abs(4 * t - 1))));
+  return `rgb(${r},${g},${b})`;
+}
+
+// Mapa de contorno do CHÃO, gerado por marching-squares sobre z[j][i] — independente
+// da superfície/camadas. Devolve 1 trace de linhas por nível (no plano z = zFloor).
+function floorTopoTraces(axis: number[], grid: number[][], zFloor: number, cmax: number): unknown[] {
+  const n = axis.length;
+  const traces: unknown[] = [];
+  for (let L = 6; L < cmax; L += 8) {
+    const xs: number[] = [], ys: number[] = [], zs: number[] = [];
+    for (let j = 0; j < n - 1; j++) {
+      for (let i = 0; i < n - 1; i++) {
+        const v00 = grid[j][i], v10 = grid[j][i + 1], v01 = grid[j + 1][i], v11 = grid[j + 1][i + 1];
+        const x0 = axis[i], x1 = axis[i + 1], y0 = axis[j], y1 = axis[j + 1];
+        const interp = (xa: number, ya: number, va: number, xb: number, yb: number, vb: number): [number, number] => {
+          const t = (L - va) / (vb - va);
+          return [xa + t * (xb - xa), ya + t * (yb - ya)];
+        };
+        const pts: [number, number][] = [];
+        if ((v00 < L) !== (v10 < L)) pts.push(interp(x0, y0, v00, x1, y0, v10)); // baixo
+        if ((v10 < L) !== (v11 < L)) pts.push(interp(x1, y0, v10, x1, y1, v11)); // direita
+        if ((v01 < L) !== (v11 < L)) pts.push(interp(x0, y1, v01, x1, y1, v11)); // cima
+        if ((v00 < L) !== (v01 < L)) pts.push(interp(x0, y0, v00, x0, y1, v01)); // esquerda
+        for (let k = 0; k + 1 < pts.length; k += 2) {
+          xs.push(pts[k][0], pts[k + 1][0], NaN);
+          ys.push(pts[k][1], pts[k + 1][1], NaN);
+          zs.push(zFloor, zFloor, NaN);
+        }
+      }
+    }
+    if (xs.length) {
+      traces.push({
+        type: 'scatter3d', mode: 'lines', name: 'topografia (chão)', legendgroup: 'topo', showlegend: false,
+        x: xs, y: ys, z: zs, line: { color: jetColor(L / cmax), width: 1.5 }, hoverinfo: 'skip',
+      });
+    }
+  }
+  return traces;
+}
+
 interface Frame {
   gen: number;
   xs: number[]; ys: number[]; zs: number[]; fxs: number[];
@@ -387,18 +433,11 @@ export default function RastriginView() {
         });
       }
     } else {
-      // Linhas TOPOGRÁFICAS no chão: projeta as iso-curvas de f(x,y,0) num plano
-      // flutuante abaixo do relevo. Superfície oculta (hidesurface) + project.z →
-      // só as linhas no chão, sem o tapete preenchido (que dava artefato de grade).
+      // Topografia do CHÃO — mapa de contorno próprio (marching-squares de f(x,y,0)),
+      // num plano flutuante em z = zFloor. Totalmente INDEPENDENTE das camadas/superfície:
+      // não precisa de fatia ligada e não desenha nada junto do relevo.
       if (mostrarContorno) {
-        traces.push({
-          type: 'surface', x: surf.axis, y: surf.axis, z: sliceGrids[0],
-          hidesurface: true, // esconde o preenchimento; mostra só as linhas (na malha + projetadas)
-          contours: { z: { show: true, project: { z: true }, usecolormap: true, start: 0, end: surf.zMax, size: 8, width: 2 } },
-          colorscale: 'Jet', cmin: 0, cmax: surf.zMax,
-          showscale: false, showlegend: false, hoverinfo: 'skip',
-          name: 'topografia (chão)',
-        });
+        for (const t of floorTopoTraces(surf.axis, sliceGrids[0], surf.zFloor, surf.zMax)) traces.push(t);
       }
       SLICE_VALUES.filter(c => slices[c]).forEach((c, idx) => {
         traces.push({
