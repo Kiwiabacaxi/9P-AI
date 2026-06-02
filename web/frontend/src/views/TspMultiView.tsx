@@ -99,7 +99,9 @@ export default function TspMultiView() {
   // Cidades / matriz (reusa o pipeline do TSP)
   const [preset, setPreset] = useState('triangulo50');
   const [cidades, setCidades] = useState<TspCidade[]>([]);
-  const [distMode, setDistMode] = useState<TspDistMode>('haversine');
+  // Default = OSRM (estradas reais). Se OSRM falhar (timeout / fora do ar / rate
+  // limit do servidor demo público), cai pra Haversine automaticamente.
+  const [distMode, setDistMode] = useState<TspDistMode>('osrm');
   const [matrizPronta, setMatrizPronta] = useState(false);
 
   // Config multi
@@ -137,21 +139,40 @@ export default function TspMultiView() {
   const unidade = distMode === 'euclidiana' ? 'graus' : 'km';
   const nIlhas = parseInt(numIlhas);
 
+  // Carrega a matriz no modo desejado; se OSRM falhar (rede / rate limit do
+  // servidor público), cai pra Haversine e devolve o modo realmente usado.
+  async function carregarMatrizComFallback(modo: TspDistMode): Promise<TspDistMode> {
+    try {
+      await apiPost('/tsp/distancias', { modo });
+      return modo;
+    } catch (e) {
+      if (modo === 'osrm') {
+        show('OSRM indisponível — caindo pra Haversine (linha reta). ' + (e instanceof Error ? e.message : ''));
+        await apiPost('/tsp/distancias', { modo: 'haversine' });
+        return 'haversine';
+      }
+      throw e;
+    }
+  }
+
   async function carregarPreset(name: string, modo: TspDistMode) {
     setMatrizPronta(false);
     const p = await apiGet<TspPreset>(`/tsp/preset?name=${name}`);
     await apiPost('/tsp/cities', p.cidades);
-    await apiPost('/tsp/distancias', { modo });
+    const modoUsado = await carregarMatrizComFallback(modo);
+    if (modoUsado !== modo) setDistMode(modoUsado);
     setCidades(p.cidades);
     setMatrizPronta(true);
+    return modoUsado;
   }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        await carregarPreset(preset, 'haversine');
+        const modoUsado = await carregarPreset(preset, distMode);
         if (cancelled) return;
+        if (modoUsado === 'osrm') show('Matriz OSRM (estradas reais) cacheada.');
       } catch (e) {
         show('Erro ao carregar cenário: ' + (e instanceof Error ? e.message : String(e)));
       }
