@@ -7,7 +7,7 @@ import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
 import Select from '../components/shared/Select';
 import TspMap from '../components/viz/TspMap';
-import { MiniRoute, RingDiagram, GeneStrip, ChromosomeFollower, OperatorLab, islandColor } from '../components/viz/IslandViz';
+import { MiniRoute, RingDiagram, islandColor } from '../components/viz/IslandViz';
 import { useToast } from '../components/shared/Toast';
 import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
@@ -671,80 +671,6 @@ export default function TspMultiView() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </Card>
-      )}
-
-      {/* Desenho do cromossomo — animação seguindo o melhor + comparação entre ilhas */}
-      {globalTour.length > 0 && (
-        <Card title="Cromossomo — como a rota é codificada (animação seguindo o melhor)" style={{ marginBottom: 16 }}>
-          <div style={{ padding: 12 }}>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              Cada indivíduo é um <b>cromossomo = permutação</b> das {cidades.length} cidades — a ordem em que o
-              caminhão visita. Diferente das aulas 10–11 (cromossomo binário), aqui cada <b>gene é uma cidade</b>
-              {' '}(o número é o id; o depot Uberlândia = <span style={{ color: '#ff00aa' }}>0</span>, em rosa). O
-              destaque amarelo percorre os genes na ordem do tour — é o caminhão "lendo" o cromossomo.
-            </div>
-            <div style={{ marginBottom: 6, fontSize: 11, fontFamily: 'JetBrains Mono', color: '#ffff00' }}>
-              ★ melhor cromossomo global
-            </div>
-            <ChromosomeFollower cidades={cidades} tour={globalTour} color="#ffff00" />
-
-            <div style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 10 }}>
-              E abaixo, o melhor cromossomo de <b>cada ilha</b> comparado com o global: genes <b style={{ color: 'var(--cyan)' }}>iguais ao global desbotam</b>;
-              só os <b style={{ color: 'var(--cyan)' }}>diferentes ficam fortes</b>. Assim você vê em 1 olhada quanto e onde cada ilha divergiu —
-              perto das migrações elas vão "alinhando" e diminuindo o número de diferenças.
-            </div>
-            {ilhasAtuais.map(il => {
-              const cor = islandColor(il.ilha);
-              const ndif = il.melhorTour.reduce((acc, g, i) => acc + (g !== globalTour[i] ? 1 : 0), 0);
-              const igual = ndif === 0;
-              return (
-                <div key={il.ilha} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: cor, marginBottom: 4 }}>
-                    ● Ilha {il.ilha + 1} — {il.melhorDist.toFixed(0)} {unidade}
-                    <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-                      {igual
-                        ? '(idêntica ao global ✓)'
-                        : `(${ndif}/${cidades.length} genes diferentes do global)`}
-                    </span>
-                  </div>
-                  <GeneStrip
-                    cidades={cidades}
-                    tour={il.melhorTour}
-                    color={cor}
-                    compareTo={globalTour}
-                    dimMatching
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      {/* Laboratório de operadores — seleção → cruzamento → mutação passo a passo */}
-      {ilhasAtuais.length >= 2 && (
-        <Card title="Laboratório de operadores — veja seleção, cruzamento e mutação passo a passo" style={{ marginBottom: 16 }}>
-          <div style={{ padding: 12 }}>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              Pega dois pais reais (os melhores de duas ilhas) e anima como nasce um filho, etapa por etapa:
-              <b style={{ color: 'var(--cyan)' }}> seleção</b> →
-              cruzamento <b>{cruzamento.toUpperCase()}</b> → mutação <b>{mutacao}</b>.
-              No filho, <b>cada gene fica colorido pela sua origem</b> — assim você vê na hora qual parte veio do
-              Pai 1, qual veio do Pai 2 e quais foram mutadas. Use ◀ ▶ pra navegar as etapas, ▶ pra tocar,
-              e "gerar novo filho" pra sortear novos cortes. Troque os operadores nos controles do topo (OX↔PMX,
-              swap↔inversão) pra ver o padrão mudar.
-            </div>
-            <OperatorLab
-              cidades={cidades}
-              pais={[...ilhasAtuais]
-                .sort((a, b) => a.melhorDist - b.melhorDist)
-                .map(il => ({ tour: il.melhorTour, label: `Ilha ${il.ilha + 1} (${il.melhorDist.toFixed(0)} ${unidade})`, color: islandColor(il.ilha) }))}
-              cruzamento={cruzamento}
-              mutacao={mutacao}
-              probMut={parseFloat(probMut)}
-            />
           </div>
         </Card>
       )}
