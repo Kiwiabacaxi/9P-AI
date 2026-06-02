@@ -37,8 +37,6 @@ const Plot = createPlotlyComponent(Plotly);
 // Acesso tipado-frouxo ao restyle imperativo (anima sem Plotly.react → orbit livre).
 const plotlyRestyle = (gd: unknown, update: Record<string, unknown[]>, traces: number[]) =>
   (Plotly as { restyle: (gd: unknown, u: unknown, t: number[]) => unknown }).restyle(gd, update, traces);
-const plotlyRelayout = (gd: unknown, update: Record<string, unknown>) =>
-  (Plotly as { relayout: (gd: unknown, u: unknown) => unknown }).relayout(gd, update);
 
 // <Plot> isolado em memo: só re-renderiza (→ Plotly.react) quando data/layout/onInit
 // mudam de referência (mudanças ESTRUTURAIS). Trocar de frame NÃO re-renderiza isto,
@@ -174,10 +172,7 @@ export default function RastriginView() {
   const [frameIdx, setFrameIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState('1');
-  const [tween, setTween] = useState(false);   // movimento fluido (interpola entre gerações)
-  const [autoRot, setAutoRot] = useState(false); // câmera girando sozinha
   const framesRef = useRef<Frame[]>([]);
-  const tFloatRef = useRef(0);
 
   // Controles do 3D
   const [modo, setModo] = useState<Modo>('superficie');
@@ -210,7 +205,7 @@ export default function RastriginView() {
   // Desligado quando "tween" está ativo (aí o loop em rAF abaixo assume).
   useEffect(() => {
     if (playTimerRef.current) { clearInterval(playTimerRef.current); playTimerRef.current = null; }
-    if (!playing || tween || frames.length === 0) return;
+    if (!playing || frames.length === 0) return;
     const ms = speed === '2' ? 40 : speed === '0.5' ? 160 : 80;
     playTimerRef.current = window.setInterval(() => {
       setFrameIdx(i => {
@@ -221,7 +216,7 @@ export default function RastriginView() {
     return () => {
       if (playTimerRef.current) { clearInterval(playTimerRef.current); playTimerRef.current = null; }
     };
-  }, [playing, tween, speed, frames.length]);
+  }, [playing, speed, frames.length]);
 
   function limparEstado() {
     setResult(null);
@@ -410,13 +405,15 @@ export default function RastriginView() {
         traces.push({
           type: 'surface', x: surf.axis, y: surf.axis, z: sliceGrids[c],
           colorscale: 'Jet', cmin: 0, cmax: surf.zMax, opacity: opacidade, showscale: idx === 0, colorbar,
+          contours: { z: { show: true, color: 'rgba(0,0,0,0.22)', width: 1, start: 0, end: surf.zMax, size: 8 } },
           name: `z = ${c}`, showlegend: false, hoverinfo: 'skip',
         });
       });
     }
 
-    // RASTROS (trilha) — fantasmas das gerações anteriores + cometa do melhor.
-    // Liga/desliga pela LEGENDA do Plotly (grupo "rastros"), sem botão externo.
+    // RASTROS — duas entradas SEPARADAS na legenda, controláveis individualmente:
+    //  • "rastros (população)" = fantasmas azuis das gerações anteriores (grupo).
+    //  • "caminho do melhor"   = linha rosa do melhor ao longo do tempo (trace único).
     {
       for (let j = 0; j < TRAIL; j++) {
         const fidx = g - (j + 1);
@@ -424,7 +421,7 @@ export default function RastriginView() {
         const op = 0.28 * (1 - j / TRAIL);
         di.ghosts.push(traces.length);
         traces.push({
-          type: 'scatter3d', mode: 'markers', name: 'rastros', legendgroup: 'rastros', showlegend: false,
+          type: 'scatter3d', mode: 'markers', name: 'rastros (população)', legendgroup: 'ghosts', showlegend: j === 0,
           x: gf ? gf.xs : [], y: gf ? gf.ys : [], z: gf ? zPop(gf) : [],
           marker: { size: 2.5, color: '#7fe8ff', opacity: Math.max(op, 0.05) },
           hoverinfo: 'skip',
@@ -433,7 +430,7 @@ export default function RastriginView() {
       const bx: number[] = [], by: number[] = [], bz: number[] = [];
       for (let f = 0; f <= g; f++) { const ff = fr[f]; if (ff?.bestX) { bx.push(ff.bestX[0]); by.push(ff.bestX[1]); bz.push(zBest(ff)); } }
       di.comet = traces.length;
-      traces.push({ type: 'scatter3d', mode: 'lines', name: 'rastros (trilha + caminho do melhor)', legendgroup: 'rastros', showlegend: true, x: bx, y: by, z: bz, line: { color: '#ff2d9b', width: 4 }, opacity: 0.8, hoverinfo: 'skip' });
+      traces.push({ type: 'scatter3d', mode: 'lines', name: 'caminho do melhor', showlegend: true, x: bx, y: by, z: bz, line: { color: '#ff2d9b', width: 4 }, opacity: 0.8, hoverinfo: 'skip' });
     }
 
     // MARCADORES
@@ -520,70 +517,10 @@ export default function RastriginView() {
     if (espaco && di.pop != null) plotlyRestyle(gd, { 'marker.color': [c.fxs] }, [di.pop]);
   }, [modo]);
 
-  // Sincroniza o frame exibido (passo inteiro / scrub / play normal). Em tween+play
-  // quem comanda é o rAF abaixo.
+  // Sincroniza o frame exibido (passo inteiro / scrub / play / ao vivo) via restyle.
   useEffect(() => {
-    if (playing && tween) return;
     applyRestyle(gi, 0);
-  }, [gi, hasFrames, modo, sliceKey, mostrarPop, mostrarMinimos, mostrarOtimo, vizMin, vizMax, playing, tween, applyRestyle]);
-
-  // Tween: loop em requestAnimationFrame interpolando entre gerações (fluido).
-  useEffect(() => {
-    if (!(playing && tween) || frames.length === 0) return;
-    tFloatRef.current = gi;
-    // No tween, cada geração dura ~3× mais → dá pra VER a interpolação (gliding).
-    const frameMs = (speed === '2' ? 40 : speed === '0.5' ? 160 : 80) * 3;
-    let raf = 0;
-    let last = 0;
-    const stepFn = (now: number) => {
-      if (last === 0) last = now;
-      const dt = now - last; last = now;
-      tFloatRef.current += dt / frameMs;
-      const end = frames.length - 1;
-      if (tFloatRef.current >= end) {
-        applyRestyle(end, 0);
-        setFrameIdx(end);
-        setPlaying(false);
-        return;
-      }
-      const t = tFloatRef.current;
-      const lo = Math.floor(t);
-      applyRestyle(lo, t - lo);
-      const rounded = Math.round(t);
-      setFrameIdx(prev => (prev !== rounded ? rounded : prev));
-      raf = requestAnimationFrame(stepFn);
-    };
-    raf = requestAnimationFrame(stepFn);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, tween, speed, frames.length, applyRestyle]);
-
-  // Auto-rotação: gira a câmera em torno do eixo vertical. Throttle a ~25fps +
-  // velocidade por tempo (dt) → não briga tanto com o redraw da animação (menos trava).
-  useEffect(() => {
-    if (!autoRot) return;
-    let raf = 0;
-    let angle: number | null = null;
-    let last = 0, acc = 0;
-    const tick = (now: number) => {
-      if (last === 0) last = now;
-      acc += now - last; last = now;
-      if (acc >= 40) {
-        const gd = gdRef.current as { layout?: { scene?: { camera?: { eye?: { x: number; y: number; z: number } } } } } | null;
-        const eye = gd?.layout?.scene?.camera?.eye;
-        if (eye) {
-          if (angle === null) angle = Math.atan2(eye.y, eye.x);
-          const r = Math.sqrt(eye.x * eye.x + eye.y * eye.y);
-          angle += 0.5 * (acc / 1000); // ~0.5 rad/s, independente do FPS
-          plotlyRelayout(gd, { 'scene.camera.eye': { x: r * Math.cos(angle), y: r * Math.sin(angle), z: eye.z } });
-        }
-        acc = 0;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [autoRot]);
+  }, [gi, hasFrames, modo, sliceKey, mostrarPop, mostrarMinimos, mostrarOtimo, vizMin, vizMax, applyRestyle]);
 
   const plotLayout = useMemo(() => {
     const espaco = modo === 'espaco';
@@ -791,10 +728,6 @@ export default function RastriginView() {
                     style={{ fontSize: 11, padding: '4px 8px', opacity: speed === s ? 1 : 0.45, borderColor: speed === s ? 'var(--cyan)' : '#333' }}>{s}×</button>
                 ))}
               </span>
-              <button className="btn" onClick={() => setTween(v => !v)} aria-pressed={tween} title="movimento fluido entre gerações (mais lento, pra dar pra ver)"
-                style={{ fontSize: 11, padding: '5px 10px', opacity: tween ? 1 : 0.45, borderColor: tween ? 'var(--cyan)' : '#333' }}>suave</button>
-              <button className="btn" onClick={() => setAutoRot(v => !v)} aria-pressed={autoRot} title="câmera girando sozinha"
-                style={{ fontSize: 11, padding: '5px 10px', opacity: autoRot ? 1 : 0.45, borderColor: autoRot ? 'var(--cyan)' : '#333' }}>girar</button>
               {training && <span style={{ color: 'var(--green)' }}>● ao vivo</span>}
             </div>
 
