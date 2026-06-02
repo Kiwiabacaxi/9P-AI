@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect, type ComponentType, type CSSProperties } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback, memo, type ComponentType, type CSSProperties } from 'react';
 import * as factoryNS from 'react-plotly.js/factory';
 // @ts-expect-error — plotly.js-dist-min não tem types separados; o factory aceita.
 import * as PlotlyNS from 'plotly.js-dist-min';
@@ -6,6 +6,8 @@ import * as PlotlyNS from 'plotly.js-dist-min';
 // Desembrulha CJS↔ESM caçando algo callable (a função factory).
 function unwrapFactory(mod: unknown): (p: unknown) => ComponentType<{
   data: unknown; layout: unknown; config: unknown; style?: CSSProperties; useResizeHandler?: boolean;
+  onInitialized?: (figure: unknown, graphDiv: unknown) => void;
+  onUpdate?: (figure: unknown, graphDiv: unknown) => void;
 }> {
   type Maybe = { default?: unknown; [k: string]: unknown };
   const m = mod as Maybe;
@@ -31,9 +33,32 @@ function unwrapPlotly(mod: unknown): unknown {
 const createPlotlyComponent = unwrapFactory(factoryNS);
 const Plotly = unwrapPlotly(PlotlyNS);
 const Plot = createPlotlyComponent(Plotly);
+
+// Acesso tipado-frouxo ao restyle imperativo (anima sem Plotly.react → orbit livre).
+const plotlyRestyle = (gd: unknown, update: Record<string, unknown[]>, traces: number[]) =>
+  (Plotly as { restyle: (gd: unknown, u: unknown, t: number[]) => unknown }).restyle(gd, update, traces);
+
+// <Plot> isolado em memo: só re-renderiza (→ Plotly.react) quando data/layout/onInit
+// mudam de referência (mudanças ESTRUTURAIS). Trocar de frame NÃO re-renderiza isto,
+// então o arrasto da câmera nunca é interrompido durante o replay.
+interface CanvasProps { data: unknown; layout: unknown; onInit: (gd: unknown) => void; }
+const PlotCanvas = memo(function PlotCanvas({ data, layout, onInit }: CanvasProps) {
+  return (
+    <Plot
+      data={data as unknown as Plotly.Data[]}
+      layout={layout as unknown as Partial<Plotly.Layout>}
+      config={{ displaylogo: false, responsive: true, displayModeBar: false } as unknown as Partial<Plotly.Config>}
+      style={{ width: '100%', height: '100%' }}
+      useResizeHandler
+      onInitialized={(_f, gd) => onInit(gd)}
+      onUpdate={(_f, gd) => onInit(gd)}
+    />
+  );
+});
+
 import {
   ComposedChart, Line, XAxis, YAxis, ResponsiveContainer,
-  CartesianGrid, Legend, Tooltip,
+  CartesianGrid, Legend, Tooltip, ReferenceLine,
 } from 'recharts';
 import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
@@ -90,20 +115,16 @@ const ELITE_OPTIONS = [
   { value: '4', label: 'p = 4' },
 ];
 
-const NX = 100; // resolução da malha da superfície (eixos x e y)
-const CMAX_F = 50; // teto do colorscale (aptidão): perto disso já é "ruim"
+const NX = 100;
+const CMAX_F = 50;
+const TRAIL = 6;
 
-// Termo 1D do Rastrigin: t(v) = v² − 10·cos(2π·v).
 function termR(v: number): number {
   return v * v - 10 * Math.cos(2 * Math.PI * v);
 }
-// Rastrigin 3D completa.
 function rastrigin3(x: number, y: number, z: number): number {
   return 30 + termR(x) + termR(y) + termR(z);
 }
-// Mínimo local 1D real perto do inteiro n — os mínimos do Rastrigin NÃO caem
-// exatamente nos inteiros: o envelope v² puxa cada um levemente rumo à origem.
-// Newton em t'(v) = 2v + 20π·sin(2πv).
 function refineMin1D(n: number): number {
   let v = n;
   for (let it = 0; it < 8; it++) {
@@ -115,10 +136,16 @@ function refineMin1D(n: number): number {
   return v;
 }
 
-// Camadas (só no modo Superfície): cada valor de z vira uma fatia z = c.
 const SLICE_VALUES = [-2, -1, 0, 1, 2];
-
 type Modo = 'superficie' | 'espaco';
+
+interface Frame {
+  gen: number;
+  xs: number[]; ys: number[]; zs: number[]; fxs: number[];
+  bestX: number[]; bestFx: number;
+}
+// Índices dos traces dinâmicos no array de dados (pra restyle por geração).
+interface DynIdx { ghosts: number[]; comet: number | null; best: number | null; otimo: number | null; pop: number | null; }
 
 export default function RastriginView() {
   const { show } = useToast();
@@ -132,17 +159,20 @@ export default function RastriginView() {
   const [tamTorneio, setTamTorneio] = useState('4');
   const [cruzamento, setCruzamento] = useState<RastCruzamento>('radcliff');
   const [elitismo, setElitismo] = useState('2');
-  // Domínio em estado-string (permite editar/limpar sem virar NaN no controle).
   const [domMinStr, setDomMinStr] = useState('-5.12');
   const [domMaxStr, setDomMaxStr] = useState('5.12');
   const domMin = parseFloat(domMinStr);
   const domMax = parseFloat(domMaxStr);
 
-  // Estado de treino
+  // Estado de treino / replay
   const [training, setTraining] = useState(false);
-  const [step, setStep] = useState<RastStep | null>(null);
   const [result, setResult] = useState<RastResult | null>(null);
   const [chartData, setChartData] = useState<{ gen: number; melhor: number; melhorAcum: number; media: number }[]>([]);
+  const [frames, setFrames] = useState<Frame[]>([]);
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState('1');
+  const framesRef = useRef<Frame[]>([]);
 
   // Controles do 3D
   const [modo, setModo] = useState<Modo>('superficie');
@@ -151,17 +181,43 @@ export default function RastriginView() {
   const [mostrarPop, setMostrarPop] = useState(true);
   const [mostrarMinimos, setMostrarMinimos] = useState(true);
   const [mostrarOtimo, setMostrarOtimo] = useState(true);
+  const [rastros, setRastros] = useState(true);
 
   const closeSSE = useRef<(() => void) | null>(null);
+  const gdRef = useRef<unknown>(null);
+  const giRef = useRef(0);
+  const playTimerRef = useRef<number | null>(null);
+  const dynIdxRef = useRef<DynIdx>({ ghosts: [], comet: null, best: null, otimo: null, pop: null });
+
+  const onInit = useCallback((gd: unknown) => { gdRef.current = gd; }, []);
 
   useEffect(() => () => {
     if (closeSSE.current) closeSSE.current();
   }, []);
 
+  // Loop de replay — playTimerRef garante UM único intervalo (nunca empilha).
+  useEffect(() => {
+    if (playTimerRef.current) { clearInterval(playTimerRef.current); playTimerRef.current = null; }
+    if (!playing || frames.length === 0) return;
+    const ms = speed === '2' ? 40 : speed === '0.5' ? 160 : 80;
+    playTimerRef.current = window.setInterval(() => {
+      setFrameIdx(i => {
+        if (i >= frames.length - 1) { setPlaying(false); return i; }
+        return i + 1;
+      });
+    }, ms);
+    return () => {
+      if (playTimerRef.current) { clearInterval(playTimerRef.current); playTimerRef.current = null; }
+    };
+  }, [playing, speed, frames.length]);
+
   function limparEstado() {
-    setStep(null);
     setResult(null);
     setChartData([]);
+    framesRef.current = [];
+    setFrames([]);
+    setFrameIdx(0);
+    setPlaying(false);
   }
 
   function toggleSlice(c: number) {
@@ -194,17 +250,21 @@ export default function RastriginView() {
       setTraining(false);
       return;
     }
-    let bestSoFar = Infinity;
     closeSSE.current = apiSSE('/agrastrigin/train', {
       onMessage(data) {
         const s = data as RastStep;
-        setStep(s);
-        if (s.melhorGlobalFx < bestSoFar) bestSoFar = s.melhorGlobalFx;
-        setChartData(prev => [...prev, {
+        const pop = s.populacao ?? [];
+        const frame: Frame = {
           gen: s.geracao,
-          melhor: s.melhorFx,
-          melhorAcum: s.melhorGlobalFx,
-          media: s.mediaFx,
+          xs: pop.map(p => p.x[0]), ys: pop.map(p => p.x[1]), zs: pop.map(p => p.x[2]),
+          fxs: pop.map(p => p.fx),
+          bestX: s.melhorGlobalX, bestFx: s.melhorGlobalFx,
+        };
+        framesRef.current.push(frame);
+        setFrames(framesRef.current.slice());
+        setFrameIdx(framesRef.current.length - 1);
+        setChartData(prev => [...prev, {
+          gen: s.geracao, melhor: s.melhorFx, melhorAcum: s.melhorGlobalFx, media: s.mediaFx,
         }]);
       },
       onDone(data) {
@@ -213,7 +273,7 @@ export default function RastriginView() {
         setTraining(false);
         closeSSE.current = null;
         const [x, y, z] = r.melhorX;
-        show(`Melhor: f(${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}) = ${r.melhorFx.toFixed(4)}`);
+        show(`Melhor: f(${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}) = ${r.melhorFx.toFixed(4)} · ▶ pra reviver`);
       },
       onError() {
         setTraining(false);
@@ -231,12 +291,14 @@ export default function RastriginView() {
     show('Rastrigin resetado');
   }
 
-  // Domínio efetivo da viz = o domínio do treino corrente (durante) ou o do
-  // resultado (depois). Fallback pro padrão se o campo estiver vazio/inválido.
+  function handlePlayPause() {
+    if (frameIdx >= frames.length - 1) setFrameIdx(0);
+    setPlaying(p => !p);
+  }
+
   const vizMin = result ? result.cfg.dominioMin : (Number.isFinite(domMin) ? domMin : -5.12);
   const vizMax = result ? result.cfg.dominioMax : (Number.isFinite(domMax) ? domMax : 5.12);
 
-  // Malha 2D base da superfície: base[j][i] = t(x_i)+t(y_j). Memo em [viz].
   const surf = useMemo(() => {
     const axis: number[] = [];
     for (let i = 0; i < NX; i++) axis.push(vizMin + (i * (vizMax - vizMin)) / (NX - 1));
@@ -257,8 +319,6 @@ export default function RastriginView() {
     return { axis, base, zMax };
   }, [vizMin, vizMax]);
 
-  // Z de cada fatia (z=c) pré-computado — independe de opacidade/população, então
-  // animar ao vivo ou arrastar o slider NÃO reconstrói a malha 100×100.
   const sliceGrids = useMemo(() => {
     const m: Record<number, number[][]> = {};
     for (const c of SLICE_VALUES) {
@@ -268,8 +328,6 @@ export default function RastriginView() {
     return m;
   }, [surf]);
 
-  // Rede de mínimos locais (modo cubo): mínimos REAIS perto de cada inteiro do
-  // domínio (limitado a |coord| ≤ 6), cor = f. São as "armadilhas" do AG.
   const lattice = useMemo(() => {
     const lo = Math.ceil(Math.max(vizMin, -6));
     const hi = Math.floor(Math.min(vizMax, 6));
@@ -285,90 +343,141 @@ export default function RastriginView() {
     return { xs, ys, zs, fs };
   }, [vizMin, vizMax]);
 
-  // Traces do Plotly 3D — montados a partir de `step` (ao vivo durante o treino).
+  const gi = Math.min(frameIdx, frames.length - 1);
+  giRef.current = gi; // lido pelo plotData memo (que NÃO depende de gi)
+  const cur = gi >= 0 ? frames[gi] : null;
+  const hasFrames = frames.length > 0; // gatilho p/ (re)montar os traces quando surge a 1ª geração
+  const sliceKey = SLICE_VALUES.map(c => (slices[c] ? 1 : 0)).join('');
+
+  // DADOS estruturais do Plot — NÃO dependem da geração (gi). Coordenadas iniciais
+  // dos traces dinâmicos vêm do frame atual via refs; o resto é via restyle.
   const plotData = useMemo(() => {
-    if (!step) return [];
+    const fr = framesRef.current;
+    const g = giRef.current;
+    const c0 = g >= 0 && g < fr.length ? fr[g] : null;
+    const espaco = modo === 'espaco';
     const traces: unknown[] = [];
-    const pop = step.populacao ?? [];
-    const best = step.melhorGlobalX;
-    const bestFx = step.melhorGlobalFx;
+    const di: DynIdx = { ghosts: [], comet: null, best: null, otimo: null, pop: null };
+    if (!c0) { dynIdxRef.current = di; return traces; }
+
+    const zPop = (f: Frame) => (espaco ? f.zs : f.fxs);
+    const zBest = (f: Frame) => (espaco ? (f.bestX?.[2] ?? 0) : f.bestFx);
     const colorbar = {
       title: { text: 'f(x,y,z)', side: 'right', font: { color: '#aaa', size: 10 } },
       len: 0.7, x: 1.02, tickfont: { color: '#aaa', size: 9 },
     };
     const otimoVisivel = mostrarOtimo && vizMin <= 0 && vizMax >= 0;
 
-    const traceMelhor = (z: number) => ({
-      type: 'scatter3d', mode: 'markers', name: 'melhor (até agora)',
-      x: best ? [best[0]] : [], y: best ? [best[1]] : [], z: best ? [z] : [],
-      marker: { size: 12, color: '#ff2d9b', symbol: 'circle-open', line: { color: '#ff2d9b', width: 3 } },
-      hovertemplate: `melhor<br>f=${(bestFx ?? 0).toFixed(4)}<br>x=%{x:.3f}  y=%{y:.3f}<extra></extra>`,
-    });
-    const traceOtimo = {
-      type: 'scatter3d', mode: 'markers', name: 'mín. teórico (0,0,0)',
-      x: [0], y: [0], z: [0],
-      marker: { size: 11, color: '#00e5ff', symbol: 'diamond-open', line: { color: '#00e5ff', width: 3 } },
-      hovertemplate: 'mínimo teórico<br>f(0,0,0)=0<extra></extra>',
-    };
-
-    if (modo === 'espaco') {
-      // === CUBO DE BUSCA (x, y, z) — os filhos na posição real ===
-      // Ordem: referência embaixo → marcadores vazados → FILHOS por cima.
+    // FUNÇÃO (fundo)
+    if (espaco) {
       if (mostrarMinimos && lattice.xs.length > 0) {
         traces.push({
           type: 'scatter3d', mode: 'markers', name: 'mínimos locais',
           x: lattice.xs, y: lattice.ys, z: lattice.zs,
-          marker: {
-            size: 3, color: lattice.fs, colorscale: 'Jet', cmin: 0, cmax: CMAX_F,
-            opacity: opacidade, showscale: true, colorbar, symbol: 'circle',
-          },
+          marker: { size: 3, color: lattice.fs, colorscale: 'Jet', cmin: 0, cmax: CMAX_F, opacity: opacidade, showscale: true, colorbar, symbol: 'circle' },
           hovertemplate: 'mínimo local<br>(%{x:.3f}, %{y:.3f}, %{z:.3f})<br>f=%{marker.color:.3f}<extra></extra>',
         });
       }
-      if (best) traces.push(traceMelhor(best[2]));
-      if (otimoVisivel) traces.push(traceOtimo);
-      if (mostrarPop && pop.length > 0) {
-        traces.push({
-          type: 'scatter3d', mode: 'markers', name: 'filhos (população)',
-          x: pop.map(p => p.x[0]), y: pop.map(p => p.x[1]), z: pop.map(p => p.x[2]),
-          marker: {
-            size: 5, color: pop.map(p => p.fx), colorscale: 'Jet', cmin: 0, cmax: CMAX_F,
-            opacity: 0.98, showscale: !mostrarMinimos, colorbar,
-            line: { color: '#fff', width: 0.5 },
-          },
-          text: pop.map((_, i) => `filho ${i + 1}`),
-          hovertemplate: '%{text}<br>x=%{x:.3f}  y=%{y:.3f}  z=%{z:.3f}<br>f=%{marker.color:.4f}<extra></extra>',
-        });
-      }
     } else {
-      // === SUPERFÍCIE f(x, y) — a "caixa de ovos" por fatias em z ===
-      const ativos = SLICE_VALUES.filter(c => slices[c]);
-      ativos.forEach((c, idx) => {
+      SLICE_VALUES.filter(c => slices[c]).forEach((c, idx) => {
         traces.push({
           type: 'surface', x: surf.axis, y: surf.axis, z: sliceGrids[c],
-          colorscale: 'Jet', cmin: 0, cmax: surf.zMax, opacity: opacidade,
-          showscale: idx === 0, colorbar,
+          colorscale: 'Jet', cmin: 0, cmax: surf.zMax, opacity: opacidade, showscale: idx === 0, colorbar,
           contours: { z: { show: true, color: 'rgba(0,0,0,0.22)', width: 1, start: 0, end: surf.zMax, size: 8 } },
           name: `z = ${c}`,
           hovertemplate: `x=%{x:.2f}  y=%{y:.2f}<br>f=%{z:.2f}<extra>fatia z=${c}</extra>`,
         });
       });
-      if (best) traces.push(traceMelhor(bestFx ?? 0));
-      if (otimoVisivel) traces.push(traceOtimo);
-      // Filhos projetados em (x, y, f) — por cima, pra ver onde caíram.
-      if (mostrarPop && pop.length > 0) {
-        traces.push({
-          type: 'scatter3d', mode: 'markers', name: 'filhos (em x,y,f)',
-          x: pop.map(p => p.x[0]), y: pop.map(p => p.x[1]), z: pop.map(p => p.fx),
-          marker: { size: 4, color: '#ffffff', opacity: 0.98, line: { color: '#000', width: 1 } },
-          text: pop.map((_, i) => `filho ${i + 1}`),
-          hovertemplate: '%{text}<br>x=%{x:.3f}  y=%{y:.3f}<br>f=%{z:.3f}<extra></extra>',
-        });
-      }
     }
 
+    // RASTROS — sempre TRAIL traces fantasma (índices fixos) + cometa.
+    if (rastros) {
+      for (let j = 0; j < TRAIL; j++) {
+        const fidx = g - (j + 1);
+        const gf = fidx >= 0 ? fr[fidx] : null;
+        const op = 0.28 * (1 - j / TRAIL);
+        di.ghosts.push(traces.length);
+        traces.push({
+          type: 'scatter3d', mode: 'markers', name: 'rastro', showlegend: false,
+          x: gf ? gf.xs : [], y: gf ? gf.ys : [], z: gf ? zPop(gf) : [],
+          marker: { size: 2.5, color: '#7fe8ff', opacity: Math.max(op, 0.05) },
+          hoverinfo: 'skip',
+        });
+      }
+      const bx: number[] = [], by: number[] = [], bz: number[] = [];
+      for (let f = 0; f <= g; f++) { const ff = fr[f]; if (ff?.bestX) { bx.push(ff.bestX[0]); by.push(ff.bestX[1]); bz.push(zBest(ff)); } }
+      di.comet = traces.length;
+      traces.push({ type: 'scatter3d', mode: 'lines', name: 'caminho do melhor', x: bx, y: by, z: bz, line: { color: '#ff2d9b', width: 4 }, opacity: 0.8, hoverinfo: 'skip' });
+    }
+
+    // MARCADORES
+    if (c0.bestX) {
+      di.best = traces.length;
+      traces.push({
+        type: 'scatter3d', mode: 'markers', name: 'melhor (até agora)',
+        x: [c0.bestX[0]], y: [c0.bestX[1]], z: [zBest(c0)],
+        marker: { size: 12, color: '#ff2d9b', symbol: 'circle-open', line: { color: '#ff2d9b', width: 3 } },
+        hovertemplate: 'melhor<br>x=%{x:.3f}  y=%{y:.3f}<extra></extra>',
+      });
+    }
+    if (otimoVisivel) {
+      di.otimo = traces.length;
+      traces.push({
+        type: 'scatter3d', mode: 'markers', name: 'mín. teórico (0,0,0)',
+        x: [0], y: [0], z: [0],
+        marker: { size: 11, color: '#00e5ff', symbol: 'diamond-open', line: { color: '#00e5ff', width: 3 } },
+        hovertemplate: 'mínimo teórico<br>f(0,0,0)=0<extra></extra>',
+      });
+    }
+
+    // FILHOS (geração atual) — por cima
+    if (mostrarPop) {
+      di.pop = traces.length;
+      traces.push(espaco ? {
+        type: 'scatter3d', mode: 'markers', name: 'filhos (geração atual)',
+        x: c0.xs, y: c0.ys, z: c0.zs,
+        marker: { size: 5, color: c0.fxs, colorscale: 'Jet', cmin: 0, cmax: CMAX_F, opacity: 0.98, showscale: !mostrarMinimos, colorbar, line: { color: '#fff', width: 0.5 } },
+        hovertemplate: 'filho<br>x=%{x:.3f}  y=%{y:.3f}  z=%{z:.3f}<br>f=%{marker.color:.4f}<extra></extra>',
+      } : {
+        type: 'scatter3d', mode: 'markers', name: 'filhos (geração atual)',
+        x: c0.xs, y: c0.ys, z: c0.fxs,
+        marker: { size: 4, color: '#ffffff', opacity: 0.98, line: { color: '#000', width: 1 } },
+        hovertemplate: 'filho<br>x=%{x:.3f}  y=%{y:.3f}<br>f=%{z:.3f}<extra></extra>',
+      });
+    }
+
+    dynIdxRef.current = di;
     return traces;
-  }, [step, modo, surf, sliceGrids, lattice, slices, opacidade, mostrarPop, mostrarMinimos, mostrarOtimo, vizMin, vizMax]);
+  }, [hasFrames, modo, surf, sliceGrids, lattice, sliceKey, opacidade, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, vizMin, vizMax]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Anima por restyle (sem Plotly.react) → não interrompe o orbit.
+  useEffect(() => {
+    const gd = gdRef.current;
+    const fr = framesRef.current;
+    const g = gi;
+    const c = g >= 0 && g < fr.length ? fr[g] : null;
+    if (!gd || !c) return;
+    const di = dynIdxRef.current;
+    const espaco = modo === 'espaco';
+    const zPop = (f: Frame) => (espaco ? f.zs : f.fxs);
+    const zBest = (f: Frame) => (espaco ? (f.bestX?.[2] ?? 0) : f.bestFx);
+
+    const xs: number[][] = [], ys: number[][] = [], zs: number[][] = [], inds: number[] = [];
+    di.ghosts.forEach((ti, j) => {
+      const fidx = g - (j + 1);
+      const gf = fidx >= 0 ? fr[fidx] : null;
+      xs.push(gf ? gf.xs : []); ys.push(gf ? gf.ys : []); zs.push(gf ? zPop(gf) : []); inds.push(ti);
+    });
+    if (di.comet != null) {
+      const bx: number[] = [], by: number[] = [], bz: number[] = [];
+      for (let f = 0; f <= g; f++) { const ff = fr[f]; if (ff?.bestX) { bx.push(ff.bestX[0]); by.push(ff.bestX[1]); bz.push(zBest(ff)); } }
+      xs.push(bx); ys.push(by); zs.push(bz); inds.push(di.comet);
+    }
+    if (di.best != null && c.bestX) { xs.push([c.bestX[0]]); ys.push([c.bestX[1]]); zs.push([zBest(c)]); inds.push(di.best); }
+    if (di.pop != null) { xs.push(c.xs); ys.push(c.ys); zs.push(zPop(c)); inds.push(di.pop); }
+    if (inds.length) plotlyRestyle(gd, { x: xs, y: ys, z: zs }, inds);
+    if (espaco && di.pop != null) plotlyRestyle(gd, { 'marker.color': [c.fxs] }, [di.pop]);
+  }, [gi, hasFrames, modo, sliceKey, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, vizMin, vizMax]);
 
   const plotLayout = useMemo(() => {
     const espaco = modo === 'espaco';
@@ -377,7 +486,7 @@ export default function RastriginView() {
       margin: { l: 0, r: 0, t: 10, b: 0 },
       paper_bgcolor: '#0a0a0a',
       plot_bgcolor: '#0a0a0a',
-      uirevision: 'rast3d', // preserva rotação/zoom do usuário entre gerações
+      uirevision: modo,
       scene: {
         xaxis: { title: { text: 'x', font: { color: '#aaa' } }, range: [vizMin, vizMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } },
         yaxis: { title: { text: 'y', font: { color: '#aaa' } }, range: [vizMin, vizMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } },
@@ -386,8 +495,8 @@ export default function RastriginView() {
           : { title: { text: 'f', font: { color: '#aaa' } }, range: [0, surf.zMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } },
         bgcolor: '#0a0a0a',
         aspectmode: 'manual',
-        aspectratio: espaco ? { x: 1, y: 1, z: 1 } : { x: 1, y: 1, z: 0.6 },
-        camera: { eye: espaco ? { x: 1.6, y: 1.6, z: 1.3 } : { x: 1.7, y: 1.7, z: 0.9 } },
+        aspectratio: espaco ? { x: 1, y: 1, z: 1 } : { x: 1, y: 1, z: 0.7 },
+        camera: { eye: espaco ? { x: 1.5, y: 1.5, z: 1.5 } : { x: 1.25, y: 1.25, z: 1.85 } },
       },
       legend: { font: { color: '#aaa', size: 11 }, x: 0, y: 1, bgcolor: 'rgba(0,0,0,0.3)' },
       showlegend: true,
@@ -395,11 +504,9 @@ export default function RastriginView() {
   }, [modo, vizMin, vizMax, surf.zMax]);
 
   const isTorneio = selecao === 'torneio';
-  const melhorAtual = step?.melhorGlobalFx;
-  const distOtimo = step?.melhorGlobalX
-    ? Math.sqrt(step.melhorGlobalX.reduce((a, b) => a + b * b, 0))
-    : null;
-
+  const lastGen = frames.length ? frames[frames.length - 1].gen : 0;
+  const melhorAtual = cur?.bestFx;
+  const distOtimo = cur?.bestX ? Math.sqrt(cur.bestX.reduce((a, b) => a + b * b, 0)) : null;
   const opacLabel = modo === 'espaco' ? 'opacidade (mínimos)' : 'opacidade (superfície)';
 
   return (
@@ -458,17 +565,11 @@ export default function RastriginView() {
           <div className="imgreg-select-label">Domínio <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(x, y, z)</span></div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--muted)' }}>
             <span>[</span>
-            <input
-              type="number" step={0.5} value={domMinStr}
-              onChange={e => setDomMinStr(e.target.value)}
-              style={{ width: 70, background: 'var(--surface-2)', border: '1px solid #333', borderRadius: 4, color: 'var(--cyan)', padding: '6px 8px', fontFamily: 'JetBrains Mono', fontSize: 13 }}
-            />
+            <input type="text" inputMode="decimal" value={domMinStr} onChange={e => setDomMinStr(e.target.value)}
+              style={{ width: 76, textAlign: 'center', background: 'var(--surface-2)', border: '1px solid #333', borderRadius: 4, color: 'var(--cyan)', padding: '6px 8px', fontFamily: 'JetBrains Mono', fontSize: 13 }} />
             <span>,</span>
-            <input
-              type="number" step={0.5} value={domMaxStr}
-              onChange={e => setDomMaxStr(e.target.value)}
-              style={{ width: 70, background: 'var(--surface-2)', border: '1px solid #333', borderRadius: 4, color: 'var(--cyan)', padding: '6px 8px', fontFamily: 'JetBrains Mono', fontSize: 13 }}
-            />
+            <input type="text" inputMode="decimal" value={domMaxStr} onChange={e => setDomMaxStr(e.target.value)}
+              style={{ width: 76, textAlign: 'center', background: 'var(--surface-2)', border: '1px solid #333', borderRadius: 4, color: 'var(--cyan)', padding: '6px 8px', fontFamily: 'JetBrains Mono', fontSize: 13 }} />
             <span>]</span>
           </div>
           <div style={{ fontSize: 11, color: '#777', marginTop: 6 }}>padrão do Rastrigin: [-5.12, 5.12]</div>
@@ -477,31 +578,15 @@ export default function RastriginView() {
 
       {/* Métricas */}
       <div className="grid-3" style={{ marginBottom: 16 }}>
-        <MetricCard
-          title="Geração"
-          value={step ? step.geracao.toLocaleString() : '—'}
-          label={`de ${parseInt(maxGeracoes).toLocaleString()}`}
-          color="green"
-          pulse={training}
-        />
-        <MetricCard
-          title="Melhor f(x,y,z)"
-          value={melhorAtual !== undefined ? melhorAtual.toFixed(4) : '—'}
-          label={melhorAtual !== undefined && melhorAtual < 0.01 ? '≈ ótimo global (0)' : 'menor = melhor (alvo: 0)'}
-          color="cyan"
-        />
-        <MetricCard
-          title="Distância ao ótimo"
-          value={distOtimo !== null ? `‖x‖ = ${distOtimo.toFixed(3)}` : '—'}
-          label="‖(x,y,z) − (0,0,0)‖"
-        />
+        <MetricCard title="Geração" value={cur ? cur.gen.toLocaleString() : '—'} label={`de ${parseInt(maxGeracoes).toLocaleString()}`} color="green" pulse={training} />
+        <MetricCard title="Melhor f(x,y,z)" value={melhorAtual !== undefined ? melhorAtual.toFixed(4) : '—'} label={melhorAtual !== undefined && melhorAtual < 0.01 ? '≈ ótimo global (0)' : 'menor = melhor (alvo: 0)'} color="cyan" />
+        <MetricCard title="Distância ao ótimo" value={distOtimo !== null ? `‖x‖ = ${distOtimo.toFixed(3)}` : '—'} label="‖(x,y,z) − (0,0,0)‖" />
       </div>
 
-      {/* Visualização 3D — AO VIVO durante a evolução (aparece já na 1ª geração) */}
-      {step && (
-        <Card title={`Visualização 3D — população${training ? ' (ao vivo)' : ''} e função Rastrigin`} style={{ marginBottom: 16 }}>
+      {/* Visualização 3D */}
+      {frames.length > 0 && (
+        <Card title={`Visualização 3D — população${training ? ' (ao vivo)' : ' · replay'} e função Rastrigin`} style={{ marginBottom: 16 }}>
           <div style={{ padding: 8 }}>
-            {/* Toggle de modo */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               <button className="btn" onClick={() => setModo('superficie')} aria-pressed={modo === 'superficie'}
                 style={{ fontSize: 12, padding: '7px 14px', borderColor: modo === 'superficie' ? 'var(--cyan)' : '#333', opacity: modo === 'superficie' ? 1 : 0.55 }}>
@@ -513,6 +598,31 @@ export default function RastriginView() {
               </button>
             </div>
 
+            {/* Player */}
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+              marginBottom: 10, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 6,
+              fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--muted)',
+            }}>
+              <button className="btn" onClick={() => { setPlaying(false); setFrameIdx(0); }} disabled={training}
+                style={{ fontSize: 14, padding: 0, width: 38, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="reiniciar">⟲</button>
+              <button className="btn btn-primary" onClick={handlePlayPause} disabled={training}
+                style={{ fontSize: 13, padding: 0, width: 44, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title={playing ? 'pausar' : 'reproduzir'}>{playing ? '⏸' : '▶'}</button>
+              <input type="range" min={0} max={Math.max(frames.length - 1, 0)} value={gi}
+                onChange={e => { setPlaying(false); setFrameIdx(parseInt(e.target.value)); }} disabled={training}
+                style={{ flex: 1, minWidth: 180 }} />
+              <span style={{ color: 'var(--cyan)', minWidth: 92, textAlign: 'right' }}>geração {cur?.gen ?? 0}/{lastGen}</span>
+              <span style={{ display: 'flex', gap: 4 }}>
+                {['0.5', '1', '2'].map(s => (
+                  <button key={s} className="btn" onClick={() => setSpeed(s)} aria-pressed={speed === s}
+                    style={{ fontSize: 11, padding: '4px 8px', opacity: speed === s ? 1 : 0.45, borderColor: speed === s ? 'var(--cyan)' : '#333' }}>{s}×</button>
+                ))}
+              </span>
+              <button className="btn" onClick={() => setRastros(v => !v)} aria-pressed={rastros}
+                style={{ fontSize: 11, padding: '5px 10px', opacity: rastros ? 1 : 0.45 }}>rastros</button>
+              {training && <span style={{ color: 'var(--green)' }}>● ao vivo</span>}
+            </div>
+
             {/* Controles por modo */}
             <div style={{
               display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
@@ -521,85 +631,53 @@ export default function RastriginView() {
               {modo === 'espaco' ? (
                 <>
                   <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: '#888', marginRight: 4 }}>MOSTRAR:</span>
-                  <button className="btn" onClick={() => setMostrarPop(v => !v)} aria-pressed={mostrarPop}
-                    style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarPop ? 1 : 0.4 }}>filhos (população)</button>
-                  <button className="btn" onClick={() => setMostrarMinimos(v => !v)} aria-pressed={mostrarMinimos}
-                    style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarMinimos ? 1 : 0.4 }}>mínimos locais</button>
-                  <button className="btn" onClick={() => setMostrarOtimo(v => !v)} aria-pressed={mostrarOtimo}
-                    style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarOtimo ? 1 : 0.4 }}>mín. teórico</button>
+                  <button className="btn" onClick={() => setMostrarPop(v => !v)} aria-pressed={mostrarPop} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarPop ? 1 : 0.4 }}>filhos</button>
+                  <button className="btn" onClick={() => setMostrarMinimos(v => !v)} aria-pressed={mostrarMinimos} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarMinimos ? 1 : 0.4 }}>mínimos locais</button>
+                  <button className="btn" onClick={() => setMostrarOtimo(v => !v)} aria-pressed={mostrarOtimo} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarOtimo ? 1 : 0.4 }}>mín. teórico</button>
                 </>
               ) : (
                 <>
                   <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: '#888', marginRight: 4 }}>CAMADAS (fatias z):</span>
                   {SLICE_VALUES.map(c => (
                     <button key={c} className="btn" onClick={() => toggleSlice(c)} aria-pressed={slices[c]}
-                      style={{ fontSize: 11, padding: '5px 12px', opacity: slices[c] ? 1 : 0.4, borderColor: slices[c] ? 'var(--cyan)' : '#333' }}>
-                      z = {c}
-                    </button>
+                      style={{ fontSize: 11, padding: '5px 12px', opacity: slices[c] ? 1 : 0.4, borderColor: slices[c] ? 'var(--cyan)' : '#333' }}>z = {c}</button>
                   ))}
                   <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
-                  <button className="btn" onClick={() => setMostrarPop(v => !v)} aria-pressed={mostrarPop}
-                    style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarPop ? 1 : 0.4 }}>filhos</button>
-                  <button className="btn" onClick={() => setMostrarOtimo(v => !v)} aria-pressed={mostrarOtimo}
-                    style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarOtimo ? 1 : 0.4 }}>mín. teórico</button>
+                  <button className="btn" onClick={() => setMostrarPop(v => !v)} aria-pressed={mostrarPop} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarPop ? 1 : 0.4 }}>filhos</button>
+                  <button className="btn" onClick={() => setMostrarOtimo(v => !v)} aria-pressed={mostrarOtimo} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarOtimo ? 1 : 0.4 }}>mín. teórico</button>
                 </>
               )}
-            </div>
-
-            {/* Opacidade */}
-            <div style={{
-              display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center',
-              marginBottom: 10, padding: '8px 12px', fontSize: 12, fontFamily: 'JetBrains Mono', color: 'var(--muted)',
-            }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontFamily: 'JetBrains Mono', color: 'var(--muted)' }}>
                 {opacLabel}
-                <input
-                  type="range" min={0} max={1} step={0.02}
-                  value={opacidade}
-                  onChange={e => setOpacidade(parseFloat(e.target.value))}
-                  style={{ width: 160 }}
-                />
+                <input type="range" min={0} max={1} step={0.02} value={opacidade} onChange={e => setOpacidade(parseFloat(e.target.value))} style={{ width: 120 }} />
                 <span style={{ color: 'var(--cyan)' }}>{opacidade.toFixed(2)}</span>
               </label>
             </div>
 
-            {/* Legenda textual por modo */}
             <div style={{
               fontSize: 12, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 10,
               padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6, fontFamily: 'JetBrains Mono',
             }}>
               {modo === 'espaco' ? (
-                <>
-                  Cubo do <b>espaço de busca (x, y, z)</b> — cada <b>filho</b> é um ponto na <b>posição real</b>,
-                  cor = aptidão (<span style={{ color: '#2222ff' }}>azul</span> = ótimo · <span style={{ color: '#ff2200' }}>vermelho</span> = ruim).
-                  Os <b>mínimos locais</b> (rede de pontos) são as armadilhas onde o AG pode emperrar.{' '}
-                  <b style={{ color: '#ff2d9b' }}>○ rosa</b> = melhor · <b style={{ color: '#00e5ff' }}>◇ ciano</b> = mínimo teórico (0,0,0).
-                </>
+                <>Cubo do <b>espaço de busca (x, y, z)</b> — cada <b>filho</b> na posição real, cor = aptidão.
+                  Os <b>mínimos locais</b> (rede) são as armadilhas. </>
               ) : (
-                <>
-                  Superfície <b>f(x, y)</b> num plano <b>z = c</b> fixo — a clássica "caixa de ovos" com dezenas de
-                  mínimos locais e o global no centro. Os <b style={{ color: '#fff' }}>filhos</b> (pontos brancos) caem
-                  ao vivo nos vales conforme evoluem. Empilhe fatias e baixe a opacidade pra ver a 3ª dimensão.{' '}
-                  <b style={{ color: '#ff2d9b' }}>○ rosa</b> = melhor · <b style={{ color: '#00e5ff' }}>◇ ciano</b> = mínimo teórico.
-                </>
+                <>Superfície <b>f(x, y)</b> (a "caixa de ovos") — os <b style={{ color: '#fff' }}>filhos</b> caem nos vales.{' '}</>
               )}
-              {' '}Arraste pra girar, scroll pra zoom.
+              Os <b style={{ color: '#7fe8ff' }}>rastros azuis</b> são as gerações anteriores e a{' '}
+              <b style={{ color: '#ff2d9b' }}>linha rosa</b> é o caminho do melhor.{' '}
+              Use <b>▶</b> / arraste o tempo pra reviver. Gire o 3D livremente até durante o play.
             </div>
 
             <div style={{ width: '100%', height: 560 }}>
-              <Plot
-                data={plotData as unknown as Plotly.Data[]}
-                layout={plotLayout as unknown as Partial<Plotly.Layout>}
-                config={{ displaylogo: false, responsive: true, displayModeBar: false } as unknown as Partial<Plotly.Config>}
-                style={{ width: '100%', height: '100%' }}
-                useResizeHandler
-              />
+              <PlotCanvas data={plotData} layout={plotLayout} onInit={onInit} />
             </div>
           </div>
         </Card>
       )}
 
-      {/* Convergência — visível durante e depois do treino */}
+      {/* Convergência */}
       {chartData.length > 0 && (
         <Card title="Convergência — f(x,y,z) por geração (escala log; alvo = 0)" style={{ marginBottom: 16 }}>
           <div style={{ padding: '8px 4px' }}>
@@ -607,20 +685,10 @@ export default function RastriginView() {
               <ComposedChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                 <XAxis dataKey="gen" stroke="#555" tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }} tickLine={false} />
-                <YAxis
-                  stroke="#555"
-                  tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-                  tickLine={false}
-                  scale="log"
-                  domain={[0.001, 'auto']}
-                  allowDataOverflow
-                />
-                <Tooltip
-                  contentStyle={{ background: '#111', border: '1px solid #333', fontSize: 11, fontFamily: 'JetBrains Mono' }}
-                  labelFormatter={(v) => `geração ${v}`}
-                  formatter={(v) => Number(v).toFixed(4)}
-                />
+                <YAxis stroke="#555" tick={{ fill: '#555', fontSize: 10, fontFamily: 'JetBrains Mono' }} tickLine={false} scale="log" domain={[0.001, 'auto']} allowDataOverflow />
+                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333', fontSize: 11, fontFamily: 'JetBrains Mono' }} labelFormatter={(v) => `geração ${v}`} formatter={(v) => Number(v).toFixed(4)} />
                 <Legend wrapperStyle={{ fontFamily: 'JetBrains Mono', fontSize: 11 }} />
+                {cur && <ReferenceLine x={cur.gen} stroke="#fff" strokeOpacity={0.6} strokeDasharray="2 2" />}
                 <Line name="média da pop" type="monotone" dataKey="media" stroke="#00ccff" strokeWidth={1} strokeOpacity={0.6} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
                 <Line name="melhor da geração" type="monotone" dataKey="melhor" stroke="#ff00aa" strokeWidth={1} strokeOpacity={0.5} dot={false} isAnimationActive={false} />
                 <Line name="melhor acumulado" type="monotone" dataKey="melhorAcum" stroke="#ffff00" strokeWidth={2.5} dot={false} isAnimationActive={false} />
@@ -639,9 +707,7 @@ export default function RastriginView() {
             <div>z = <span style={{ color: 'var(--cyan)' }}>{result.melhorX[2].toFixed(6)}</span></div>
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #222' }}>
               f(x, y, z) = <b style={{ color: '#ffff00' }}>{result.melhorFx.toFixed(8)}</b>
-              <span style={{ color: '#888', marginLeft: 8 }}>
-                (ótimo teórico: <b style={{ color: '#ffff00' }}>0</b> em (0,0,0))
-              </span>
+              <span style={{ color: '#888', marginLeft: 8 }}>(ótimo teórico: <b style={{ color: '#ffff00' }}>0</b> em (0,0,0))</span>
             </div>
           </div>
         </Card>
