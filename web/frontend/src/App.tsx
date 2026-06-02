@@ -56,7 +56,7 @@ export default function App() {
   return (
     <ToastProvider>
       <div className="shell">
-        <TopBar />
+        <TopBar active={activeView} />
         <Sidebar active={activeView} onNavigate={setActiveView} />
         <main className="main">
           <ActiveComponent />
