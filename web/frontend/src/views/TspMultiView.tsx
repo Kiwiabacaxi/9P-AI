@@ -691,17 +691,34 @@ export default function TspMultiView() {
             <ChromosomeFollower cidades={cidades} tour={globalTour} color="#ffff00" />
 
             <div style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 10 }}>
-              E abaixo, o melhor cromossomo de <b>cada ilha</b> agora — repare como diferem (cada uma achou uma
-              ordem própria) e como vão ficando parecidos perto das gerações de migração:
+              E abaixo, o melhor cromossomo de <b>cada ilha</b> comparado com o global: genes <b style={{ color: 'var(--cyan)' }}>iguais ao global desbotam</b>;
+              só os <b style={{ color: 'var(--cyan)' }}>diferentes ficam fortes</b>. Assim você vê em 1 olhada quanto e onde cada ilha divergiu —
+              perto das migrações elas vão "alinhando" e diminuindo o número de diferenças.
             </div>
-            {ilhasAtuais.map(il => (
-              <div key={il.ilha} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: islandColor(il.ilha), marginBottom: 4 }}>
-                  ● Ilha {il.ilha + 1} — {il.melhorDist.toFixed(0)} {unidade}
+            {ilhasAtuais.map(il => {
+              const cor = islandColor(il.ilha);
+              const ndif = il.melhorTour.reduce((acc, g, i) => acc + (g !== globalTour[i] ? 1 : 0), 0);
+              const igual = ndif === 0;
+              return (
+                <div key={il.ilha} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: cor, marginBottom: 4 }}>
+                    ● Ilha {il.ilha + 1} — {il.melhorDist.toFixed(0)} {unidade}
+                    <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
+                      {igual
+                        ? '(idêntica ao global ✓)'
+                        : `(${ndif}/${cidades.length} genes diferentes do global)`}
+                    </span>
+                  </div>
+                  <GeneStrip
+                    cidades={cidades}
+                    tour={il.melhorTour}
+                    color={cor}
+                    compareTo={globalTour}
+                    dimMatching
+                  />
                 </div>
-                <GeneStrip cidades={cidades} tour={il.melhorTour} color={islandColor(il.ilha)} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}
@@ -711,11 +728,13 @@ export default function TspMultiView() {
         <Card title="Laboratório de operadores — veja seleção, cruzamento e mutação passo a passo" style={{ marginBottom: 16 }}>
           <div style={{ padding: 12 }}>
             <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              Pega dois pais reais (os melhores de duas ilhas) e mostra como nasce um filho, na ordem do AG:
+              Pega dois pais reais (os melhores de duas ilhas) e anima como nasce um filho, etapa por etapa:
               <b style={{ color: 'var(--cyan)' }}> seleção</b> →
-              <b style={{ color: '#ff00aa' }}> cruzamento ({cruzamento.toUpperCase()})</b> →
-              <b style={{ color: '#ff8a3d' }}> mutação ({mutacao})</b>. Use ◀ ▶ pra navegar as etapas, ▶ pra tocar,
-              e "gerar novo filho" pra sortear outros cortes. Troque os operadores nos controles do topo pra ver a diferença.
+              cruzamento <b>{cruzamento.toUpperCase()}</b> → mutação <b>{mutacao}</b>.
+              No filho, <b>cada gene fica colorido pela sua origem</b> — assim você vê na hora qual parte veio do
+              Pai 1, qual veio do Pai 2 e quais foram mutadas. Use ◀ ▶ pra navegar as etapas, ▶ pra tocar,
+              e "gerar novo filho" pra sortear novos cortes. Troque os operadores nos controles do topo (OX↔PMX,
+              swap↔inversão) pra ver o padrão mudar.
             </div>
             <OperatorLab
               cidades={cidades}
