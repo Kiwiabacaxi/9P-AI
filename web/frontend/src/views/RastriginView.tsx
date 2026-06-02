@@ -182,6 +182,7 @@ export default function RastriginView() {
   const [mostrarMinimos, setMostrarMinimos] = useState(true);
   const [mostrarOtimo, setMostrarOtimo] = useState(true);
   const [rastros, setRastros] = useState(true);
+  const [mostrarContorno, setMostrarContorno] = useState(true); // mapa de calor no chão (modo superfície)
 
   const closeSSE = useRef<(() => void) | null>(null);
   const gdRef = useRef<unknown>(null);
@@ -316,7 +317,8 @@ export default function RastriginView() {
     }
     const maxStep = Math.max(...SLICE_VALUES.map(termR));
     const zMax = Math.ceil((baseMax + 30 + maxStep) / 10) * 10;
-    return { axis, base, zMax };
+    const zFloor = -Math.round(zMax * 0.18); // plano do contorno, flutuando abaixo do relevo
+    return { axis, base, zMax, zFloor };
   }, [vizMin, vizMax]);
 
   const sliceGrids = useMemo(() => {
@@ -379,6 +381,18 @@ export default function RastriginView() {
         });
       }
     } else {
+      // Contorno projetado no chão (z=0): tapete plano colorido por f(x,y,0) — a
+      // "sombra" topo-down da Rastrigin, vista junto com o relevo 3D acima.
+      if (mostrarContorno) {
+        const floor = surf.base.map(r => r.map(() => surf.zFloor));
+        traces.push({
+          type: 'surface', x: surf.axis, y: surf.axis, z: floor,
+          surfacecolor: sliceGrids[0], colorscale: 'Jet', cmin: 0, cmax: surf.zMax,
+          showscale: false, opacity: 0.85, hoverinfo: 'skip',
+          contours: { z: { show: false } },
+          name: 'contorno (chão)', showlegend: false,
+        });
+      }
       SLICE_VALUES.filter(c => slices[c]).forEach((c, idx) => {
         traces.push({
           type: 'surface', x: surf.axis, y: surf.axis, z: sliceGrids[c],
@@ -448,7 +462,7 @@ export default function RastriginView() {
 
     dynIdxRef.current = di;
     return traces;
-  }, [hasFrames, modo, surf, sliceGrids, lattice, sliceKey, opacidade, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, vizMin, vizMax]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasFrames, modo, surf, sliceGrids, lattice, sliceKey, opacidade, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, mostrarContorno, vizMin, vizMax]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Anima por restyle (sem Plotly.react) → não interrompe o orbit.
   useEffect(() => {
@@ -492,7 +506,7 @@ export default function RastriginView() {
         yaxis: { title: { text: 'y', font: { color: '#aaa' } }, range: [vizMin, vizMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } },
         zaxis: espaco
           ? { title: { text: 'z', font: { color: '#aaa' } }, range: [vizMin, vizMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } }
-          : { title: { text: 'f', font: { color: '#aaa' } }, range: [0, surf.zMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } },
+          : { title: { text: 'f', font: { color: '#aaa' } }, range: [mostrarContorno ? surf.zFloor : 0, surf.zMax], gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 10 } },
         bgcolor: '#0a0a0a',
         aspectmode: 'manual',
         aspectratio: espaco ? { x: 1, y: 1, z: 1 } : { x: 1, y: 1, z: 0.7 },
@@ -501,7 +515,7 @@ export default function RastriginView() {
       legend: { font: { color: '#aaa', size: 11 }, x: 0, y: 1, bgcolor: 'rgba(0,0,0,0.3)' },
       showlegend: true,
     };
-  }, [modo, vizMin, vizMax, surf.zMax]);
+  }, [modo, vizMin, vizMax, surf.zMax, surf.zFloor, mostrarContorno]);
 
   const isTorneio = selecao === 'torneio';
   const lastGen = frames.length ? frames[frames.length - 1].gen : 0;
@@ -645,6 +659,7 @@ export default function RastriginView() {
                   <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
                   <button className="btn" onClick={() => setMostrarPop(v => !v)} aria-pressed={mostrarPop} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarPop ? 1 : 0.4 }}>filhos</button>
                   <button className="btn" onClick={() => setMostrarOtimo(v => !v)} aria-pressed={mostrarOtimo} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarOtimo ? 1 : 0.4 }}>mín. teórico</button>
+                  <button className="btn" onClick={() => setMostrarContorno(v => !v)} aria-pressed={mostrarContorno} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarContorno ? 1 : 0.4 }}>contorno (chão)</button>
                 </>
               )}
               <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
