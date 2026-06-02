@@ -184,6 +184,12 @@ export default function RastriginView() {
   const [rastros, setRastros] = useState(true);
   const [mostrarContorno, setMostrarContorno] = useState(true); // mapa de calor no chão (modo superfície)
 
+  // Laboratório dos operadores (Aula 15) — mostra a geometria do cruzamento real.
+  const [labOp, setLabOp] = useState<RastCruzamento>('radcliff');
+  const [labBeta, setLabBeta] = useState(0.3);
+  const [labA, setLabA] = useState<number[]>([-3.4, 2.6, -1.4]);
+  const [labB, setLabB] = useState<number[]>([3.6, -2.2, 2.4]);
+
   const closeSSE = useRef<(() => void) | null>(null);
   const gdRef = useRef<unknown>(null);
   const giRef = useRef(0);
@@ -517,6 +523,73 @@ export default function RastriginView() {
     };
   }, [modo, vizMin, vizMax, surf.zMax, surf.zFloor, mostrarContorno]);
 
+  // Laboratório dos operadores: os filhos sempre caem na RETA dos pais.
+  // P(t) = (1−t)·A + t·B → A em t=0, B em t=1.
+  function sortearPais() {
+    const r = () => +(vizMin + Math.random() * (vizMax - vizMin)).toFixed(2);
+    setLabA([r(), r(), r()]);
+    setLabB([r(), r(), r()]);
+  }
+  const labData = useMemo(() => {
+    const A = labA, B = labB;
+    const P = (t: number) => [A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1]), A[2] + t * (B[2] - A[2])];
+    const inDom = (p: number[]) => p.every(v => v >= vizMin && v <= vizMax);
+    const traces: unknown[] = [];
+    const l0 = P(-0.7), l1 = P(1.7);
+    traces.push({ type: 'scatter3d', mode: 'lines', x: [l0[0], l1[0]], y: [l0[1], l1[1]], z: [l0[2], l1[2]], line: { color: '#444', width: 2, dash: 'dot' }, hoverinfo: 'skip', showlegend: false });
+    traces.push({ type: 'scatter3d', mode: 'lines', name: 'segmento A–B', x: [A[0], B[0]], y: [A[1], B[1]], z: [A[2], B[2]], line: { color: '#999', width: 5 }, hoverinfo: 'skip', showlegend: false });
+    traces.push({
+      type: 'scatter3d', mode: 'markers+text', name: 'pais', x: [A[0], B[0]], y: [A[1], B[1]], z: [A[2], B[2]],
+      text: ['A', 'B'], textposition: 'top center', textfont: { color: '#fff', size: 13 },
+      marker: { size: 8, color: ['#3b82f6', '#22c55e'], line: { color: '#fff', width: 1 } },
+      hovertemplate: '%{text}<br>(%{x:.2f}, %{y:.2f}, %{z:.2f})<extra></extra>',
+    });
+    if (labOp === 'radcliff') {
+      const pts = [labBeta, 1 - labBeta].map(P);
+      traces.push({
+        type: 'scatter3d', mode: 'markers', name: 'filhos RADCLIFF', x: pts.map(p => p[0]), y: pts.map(p => p[1]), z: pts.map(p => p[2]),
+        marker: { size: 8, color: '#00e5ff', symbol: 'diamond', line: { color: '#fff', width: 1 } },
+        hovertemplate: 'filho RADCLIFF (entre os pais)<br>(%{x:.2f}, %{y:.2f}, %{z:.2f})<extra></extra>',
+      });
+    } else {
+      const defs = [{ t: -0.5, l: 'xb = 1.5·A − 0.5·B' }, { t: 0.5, l: 'xa = 0.5·A + 0.5·B' }, { t: 1.5, l: 'xc = −0.5·A + 1.5·B' }];
+      const pts = defs.map(d => P(d.t));
+      const valid = pts.map(inDom);
+      traces.push({
+        type: 'scatter3d', mode: 'markers', name: 'filhos WRIGHT', x: pts.map(p => p[0]), y: pts.map(p => p[1]), z: pts.map(p => p[2]),
+        marker: { size: 9, color: valid.map(v => (v ? '#ff9d2e' : '#ff3b3b')), symbol: valid.map(v => (v ? 'circle' : 'x')), line: { color: '#fff', width: 1 } },
+        text: defs.map((d, i) => d.l + (valid[i] ? '' : '  (fora do domínio → clamp)')),
+        hovertemplate: '%{text}<br>(%{x:.2f}, %{y:.2f}, %{z:.2f})<extra></extra>',
+      });
+    }
+    return traces;
+  }, [labA, labB, labBeta, labOp, vizMin, vizMax]);
+
+  const labLayout = useMemo(() => {
+    // Range alargado pra caber os filhos WRIGHT extrapolados (e a reta), senão
+    // eles ficariam clipados fora do cubo do domínio.
+    const A = labA, B = labB;
+    const P = (t: number) => [A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1]), A[2] + t * (B[2] - A[2])];
+    let lo = Infinity, hi = -Infinity;
+    [A, B, P(-0.7), P(1.7)].forEach(p => p.forEach(v => { if (v < lo) lo = v; if (v > hi) hi = v; }));
+    const pad = (hi - lo) * 0.12 || 1;
+    const range = [lo - pad, hi + pad];
+    const ax = (t: string) => ({ title: { text: t, font: { color: '#aaa' } }, range, gridcolor: '#222', zerolinecolor: '#444', tickfont: { color: '#888', size: 9 } });
+    return {
+      autosize: true,
+      margin: { l: 0, r: 0, t: 6, b: 0 },
+      paper_bgcolor: '#0a0a0a', plot_bgcolor: '#0a0a0a',
+      uirevision: 'lab',
+      scene: {
+        xaxis: ax('x'), yaxis: ax('y'), zaxis: ax('z'),
+        bgcolor: '#0a0a0a', aspectmode: 'cube',
+        camera: { eye: { x: 1.5, y: 1.5, z: 1.3 } },
+      },
+      legend: { font: { color: '#aaa', size: 11 }, x: 0, y: 1, bgcolor: 'rgba(0,0,0,0.3)' },
+      showlegend: true,
+    };
+  }, [labA, labB]);
+
   const isTorneio = selecao === 'torneio';
   const lastGen = frames.length ? frames[frames.length - 1].gen : 0;
   const melhorAtual = cur?.bestFx;
@@ -727,6 +800,57 @@ export default function RastriginView() {
           </div>
         </Card>
       )}
+
+      {/* Laboratório dos operadores */}
+      <Card title="Laboratório dos operadores (Aula 15) — geometria do cruzamento real" style={{ marginBottom: 16 }}>
+        <div style={{ padding: 8 }}>
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+            marginBottom: 10, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 6,
+          }}>
+            <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: '#888', marginRight: 4 }}>OPERADOR:</span>
+            <button className="btn" onClick={() => setLabOp('radcliff')} aria-pressed={labOp === 'radcliff'}
+              style={{ fontSize: 11, padding: '5px 12px', borderColor: labOp === 'radcliff' ? 'var(--cyan)' : '#333', opacity: labOp === 'radcliff' ? 1 : 0.5 }}>RADCLIFF</button>
+            <button className="btn" onClick={() => setLabOp('wright')} aria-pressed={labOp === 'wright'}
+              style={{ fontSize: 11, padding: '5px 12px', borderColor: labOp === 'wright' ? 'var(--cyan)' : '#333', opacity: labOp === 'wright' ? 1 : 0.5 }}>WRIGHT</button>
+            <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
+            <button className="btn" onClick={sortearPais} style={{ fontSize: 11, padding: '5px 12px' }}>↻ sortear pais</button>
+            {labOp === 'radcliff' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontFamily: 'JetBrains Mono', color: 'var(--muted)', marginLeft: 8 }}>
+                β
+                <input type="range" min={0.05} max={0.95} step={0.05} value={labBeta} onChange={e => setLabBeta(parseFloat(e.target.value))} style={{ width: 140 }} />
+                <span style={{ color: 'var(--cyan)' }}>{labBeta.toFixed(2)}</span>
+              </label>
+            )}
+          </div>
+          <div style={{
+            fontSize: 12, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 10,
+            padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6, fontFamily: 'JetBrains Mono',
+          }}>
+            Os filhos sempre caem na <b>reta</b> que passa pelos pais <b style={{ color: '#3b82f6' }}>A</b> e <b style={{ color: '#22c55e' }}>B</b>.{' '}
+            {labOp === 'radcliff' ? (
+              <>
+                <b>RADCLIFF</b> (combinação convexa): os 2 filhos ficam <b>entre</b> A e B (em t = β e t = 1−β) —
+                <b> nunca extrapolam</b>, sempre dentro do domínio. Mexa no β pra ver eles deslizarem no segmento.
+              </>
+            ) : (
+              <>
+                <b>WRIGHT</b> gera 3: o do meio (0,5·A+0,5·B) e dois que <b>extrapolam</b> além de A e B
+                (1,5·A−0,5·B e −0,5·A+1,5·B). Os que saem do domínio (<b style={{ color: '#ff3b3b' }}>×</b>) são clampados.
+              </>
+            )}
+          </div>
+          <div style={{ width: '100%', height: 380 }}>
+            <Plot
+              data={labData as unknown as Plotly.Data[]}
+              layout={labLayout as unknown as Partial<Plotly.Layout>}
+              config={{ displaylogo: false, responsive: true, displayModeBar: false } as unknown as Partial<Plotly.Config>}
+              style={{ width: '100%', height: '100%' }}
+              useResizeHandler
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* Educacional */}
       <Card title="Como funciona o AG com cromossomos reais">
