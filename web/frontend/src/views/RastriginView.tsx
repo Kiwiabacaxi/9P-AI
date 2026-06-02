@@ -37,6 +37,8 @@ const Plot = createPlotlyComponent(Plotly);
 // Acesso tipado-frouxo ao restyle imperativo (anima sem Plotly.react → orbit livre).
 const plotlyRestyle = (gd: unknown, update: Record<string, unknown[]>, traces: number[]) =>
   (Plotly as { restyle: (gd: unknown, u: unknown, t: number[]) => unknown }).restyle(gd, update, traces);
+const plotlyRelayout = (gd: unknown, update: Record<string, unknown>) =>
+  (Plotly as { relayout: (gd: unknown, u: unknown) => unknown }).relayout(gd, update);
 
 // <Plot> isolado em memo: só re-renderiza (→ Plotly.react) quando data/layout/onInit
 // mudam de referência (mudanças ESTRUTURAIS). Trocar de frame NÃO re-renderiza isto,
@@ -172,7 +174,10 @@ export default function RastriginView() {
   const [frameIdx, setFrameIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState('1');
+  const [tween, setTween] = useState(false);   // movimento fluido (interpola entre gerações)
+  const [autoRot, setAutoRot] = useState(false); // câmera girando sozinha
   const framesRef = useRef<Frame[]>([]);
+  const tFloatRef = useRef(0);
 
   // Controles do 3D
   const [modo, setModo] = useState<Modo>('superficie');
@@ -202,10 +207,11 @@ export default function RastriginView() {
     if (closeSSE.current) closeSSE.current();
   }, []);
 
-  // Loop de replay — playTimerRef garante UM único intervalo (nunca empilha).
+  // Loop de replay (passo inteiro) — playTimerRef garante UM único intervalo.
+  // Desligado quando "tween" está ativo (aí o loop em rAF abaixo assume).
   useEffect(() => {
     if (playTimerRef.current) { clearInterval(playTimerRef.current); playTimerRef.current = null; }
-    if (!playing || frames.length === 0) return;
+    if (!playing || tween || frames.length === 0) return;
     const ms = speed === '2' ? 40 : speed === '0.5' ? 160 : 80;
     playTimerRef.current = window.setInterval(() => {
       setFrameIdx(i => {
@@ -216,7 +222,7 @@ export default function RastriginView() {
     return () => {
       if (playTimerRef.current) { clearInterval(playTimerRef.current); playTimerRef.current = null; }
     };
-  }, [playing, speed, frames.length]);
+  }, [playing, tween, speed, frames.length]);
 
   function limparEstado() {
     setResult(null);
@@ -470,34 +476,106 @@ export default function RastriginView() {
     return traces;
   }, [hasFrames, modo, surf, sliceGrids, lattice, sliceKey, opacidade, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, mostrarContorno, vizMin, vizMax]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Anima por restyle (sem Plotly.react) → não interrompe o orbit.
-  useEffect(() => {
+  // Aplica o frame via restyle (sem Plotly.react → orbit livre). frac∈[0,1)
+  // interpola pop/melhor entre o frame `lo` e o seguinte (usado no tween).
+  const applyRestyle = useCallback((lo: number, frac: number) => {
     const gd = gdRef.current;
     const fr = framesRef.current;
-    const g = gi;
-    const c = g >= 0 && g < fr.length ? fr[g] : null;
+    const c = lo >= 0 && lo < fr.length ? fr[lo] : null;
     if (!gd || !c) return;
+    const hi = Math.min(lo + 1, fr.length - 1);
+    const c2 = fr[hi];
+    const f = frac > 0 ? frac : 0;
+    const lerp = (a: number, b: number) => a + (b - a) * f;
     const di = dynIdxRef.current;
     const espaco = modo === 'espaco';
-    const zPop = (f: Frame) => (espaco ? f.zs : f.fxs);
-    const zBest = (f: Frame) => (espaco ? (f.bestX?.[2] ?? 0) : f.bestFx);
+    const zPop = (fr2: Frame) => (espaco ? fr2.zs : fr2.fxs);
+    const zBest = (fr2: Frame) => (espaco ? (fr2.bestX?.[2] ?? 0) : fr2.bestFx);
 
     const xs: number[][] = [], ys: number[][] = [], zs: number[][] = [], inds: number[] = [];
     di.ghosts.forEach((ti, j) => {
-      const fidx = g - (j + 1);
+      const fidx = lo - (j + 1);
       const gf = fidx >= 0 ? fr[fidx] : null;
       xs.push(gf ? gf.xs : []); ys.push(gf ? gf.ys : []); zs.push(gf ? zPop(gf) : []); inds.push(ti);
     });
     if (di.comet != null) {
       const bx: number[] = [], by: number[] = [], bz: number[] = [];
-      for (let f = 0; f <= g; f++) { const ff = fr[f]; if (ff?.bestX) { bx.push(ff.bestX[0]); by.push(ff.bestX[1]); bz.push(zBest(ff)); } }
+      for (let k = 0; k <= lo; k++) { const ff = fr[k]; if (ff?.bestX) { bx.push(ff.bestX[0]); by.push(ff.bestX[1]); bz.push(zBest(ff)); } }
       xs.push(bx); ys.push(by); zs.push(bz); inds.push(di.comet);
     }
-    if (di.best != null && c.bestX) { xs.push([c.bestX[0]]); ys.push([c.bestX[1]]); zs.push([zBest(c)]); inds.push(di.best); }
-    if (di.pop != null) { xs.push(c.xs); ys.push(c.ys); zs.push(zPop(c)); inds.push(di.pop); }
+    if (di.best != null && c.bestX && c2.bestX) {
+      xs.push([lerp(c.bestX[0], c2.bestX[0])]); ys.push([lerp(c.bestX[1], c2.bestX[1])]); zs.push([lerp(zBest(c), zBest(c2))]); inds.push(di.best);
+    }
+    if (di.pop != null) {
+      const z1 = zPop(c), z2 = zPop(c2);
+      if (f === 0) { xs.push(c.xs); ys.push(c.ys); zs.push(z1); }
+      else {
+        const n = c.xs.length, px = new Array(n), py = new Array(n), pz = new Array(n);
+        for (let i = 0; i < n; i++) { px[i] = lerp(c.xs[i], c2.xs[i] ?? c.xs[i]); py[i] = lerp(c.ys[i], c2.ys[i] ?? c.ys[i]); pz[i] = lerp(z1[i], z2[i] ?? z1[i]); }
+        xs.push(px); ys.push(py); zs.push(pz);
+      }
+      inds.push(di.pop);
+    }
     if (inds.length) plotlyRestyle(gd, { x: xs, y: ys, z: zs }, inds);
     if (espaco && di.pop != null) plotlyRestyle(gd, { 'marker.color': [c.fxs] }, [di.pop]);
-  }, [gi, hasFrames, modo, sliceKey, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, vizMin, vizMax]);
+  }, [modo]);
+
+  // Sincroniza o frame exibido (passo inteiro / scrub / play normal). Em tween+play
+  // quem comanda é o rAF abaixo.
+  useEffect(() => {
+    if (playing && tween) return;
+    applyRestyle(gi, 0);
+  }, [gi, hasFrames, modo, sliceKey, mostrarPop, mostrarMinimos, mostrarOtimo, rastros, vizMin, vizMax, playing, tween, applyRestyle]);
+
+  // Tween: loop em requestAnimationFrame interpolando entre gerações (fluido).
+  useEffect(() => {
+    if (!(playing && tween) || frames.length === 0) return;
+    tFloatRef.current = gi;
+    const frameMs = speed === '2' ? 40 : speed === '0.5' ? 160 : 80;
+    let raf = 0;
+    let last = 0;
+    const stepFn = (now: number) => {
+      if (last === 0) last = now;
+      const dt = now - last; last = now;
+      tFloatRef.current += dt / frameMs;
+      const end = frames.length - 1;
+      if (tFloatRef.current >= end) {
+        applyRestyle(end, 0);
+        setFrameIdx(end);
+        setPlaying(false);
+        return;
+      }
+      const t = tFloatRef.current;
+      const lo = Math.floor(t);
+      applyRestyle(lo, t - lo);
+      const rounded = Math.round(t);
+      setFrameIdx(prev => (prev !== rounded ? rounded : prev));
+      raf = requestAnimationFrame(stepFn);
+    };
+    raf = requestAnimationFrame(stepFn);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, tween, speed, frames.length, applyRestyle]);
+
+  // Auto-rotação: gira a câmera em torno do eixo vertical (toggle).
+  useEffect(() => {
+    if (!autoRot) return;
+    let raf = 0;
+    let angle: number | null = null;
+    const tick = () => {
+      const gd = gdRef.current as { layout?: { scene?: { camera?: { eye?: { x: number; y: number; z: number } } } } } | null;
+      const eye = gd?.layout?.scene?.camera?.eye;
+      if (eye) {
+        if (angle === null) angle = Math.atan2(eye.y, eye.x);
+        const r = Math.sqrt(eye.x * eye.x + eye.y * eye.y);
+        angle += 0.006;
+        plotlyRelayout(gd, { 'scene.camera.eye': { x: r * Math.cos(angle), y: r * Math.sin(angle), z: eye.z } });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [autoRot]);
 
   const plotLayout = useMemo(() => {
     const espaco = modo === 'espaco';
@@ -707,6 +785,10 @@ export default function RastriginView() {
               </span>
               <button className="btn" onClick={() => setRastros(v => !v)} aria-pressed={rastros}
                 style={{ fontSize: 11, padding: '5px 10px', opacity: rastros ? 1 : 0.45 }}>rastros</button>
+              <button className="btn" onClick={() => setTween(v => !v)} aria-pressed={tween} title="movimento fluido (interpola entre gerações)"
+                style={{ fontSize: 11, padding: '5px 10px', opacity: tween ? 1 : 0.45, borderColor: tween ? 'var(--cyan)' : '#333' }}>suave</button>
+              <button className="btn" onClick={() => setAutoRot(v => !v)} aria-pressed={autoRot} title="câmera girando sozinha"
+                style={{ fontSize: 11, padding: '5px 10px', opacity: autoRot ? 1 : 0.45, borderColor: autoRot ? 'var(--cyan)' : '#333' }}>girar</button>
               {training && <span style={{ color: 'var(--green)' }}>● ao vivo</span>}
             </div>
 
