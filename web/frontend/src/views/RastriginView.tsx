@@ -387,18 +387,17 @@ export default function RastriginView() {
         });
       }
     } else {
-      // Contorno projetado no chão (z=0): tapete plano colorido por f(x,y,0) — a
-      // "sombra" topo-down da Rastrigin, vista junto com o relevo 3D acima.
+      // Linhas TOPOGRÁFICAS no chão: projeta as iso-curvas de f(x,y,0) num plano
+      // flutuante abaixo do relevo. Superfície oculta (hidesurface) + project.z →
+      // só as linhas no chão, sem o tapete preenchido (que dava artefato de grade).
       if (mostrarContorno) {
-        const floor = surf.base.map(r => r.map(() => surf.zFloor));
         traces.push({
-          type: 'surface', x: surf.axis, y: surf.axis, z: floor,
-          surfacecolor: sliceGrids[0], colorscale: 'Jet', cmin: 0, cmax: surf.zMax,
-          showscale: false, opacity: 0.85, hoverinfo: 'skip',
-          contours: { z: { show: false } },
-          // iluminação plana → mapa de calor limpo, sem o granulado/jitter do sombreamento.
-          lighting: { ambient: 1, diffuse: 0, specular: 0, roughness: 1, fresnel: 0 },
-          name: 'contorno (chão)', showlegend: false,
+          type: 'surface', x: surf.axis, y: surf.axis, z: sliceGrids[0],
+          hidesurface: true, // esconde o preenchimento; mostra só as linhas (na malha + projetadas)
+          contours: { z: { show: true, project: { z: true }, usecolormap: true, start: 0, end: surf.zMax, size: 8, width: 2 } },
+          colorscale: 'Jet', cmin: 0, cmax: surf.zMax,
+          showscale: false, showlegend: false, hoverinfo: 'skip',
+          name: 'topografia (chão)',
         });
       }
       SLICE_VALUES.filter(c => slices[c]).forEach((c, idx) => {
@@ -753,7 +752,7 @@ export default function RastriginView() {
                   <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
                   <button className="btn" onClick={() => setMostrarPop(v => !v)} aria-pressed={mostrarPop} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarPop ? 1 : 0.4 }}>filhos</button>
                   <button className="btn" onClick={() => setMostrarOtimo(v => !v)} aria-pressed={mostrarOtimo} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarOtimo ? 1 : 0.4 }}>mín. teórico</button>
-                  <button className="btn" onClick={() => setMostrarContorno(v => !v)} aria-pressed={mostrarContorno} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarContorno ? 1 : 0.4 }}>contorno (chão)</button>
+                  <button className="btn" onClick={() => setMostrarContorno(v => !v)} aria-pressed={mostrarContorno} style={{ fontSize: 11, padding: '5px 10px', opacity: mostrarContorno ? 1 : 0.4 }}>topografia (chão)</button>
                 </>
               )}
               <div style={{ width: 1, height: 22, background: '#333', margin: '0 4px' }} />
