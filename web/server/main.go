@@ -29,6 +29,7 @@ import (
 	"mlp-server/timeseries"
 	"mlp-server/tsp"
 	"mlp-server/tspmulti"
+	"mlp-server/tspranking"
 	"mlp-server/agrastrigin"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
@@ -151,6 +152,10 @@ var (
 	rastCfg      *agrastrigin.Config
 	rastRes      *agrastrigin.Result
 	rastTraining bool
+
+	tsprankCfg      *tspranking.Config
+	tsprankRes      *tspranking.Result
+	tsprankTraining bool
 
 	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
 	// Pra OSRM cacheamos as DUAS matrizes juntas (distância + duração).
@@ -2448,6 +2453,102 @@ func handleRastResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// ===== AG com Ranking — TSP (Trabalho 14) =====
+
+func handleTsprankConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg tspranking.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	tsprankCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleTsprankTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if tsprankTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	cfg := tsprankCfg
+	if cfg == nil {
+		def := tspranking.DefaultConfig()
+		cfg = &def
+	}
+	tsprankTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		tsprankTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan tspranking.Step, 64)
+	go func() {
+		res := tspranking.Treinar(progressCh, useCfg)
+		mu.Lock()
+		tsprankRes = &res
+		tsprankTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := tsprankRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleTsprankReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	tsprankRes = nil
+	tsprankCfg = nil
+	tsprankTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleTsprankResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := tsprankRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "AG Ranking TSP não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleTsprankCidades devolve o cenário fixo (cidades + matriz + máscara de fonte)
+// pro frontend desenhar o mapa e a tabela de distâncias antes de evoluir.
+func handleTsprankCidades(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, tspranking.ConstruirMapa())
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2597,6 +2698,12 @@ func main() {
 	mux.HandleFunc("/api/agrastrigin/train",  cors(handleRastTrain))
 	mux.HandleFunc("/api/agrastrigin/reset",  cors(handleRastReset))
 	mux.HandleFunc("/api/agrastrigin/result", cors(handleRastResult))
+
+	mux.HandleFunc("/api/tspranking/config",  cors(handleTsprankConfig))
+	mux.HandleFunc("/api/tspranking/train",   cors(handleTsprankTrain))
+	mux.HandleFunc("/api/tspranking/reset",   cors(handleTsprankReset))
+	mux.HandleFunc("/api/tspranking/result",  cors(handleTsprankResult))
+	mux.HandleFunc("/api/tspranking/cidades", cors(handleTsprankCidades))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

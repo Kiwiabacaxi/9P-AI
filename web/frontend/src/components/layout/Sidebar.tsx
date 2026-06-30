@@ -118,6 +118,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⛰'}</span>
         GA · Rastrigin 3D (reais)
       </div>
+      <div
+        className={`nav-item${active === 'tsp-ranking' ? ' active' : ''}`}
+        onClick={() => onNavigate('tsp-ranking')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'🏆'}</span>
+        GA · TSP Ranking
+      </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div
