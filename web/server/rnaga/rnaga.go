@@ -220,10 +220,11 @@ type execOpts struct {
 	workers       int  // 1 = sequencial; NumCPU = paralelo
 	usarMemo      bool // cache de fitness por arquitetura
 	onlineRealoca bool // true = caminho online ingênuo (realoca buffers por padrão)
+	offlineNaive  bool // true = offline com matmul de laços puros (sem gonum/BLAS)
 }
 
 func prodOpts() execOpts {
-	return execOpts{workers: runtime.NumCPU(), usarMemo: true, onlineRealoca: false}
+	return execOpts{workers: runtime.NumCPU(), usarMemo: true, onlineRealoca: false, offlineNaive: false}
 }
 
 // Treinar — roda o AG com as otimizações de produção (paralelo + memoização +
@@ -261,13 +262,13 @@ func treinarComOpts(progressCh chan<- Step, cfg Config, opts execOpts) (Result, 
 				return v
 			}
 			memoMu.Unlock()
-			v := avaliarMSEOpts(c, ds, cfg.TetoEpocas, seed, opts.onlineRealoca)
+			v := avaliarMSEOpts(c, ds, cfg.TetoEpocas, seed, opts.onlineRealoca, opts.offlineNaive)
 			memoMu.Lock()
 			memo[chave] = v
 			memoMu.Unlock()
 			return v
 		}
-		return avaliarMSEOpts(c, ds, cfg.TetoEpocas, seed, opts.onlineRealoca)
+		return avaliarMSEOpts(c, ds, cfg.TetoEpocas, seed, opts.onlineRealoca, opts.offlineNaive)
 	}
 
 	// avalia uma população inteira em paralelo (opts.workers em paralelo)

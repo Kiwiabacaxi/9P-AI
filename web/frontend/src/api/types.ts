@@ -728,14 +728,29 @@ export interface RnaGaBenchModo {
 }
 
 export interface RnaGaBenchResult {
+  preset: string;
   modos: RnaGaBenchModo[];
   numCpu: number;
   speedupTotal: number;
   mesmoMse: boolean;
+  maxDiffMse: number;
   benchCfg: RnaGaConfig;
   fullCfg: RnaGaConfig;
   fullIngenuoMs: number;
   fullOtimizadoMs: number;
+  timestampUnix: number;
+}
+
+export interface RnaGaBenchSaved {
+  nome: string;
+  preset: string;
+  speedupTotal: number;
+  mesmoMse: boolean;
+  numCpu: number;
+  popSize: number;
+  maxGeracoes: number;
+  tetoEpocas: number;
+  timestampUnix: number;
 }
 
 export type ViewId =

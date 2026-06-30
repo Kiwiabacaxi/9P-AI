@@ -210,6 +210,93 @@ func (r *rede) treinarOnline(X, T [][]float64, epocas int, lr float64, rng *rand
 	}
 }
 
+// treinarOfflineLoops — gradiente descendente em LOTE (offline) com matmul de
+// laços puros (sem gonum). Acumula o gradiente sobre os 100 padrões e atualiza
+// uma vez por época. É a versão "ingênua" usada como base no benchmark — a mesma
+// matemática do caminho gonum, só sem a lib de matrizes.
+func (r *rede) treinarOfflineLoops(X, T [][]float64, epocas int, lr float64) {
+	L := len(r.W)
+	a := make([][]float64, L+1)
+	delta := make([][]float64, L+1)
+	for l := range r.sizes {
+		a[l] = make([]float64, r.sizes[l])
+		delta[l] = make([]float64, r.sizes[l])
+	}
+	dW := make([][]float64, L)
+	dB := make([][]float64, L)
+	for l := 0; l < L; l++ {
+		dW[l] = make([]float64, r.sizes[l]*r.sizes[l+1])
+		dB[l] = make([]float64, r.sizes[l+1])
+	}
+	P := len(X)
+	for e := 0; e < epocas; e++ {
+		for l := 0; l < L; l++ {
+			for k := range dW[l] {
+				dW[l][k] = 0
+			}
+			for j := range dB[l] {
+				dB[l][j] = 0
+			}
+		}
+		for p := 0; p < P; p++ {
+			copy(a[0], X[p])
+			for l := 0; l < L; l++ {
+				wr := r.W[l].RawMatrix()
+				in, out := r.sizes[l], r.sizes[l+1]
+				for j := 0; j < out; j++ {
+					z := r.B[l][j]
+					for i := 0; i < in; i++ {
+						z += a[l][i] * wr.Data[i*wr.Stride+j]
+					}
+					a[l+1][j] = math.Tanh(z)
+				}
+			}
+			for k := 0; k < r.sizes[L]; k++ {
+				o := a[L][k]
+				delta[L][k] = (o - T[p][k]) * (1 - o*o)
+			}
+			for l := L - 1; l >= 0; l-- {
+				wr := r.W[l].RawMatrix()
+				in, out := r.sizes[l], r.sizes[l+1]
+				if l > 0 {
+					for i := 0; i < in; i++ {
+						s := 0.0
+						for j := 0; j < out; j++ {
+							s += delta[l+1][j] * wr.Data[i*wr.Stride+j]
+						}
+						delta[l][i] = s * (1 - a[l][i]*a[l][i])
+					}
+				}
+				for i := 0; i < in; i++ {
+					ai := a[l][i]
+					base := i * out
+					for j := 0; j < out; j++ {
+						dW[l][base+j] += ai * delta[l+1][j]
+					}
+				}
+				for j := 0; j < out; j++ {
+					dB[l][j] += delta[l+1][j]
+				}
+			}
+		}
+		scale := lr / float64(P)
+		for l := 0; l < L; l++ {
+			wr := r.W[l].RawMatrix()
+			in, out := r.sizes[l], r.sizes[l+1]
+			for i := 0; i < in; i++ {
+				wbase := i * wr.Stride
+				dbase := i * out
+				for j := 0; j < out; j++ {
+					wr.Data[wbase+j] -= scale * dW[l][dbase+j]
+				}
+			}
+			for j := 0; j < out; j++ {
+				r.B[l][j] -= scale * dB[l][j]
+			}
+		}
+	}
+}
+
 // arquiteturaDe — sizes [15, h, h, ..., h, 13] conforme o cromossomo.
 func arquiteturaDe(c Cromossomo) []int {
 	h, nc := c.Neuronios(), c.Camadas()
@@ -239,11 +326,13 @@ func chaveCanonica(c Cromossomo, teto int) string {
 // AvaliarMSE — treina a rede definida pelo cromossomo e devolve o MSE em unidades
 // reais (58–312). Determinístico para (chaveCanonica, seedRun).
 func AvaliarMSE(c Cromossomo, ds Dataset, teto int, seedRun int64) float64 {
-	return avaliarMSEOpts(c, ds, teto, seedRun, false)
+	return avaliarMSEOpts(c, ds, teto, seedRun, false, false)
 }
 
-// avaliarMSEOpts — como AvaliarMSE, mas com o toggle onlineRealoca (benchmark).
-func avaliarMSEOpts(c Cromossomo, ds Dataset, teto int, seedRun int64, onlineRealoca bool) float64 {
+// avaliarMSEOpts — como AvaliarMSE, mas com os toggles do benchmark:
+// onlineRealoca (realoca buffers no online) e offlineNaive (offline com matmul de
+// laços puros em vez da lib de matrizes gonum/BLAS).
+func avaliarMSEOpts(c Cromossomo, ds Dataset, teto int, seedRun int64, onlineRealoca, offlineNaive bool) float64 {
 	sizes := arquiteturaDe(c)
 	h := fnv.New64a()
 	h.Write([]byte(chaveCanonica(c, teto)))
@@ -279,18 +368,26 @@ func avaliarMSEOpts(c Cromossomo, ds Dataset, teto int, seedRun int64, onlineRea
 	X := mat.NewDense(P, numEntradas, Xdata)
 	T := mat.NewDense(P, numSaidas, Tdata)
 
+	Xrows := make([][]float64, P)
+	Trows := make([][]float64, P)
+	for i := 0; i < P; i++ {
+		Xrows[i] = Xdata[i*numEntradas : (i+1)*numEntradas]
+		Trows[i] = Tdata[i*numSaidas : (i+1)*numSaidas]
+	}
+
 	if online {
 		// Modo online (1 padrão por vez): caminho de slice puro com buffers
 		// pré-alocados — matriz 1×15 não se beneficia do BLAS e a alocação por
-		// padrão (gonum) dominaria o custo. O gonum fica no offline (batch).
-		Xrows := make([][]float64, P)
-		Trows := make([][]float64, P)
-		for i := 0; i < P; i++ {
-			Xrows[i] = Xdata[i*numEntradas : (i+1)*numEntradas]
-			Trows[i] = Tdata[i*numSaidas : (i+1)*numSaidas]
-		}
+		// padrão (gonum) dominaria o custo.
 		r.treinarOnline(Xrows, Trows, epocas, lr, rng, onlineRealoca)
+	} else if offlineNaive {
+		// Offline com matmul de LAÇOS PUROS (sem gonum) — a versão "ingênua"
+		// que o professor imagina. Mesma matemática do gonum (GD em lote),
+		// só sem a lib de matrizes.
+		r.treinarOfflineLoops(Xrows, Trows, epocas, lr)
 	} else {
+		// Offline com a lib de matrizes (gonum/BLAS): os 100 padrões viram uma
+		// matriz 100×15 e o matmul em lote é onde o BLAS realmente acelera.
 		for e := 0; e < epocas; e++ {
 			acts := r.forward(X)
 			r.backward(acts, T, lr)

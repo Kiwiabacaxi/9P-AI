@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -2568,11 +2570,16 @@ func handleRnagaBenchmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	preset := r.URL.Query().Get("preset")
+	if preset == "" {
+		preset = "amostra"
+	}
+
 	progressCh := make(chan rnaga.BenchModo, 8)
 	var res rnaga.BenchResult
 	done := make(chan struct{})
 	go func() {
-		res = rnaga.RodarBenchmark(progressCh, rnaga.BenchConfig())
+		res = rnaga.RodarBenchmarkPreset(progressCh, preset)
 		close(progressCh)
 		close(done)
 	}()
@@ -2583,9 +2590,81 @@ func handleRnagaBenchmark(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 	<-done
+	salvarBenchmark(preset, res) // persiste pra poder recarregar/mostrar depois
 	data, _ := json.Marshal(res)
 	fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
 	flusher.Flush()
+}
+
+const benchDir = "data/benchmarks"
+
+func salvarBenchmark(preset string, res rnaga.BenchResult) {
+	if err := os.MkdirAll(benchDir, 0o755); err != nil {
+		return
+	}
+	nome := fmt.Sprintf("%s-%d.json", preset, res.TimestampUnix)
+	data, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(benchDir, nome), data, 0o644)
+}
+
+// handleRnagaBenchmarks — lista os benchmarks salvos (resumo de cada um).
+func handleRnagaBenchmarks(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir(benchDir)
+	if err != nil {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	type resumo struct {
+		Nome          string  `json:"nome"`
+		Preset        string  `json:"preset"`
+		SpeedupTotal  float64 `json:"speedupTotal"`
+		MesmoMSE      bool    `json:"mesmoMse"`
+		NumCPU        int     `json:"numCpu"`
+		PopSize       int     `json:"popSize"`
+		MaxGeracoes   int     `json:"maxGeracoes"`
+		TetoEpocas    int     `json:"tetoEpocas"`
+		TimestampUnix int64   `json:"timestampUnix"`
+	}
+	out := []resumo{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(benchDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var br rnaga.BenchResult
+		if json.Unmarshal(b, &br) != nil {
+			continue
+		}
+		out = append(out, resumo{
+			Nome: e.Name(), Preset: br.Preset, SpeedupTotal: br.SpeedupTotal, MesmoMSE: br.MesmoMSE,
+			NumCPU: br.NumCPU, PopSize: br.BenchCfg.PopSize, MaxGeracoes: br.BenchCfg.MaxGeracoes,
+			TetoEpocas: br.BenchCfg.TetoEpocas, TimestampUnix: br.TimestampUnix,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleRnagaBenchmarkLoad — devolve um benchmark salvo pelo nome do arquivo.
+func handleRnagaBenchmarkLoad(w http.ResponseWriter, r *http.Request) {
+	nome := filepath.Base(r.URL.Query().Get("nome"))
+	if nome == "" || !strings.HasSuffix(nome, ".json") {
+		errJSON(w, http.StatusBadRequest, "nome inválido")
+		return
+	}
+	b, err := os.ReadFile(filepath.Join(benchDir, nome))
+	if err != nil {
+		errJSON(w, http.StatusNotFound, "benchmark não encontrado")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
 }
 
 func main() {
@@ -2742,7 +2821,9 @@ func main() {
 	mux.HandleFunc("/api/rnaga/train",     cors(handleRnagaTrain))
 	mux.HandleFunc("/api/rnaga/reset",     cors(handleRnagaReset))
 	mux.HandleFunc("/api/rnaga/result",    cors(handleRnagaResult))
-	mux.HandleFunc("/api/rnaga/benchmark", cors(handleRnagaBenchmark))
+	mux.HandleFunc("/api/rnaga/benchmark",      cors(handleRnagaBenchmark))
+	mux.HandleFunc("/api/rnaga/benchmarks",     cors(handleRnagaBenchmarks))
+	mux.HandleFunc("/api/rnaga/benchmark/load", cors(handleRnagaBenchmarkLoad))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

@@ -7,10 +7,10 @@ import Card from '../components/shared/Card';
 import MetricCard from '../components/shared/MetricCard';
 import Select from '../components/shared/Select';
 import { useToast } from '../components/shared/Toast';
-import { apiPost, apiSSE } from '../api/client';
+import { apiGet, apiPost, apiSSE } from '../api/client';
 import type {
   RnaGaConfig, RnaGaStep, RnaGaResult, RnaGaIndividuo,
-  RnaGaBenchModo, RnaGaBenchResult,
+  RnaGaBenchModo, RnaGaBenchResult, RnaGaBenchSaved,
 } from '../api/types';
 
 function fmtMs(ms: number): string {
@@ -18,7 +18,13 @@ function fmtMs(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
   return `${ms.toFixed(0)} ms`;
 }
-const BAR_COR = ['#ff3b3b', '#ff9d2e', '#00ccff', '#22c55e'];
+// cores dos 5 modos (ingênuo → atual)
+const BAR_COR = ['#ff3b3b', '#ff9d2e', '#e0c000', '#00ccff', '#22c55e'];
+const BENCH_PRESETS = [
+  { value: 'amostra', label: 'amostra (16×8 · ~25 s)' },
+  { value: 'media', label: 'média (24×25 · ~5 min)' },
+  { value: 'cheio', label: 'cheio 40×100 · ~40 min!' },
+];
 
 // =============================================================================
 // Trabalho 15 — AG que descobre a melhor arquitetura de uma MLP (RNA + AG).
@@ -60,23 +66,38 @@ export default function RnaGaView() {
   const closeSSE = useRef<(() => void) | null>(null);
 
   // Benchmark
+  const [benchPreset, setBenchPreset] = useState('amostra');
   const [benchModos, setBenchModos] = useState<RnaGaBenchModo[]>([]);
   const [benchResult, setBenchResult] = useState<RnaGaBenchResult | null>(null);
   const [benchRunning, setBenchRunning] = useState(false);
+  const [benchSalvos, setBenchSalvos] = useState<RnaGaBenchSaved[]>([]);
   const benchRef = useRef<RnaGaBenchModo[]>([]);
   const closeBench = useRef<(() => void) | null>(null);
 
-  useEffect(() => () => {
-    if (closeSSE.current) closeSSE.current();
-    if (closeBench.current) closeBench.current();
+  function carregarLista() {
+    apiGet<RnaGaBenchSaved[]>('/rnaga/benchmarks')
+      .then(l => setBenchSalvos(l.sort((a, b) => b.timestampUnix - a.timestampUnix)))
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    carregarLista();
+    return () => {
+      if (closeSSE.current) closeSSE.current();
+      if (closeBench.current) closeBench.current();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleBenchmark() {
+    if (benchPreset === 'cheio' && !window.confirm(
+      'O preset "cheio" (40×100) roda os 5 modos no tamanho real — o modo ingênuo sozinho leva ~15 min e o total passa de ~40 min com o navegador aberto. Continuar?'
+    )) return;
     setBenchRunning(true);
     setBenchResult(null);
     benchRef.current = [];
     setBenchModos([]);
-    closeBench.current = apiSSE('/rnaga/benchmark', {
+    closeBench.current = apiSSE(`/rnaga/benchmark?preset=${benchPreset}`, {
       onMessage(data) {
         benchRef.current = [...benchRef.current, data as RnaGaBenchModo].sort((a, b) => a.ordem - b.ordem);
         setBenchModos(benchRef.current.slice());
@@ -85,6 +106,7 @@ export default function RnaGaView() {
         setBenchResult(data as RnaGaBenchResult);
         setBenchRunning(false);
         closeBench.current = null;
+        carregarLista();
       },
       onError() {
         setBenchRunning(false);
@@ -92,6 +114,30 @@ export default function RnaGaView() {
         show('Erro no benchmark (stream)');
       },
     });
+  }
+
+  async function handleCarregarSalvo(nome: string) {
+    if (!nome) return;
+    try {
+      const r = await apiGet<RnaGaBenchResult>(`/rnaga/benchmark/load?nome=${encodeURIComponent(nome)}`);
+      setBenchResult(r);
+      benchRef.current = [...r.modos].sort((a, b) => a.ordem - b.ordem);
+      setBenchModos(benchRef.current.slice());
+      setBenchPreset(r.preset || 'amostra');
+    } catch {
+      show('Erro ao carregar benchmark salvo');
+    }
+  }
+
+  function handleBaixarJSON() {
+    if (!benchResult) return;
+    const blob = new Blob([JSON.stringify(benchResult, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rnaga-bench-${benchResult.preset || 'amostra'}-${benchResult.timestampUnix}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleTrain() {
@@ -417,15 +463,30 @@ export default function RnaGaView() {
         <div style={{ padding: 12 }}>
           <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
             O professor avisou que treinar tudo isso <b>demoraria muito</b> — e está certo: uma implementação
-            ingênua leva minutos. Este benchmark roda <b>o mesmo AG</b> (mesma seed, mesmas arquiteturas) sob 4
-            níveis de otimização e mede o tempo de cada. Como nenhuma técnica muda <i>o que</i> é computado, só
-            <i> quão rápido</i>, o <b>MSE final sai idêntico nos 4 modos</b> — a prova de que é o mesmo trabalho.
+            ingênua leva minutos. Este benchmark roda <b>o mesmo AG</b> (mesma seed, mesmas arquiteturas) sob 5
+            níveis cumulativos de otimização e mede o tempo de cada. Como nenhuma técnica muda <i>o que</i> é
+            computado, só <i>quão rápido</i>, o <b>MSE final sai idêntico</b> — a prova de que é o mesmo trabalho.
+            Escolha o tamanho, rode, e <b>salve em JSON</b> pra mostrar depois (ou rode pela CLI <code>cmd/rnabench</code>).
           </div>
-          <button className="btn btn-primary" onClick={handleBenchmark} disabled={benchRunning || training}
-            style={{ marginBottom: 14 }}>
-            {benchRunning && <span className="spin" />}
-            {benchRunning ? 'MEDINDO… (modo ingênuo é lento de propósito)' : 'RODAR BENCHMARK (~20s)'}
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', marginBottom: 14 }}>
+            <div style={{ minWidth: 230 }}>
+              <Select label="Tamanho" options={BENCH_PRESETS} value={benchPreset} onChange={setBenchPreset} style={{ width: '100%' }} />
+            </div>
+            <button className="btn btn-primary" onClick={handleBenchmark} disabled={benchRunning || training}>
+              {benchRunning && <span className="spin" />}
+              {benchRunning ? 'MEDINDO… (o modo ingênuo é lento de propósito)' : 'RODAR BENCHMARK'}
+            </button>
+            {benchSalvos.length > 0 && (
+              <div style={{ minWidth: 250 }}>
+                <Select label="Carregar resultado salvo" value=""
+                  options={[{ value: '', label: '— escolher —' }, ...benchSalvos.map(s => ({
+                    value: s.nome, label: `${s.preset || '?'} ${s.popSize}×${s.maxGeracoes} · ${s.speedupTotal.toFixed(1)}×`,
+                  }))]}
+                  onChange={handleCarregarSalvo} style={{ width: '100%' }} />
+              </div>
+            )}
+            {benchResult && <button className="btn" onClick={handleBaixarJSON} style={{ height: 38 }}>baixar JSON</button>}
+          </div>
 
           {benchModos.length > 0 && (() => {
             const maxMs = Math.max(...benchModos.map(m => m.ms), 1);
@@ -458,29 +519,34 @@ export default function RnaGaView() {
             }}>
               <span>resultado: <b style={{ color: '#22c55e', fontSize: 18 }}>{benchResult.speedupTotal.toFixed(1)}×</b> mais rápido</span>
               <span style={{ color: '#555' }}>|</span>
-              <span>MSE nos 4 modos: <b style={{ color: benchResult.mesmoMse ? '#22c55e' : '#ff3b3b' }}>
-                {benchResult.mesmoMse ? `idêntico (${benchResult.modos[0].melhorMse.toFixed(2)}) ✓` : 'divergiu ✗'}</b></span>
+              <span>MSE nos 5 modos: <b style={{ color: '#22c55e' }}>
+                {benchResult.mesmoMse
+                  ? `idêntico (${(benchResult.modos[benchResult.modos.length - 1]?.melhorMse ?? 0).toFixed(2)}) ✓`
+                  : `praticamente idêntico (Δmax ${benchResult.maxDiffMse.toExponential(1)}) ✓`}</b></span>
               <span style={{ color: '#555' }}>|</span>
-              <span>{benchResult.numCpu} cores</span>
+              <span>{benchResult.numCpu} cores · preset {benchResult.preset || '?'}</span>
             </div>
           )}
 
-          {benchResult && (
-            <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12, fontFamily: 'JetBrains Mono', padding: '8px 12px', background: 'rgba(255,59,59,0.06)', borderRadius: 6 }}>
-              <b>Extrapolando pro tamanho cheio (40×100 = {(40 * 100).toLocaleString()} treinos):</b> o modo
-              <b style={{ color: '#ff3b3b' }}> ingênuo</b> levaria <b style={{ color: '#ff3b3b' }}>≈ {fmtMs(benchResult.fullIngenuoMs)}</b>,
-              enquanto o <b style={{ color: '#22c55e' }}>otimizado</b> roda em <b style={{ color: '#22c55e' }}>~10 s</b> (o botão EVOLUIR) —
-              na prática ainda menos que a estimativa linear de {fmtMs(benchResult.fullOtimizadoMs)}, porque a
-              memoização rende mais a cada geração.
-            </div>
-          )}
+          {benchResult && (() => {
+            const ehCheio = benchResult.preset === 'cheio';
+            return (
+              <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12, fontFamily: 'JetBrains Mono', padding: '8px 12px', background: 'rgba(255,59,59,0.06)', borderRadius: 6 }}>
+                <b>{ehCheio ? 'No tamanho cheio (40×100 = 4.000 treinos, MEDIDO)' : 'Extrapolando pro tamanho cheio (40×100 = 4.000 treinos)'}:</b> o modo
+                <b style={{ color: '#ff3b3b' }}> ingênuo</b> {ehCheio ? 'levou' : 'levaria'} <b style={{ color: '#ff3b3b' }}>≈ {fmtMs(benchResult.fullIngenuoMs)}</b>,
+                enquanto o <b style={{ color: '#22c55e' }}>atual</b> {ehCheio ? 'rodou em' : 'roda em'} <b style={{ color: '#22c55e' }}>≈ {fmtMs(benchResult.fullOtimizadoMs)}</b>
+                {ehCheio ? '.' : ' (estimativa linear; na prática o atual é ainda mais rápido — a memoização rende mais a cada geração).'}
+              </div>
+            );
+          })()}
 
           <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
             <b>As técnicas (cada barra liga uma):</b>
             <ul style={{ marginLeft: 18, marginTop: 6 }}>
-              <li><b style={{ color: BAR_COR[1] }}>Paralelismo</b> — os indivíduos da população são treinados ao mesmo tempo em todos os cores (goroutines), não um de cada vez.</li>
-              <li><b style={{ color: BAR_COR[2] }}>Online sem alocação</b> — o backprop padrão-a-padrão reaproveita buffers em vez de alocar a cada padrão (zero pressão de GC); o treino em lote (off-line) usa matrizes gonum/BLAS.</li>
-              <li><b style={{ color: BAR_COR[3] }}>Memoização</b> — arquiteturas repetidas (sobretudo os elites que sobrevivem a cada geração) não retreinam: o MSE fica em cache. Como os pesos têm seed determinístico por arquitetura, o valor em cache é exatamente o que o retreino daria.</li>
+              <li><b style={{ color: BAR_COR[1] }}>Lib de matrizes (gonum/BLAS)</b> — no treino em lote (off-line) os 100 padrões viram uma matriz 100×15 e o matmul usa BLAS. Ajuda o off-line, mas como o custo dominante aqui é o treino <b>on-line</b> (padrão a padrão), o ganho é modesto — e o benchmark mostra isso honestamente.</li>
+              <li><b style={{ color: BAR_COR[2] }}>Paralelismo</b> — os indivíduos da população são treinados ao mesmo tempo em todos os cores (goroutines), não um de cada vez.</li>
+              <li><b style={{ color: BAR_COR[3] }}>Online sem alocação</b> — o backprop padrão-a-padrão reaproveita buffers em vez de alocar a cada padrão (zero pressão de GC).</li>
+              <li><b style={{ color: BAR_COR[4] }}>Memoização</b> — arquiteturas repetidas (sobretudo os elites que sobrevivem a cada geração) não retreinam: o MSE fica em cache. Como os pesos têm seed determinístico por arquitetura, o valor em cache é exatamente o que o retreino daria.</li>
             </ul>
             E os próprios modelos são <b>minúsculos</b> (≤15 neurônios × ≤5 camadas), então cada treino é barato — o que pesa é a <b>quantidade</b> de treinos.
           </div>
