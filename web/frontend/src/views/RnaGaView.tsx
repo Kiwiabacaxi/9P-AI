@@ -23,7 +23,7 @@ const BAR_COR = ['#ff3b3b', '#ff9d2e', '#e0c000', '#00ccff', '#22c55e'];
 const BENCH_PRESETS = [
   { value: 'amostra', label: 'amostra (16×8 · ~25 s)' },
   { value: 'media', label: 'média (24×25 · ~5 min)' },
-  { value: 'cheio', label: 'cheio 40×100 · ~40 min!' },
+  { value: 'cheio', label: 'cheio 40×100 · ~70 min!' },
 ];
 
 // =============================================================================
@@ -91,7 +91,7 @@ export default function RnaGaView() {
 
   function handleBenchmark() {
     if (benchPreset === 'cheio' && !window.confirm(
-      'O preset "cheio" (40×100) roda os 5 modos no tamanho real — o modo ingênuo sozinho leva ~15 min e o total passa de ~40 min com o navegador aberto. Continuar?'
+      'O preset "cheio" (40×100) roda os 5 modos no tamanho real — os dois modos de 1 core levam ~29 min cada e o total passa de ~70 min com o navegador aberto. Recomendado rodar pela CLI (cmd/rnabench). Continuar mesmo assim?'
     )) return;
     setBenchRunning(true);
     setBenchResult(null);
