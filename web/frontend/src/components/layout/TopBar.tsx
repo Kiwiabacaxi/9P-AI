@@ -37,6 +37,7 @@ const VIEW_INFO: Record<ViewId, ViewInfo> = {
   'tsp-compare': { label: 'GA · TSP Comparativo' },
   'tsp-multi': { label: 'GA · TSP Multi-ilhas' },
   rastrigin: { label: 'GA · Rastrigin 3D' },
+  'rna-ga': { label: 'GA · Arquitetura RNA' },
   about: { label: 'Arquitetura' },
 };
 

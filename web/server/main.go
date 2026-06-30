@@ -30,6 +30,7 @@ import (
 	"mlp-server/tsp"
 	"mlp-server/tspmulti"
 	"mlp-server/agrastrigin"
+	"mlp-server/rnaga"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
 )
@@ -151,6 +152,10 @@ var (
 	rastCfg      *agrastrigin.Config
 	rastRes      *agrastrigin.Result
 	rastTraining bool
+
+	rnagaCfg      *rnaga.Config
+	rnagaRes      *rnaga.Result
+	rnagaTraining bool
 
 	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
 	// Pra OSRM cacheamos as DUAS matrizes juntas (distância + duração).
@@ -2448,6 +2453,96 @@ func handleRastResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// ===== AG que descobre a arquitetura da RNA (Trabalho 15) =====
+
+func handleRnagaConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg rnaga.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	mu.Lock()
+	rnagaCfg = &cfg
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "config salva"})
+}
+
+func handleRnagaTrain(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if rnagaTraining {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "evolução já em andamento")
+		return
+	}
+	cfg := rnagaCfg
+	if cfg == nil {
+		def := rnaga.DefaultConfig()
+		cfg = &def
+	}
+	rnagaTraining = true
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		mu.Lock()
+		rnagaTraining = false
+		mu.Unlock()
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	useCfg := *cfg
+	progressCh := make(chan rnaga.Step, 64)
+	go func() {
+		res := rnaga.Treinar(progressCh, useCfg)
+		mu.Lock()
+		rnagaRes = &res
+		rnagaTraining = false
+		mu.Unlock()
+		close(progressCh)
+	}()
+
+	for step := range progressCh {
+		data, _ := json.Marshal(step)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	mu.RLock()
+	finalRes := rnagaRes
+	mu.RUnlock()
+	if finalRes != nil {
+		data, _ := json.Marshal(finalRes)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+func handleRnagaReset(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	rnagaRes = nil
+	rnagaCfg = nil
+	rnagaTraining = false
+	mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "resetado"})
+}
+
+func handleRnagaResult(w http.ResponseWriter, r *http.Request) {
+	mu.RLock()
+	res := rnagaRes
+	mu.RUnlock()
+	if res == nil {
+		errJSON(w, http.StatusNotFound, "AG RNA não executado")
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2597,6 +2692,11 @@ func main() {
 	mux.HandleFunc("/api/agrastrigin/train",  cors(handleRastTrain))
 	mux.HandleFunc("/api/agrastrigin/reset",  cors(handleRastReset))
 	mux.HandleFunc("/api/agrastrigin/result", cors(handleRastResult))
+
+	mux.HandleFunc("/api/rnaga/config", cors(handleRnagaConfig))
+	mux.HandleFunc("/api/rnaga/train",  cors(handleRnagaTrain))
+	mux.HandleFunc("/api/rnaga/reset",  cors(handleRnagaReset))
+	mux.HandleFunc("/api/rnaga/result", cors(handleRnagaResult))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

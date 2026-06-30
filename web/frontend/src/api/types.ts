@@ -679,13 +679,52 @@ export interface RastResult {
   cfg: RastConfig;
 }
 
+// AG + RNA — busca de arquitetura de MLP (Trabalho 15 / Aula 20)
+export interface RnaGaConfig {
+  popSize: number;
+  maxGeracoes: number;
+  probMutacao: number;
+  tetoEpocas: number;
+  seed?: number;
+}
+
+export interface RnaGaIndividuo {
+  genes: number[];      // 6 genes
+  string: string;       // codificação "8 | 3 | 0.01 | 500 | online | normaliza"
+  mse: number;
+  neuronios: number;
+  camadas: number;
+  online: boolean;
+  normaliza: boolean;
+}
+
+export interface RnaGaStep {
+  geracao: number;
+  melhorMse: number;
+  melhorGlobalMse: number;
+  mediaMse: number;
+  melhorCromossomo: RnaGaIndividuo;
+  populacao: RnaGaIndividuo[];
+  gradeMse: number[][];   // [neuronios-2][camadas-2], -1 = não visitada
+}
+
+export interface RnaGaResult {
+  geracoes: number;
+  melhorCromossomo: { genes: number[] };
+  melhorView: RnaGaIndividuo;
+  melhorMse: number;
+  histMelhor: number[];
+  histMedia: number[];
+  cfg: RnaGaConfig;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
   | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare' | 'tsp-multi'
-  | 'rastrigin'
+  | 'rastrigin' | 'rna-ga'
   | 'about';
 
 // Horário Escolar (Aula 12 — cromossomo matricial)

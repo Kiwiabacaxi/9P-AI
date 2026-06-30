@@ -118,6 +118,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'⛰'}</span>
         GA · Rastrigin 3D (reais)
       </div>
+      <div
+        className={`nav-item${active === 'rna-ga' ? ' active' : ''}`}
+        onClick={() => onNavigate('rna-ga')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'🧬'}</span>
+        GA · Arquitetura RNA
+      </div>
       <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div
