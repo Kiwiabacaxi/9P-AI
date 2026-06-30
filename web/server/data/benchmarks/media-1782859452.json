@@ -1,0 +1,66 @@
+{
+  "preset": "media",
+  "modos": [
+    {
+      "ordem": 0,
+      "nome": "ingênuo (laços + 1 core)",
+      "ms": 173364.328,
+      "melhorMse": 788.9312505865355,
+      "cacheHits": 0,
+      "workers": 1
+    },
+    {
+      "ordem": 1,
+      "nome": "+ matriz (gonum/BLAS)",
+      "ms": 170372.004,
+      "melhorMse": 788.9312505865355,
+      "cacheHits": 0,
+      "workers": 1
+    },
+    {
+      "ordem": 2,
+      "nome": "+ paralelo",
+      "ms": 48771.961,
+      "melhorMse": 788.9312505865355,
+      "cacheHits": 0,
+      "workers": 12
+    },
+    {
+      "ordem": 3,
+      "nome": "+ online sem alocação",
+      "ms": 32490.433,
+      "melhorMse": 788.9312505865355,
+      "cacheHits": 0,
+      "workers": 12
+    },
+    {
+      "ordem": 4,
+      "nome": "+ memoização (atual)",
+      "ms": 4334.56,
+      "melhorMse": 788.9312505865355,
+      "cacheHits": 540,
+      "workers": 12
+    }
+  ],
+  "numCpu": 12,
+  "speedupTotal": 39.995830718688865,
+  "mesmoMse": true,
+  "maxDiffMse": 0,
+  "benchCfg": {
+    "popSize": 24,
+    "maxGeracoes": 25,
+    "probMutacao": 0.05,
+    "tetoEpocas": 200,
+    "seed": 20260620
+  },
+  "fullCfg": {
+    "popSize": 40,
+    "maxGeracoes": 100,
+    "probMutacao": 0.05,
+    "tetoEpocas": 300,
+    "seed": 20260620
+  },
+  "fullIngenuoMs": 1733643.28,
+  "fullOtimizadoMs": 43345.600000000006,
+  "timestampUnix": 1782859452
+}
