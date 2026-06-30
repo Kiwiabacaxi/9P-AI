@@ -8,7 +8,17 @@ import MetricCard from '../components/shared/MetricCard';
 import Select from '../components/shared/Select';
 import { useToast } from '../components/shared/Toast';
 import { apiPost, apiSSE } from '../api/client';
-import type { RnaGaConfig, RnaGaStep, RnaGaResult, RnaGaIndividuo } from '../api/types';
+import type {
+  RnaGaConfig, RnaGaStep, RnaGaResult, RnaGaIndividuo,
+  RnaGaBenchModo, RnaGaBenchResult,
+} from '../api/types';
+
+function fmtMs(ms: number): string {
+  if (ms >= 60000) return `${(ms / 60000).toFixed(1)} min`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${ms.toFixed(0)} ms`;
+}
+const BAR_COR = ['#ff3b3b', '#ff9d2e', '#00ccff', '#22c55e'];
 
 // =============================================================================
 // Trabalho 15 — AG que descobre a melhor arquitetura de uma MLP (RNA + AG).
@@ -49,7 +59,40 @@ export default function RnaGaView() {
   const framesRef = useRef<RnaGaStep[]>([]);
   const closeSSE = useRef<(() => void) | null>(null);
 
-  useEffect(() => () => { if (closeSSE.current) closeSSE.current(); }, []);
+  // Benchmark
+  const [benchModos, setBenchModos] = useState<RnaGaBenchModo[]>([]);
+  const [benchResult, setBenchResult] = useState<RnaGaBenchResult | null>(null);
+  const [benchRunning, setBenchRunning] = useState(false);
+  const benchRef = useRef<RnaGaBenchModo[]>([]);
+  const closeBench = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => {
+    if (closeSSE.current) closeSSE.current();
+    if (closeBench.current) closeBench.current();
+  }, []);
+
+  function handleBenchmark() {
+    setBenchRunning(true);
+    setBenchResult(null);
+    benchRef.current = [];
+    setBenchModos([]);
+    closeBench.current = apiSSE('/rnaga/benchmark', {
+      onMessage(data) {
+        benchRef.current = [...benchRef.current, data as RnaGaBenchModo].sort((a, b) => a.ordem - b.ordem);
+        setBenchModos(benchRef.current.slice());
+      },
+      onDone(data) {
+        setBenchResult(data as RnaGaBenchResult);
+        setBenchRunning(false);
+        closeBench.current = null;
+      },
+      onError() {
+        setBenchRunning(false);
+        closeBench.current = null;
+        show('Erro no benchmark (stream)');
+      },
+    });
+  }
 
   async function handleTrain() {
     setTraining(true);
@@ -368,6 +411,81 @@ export default function RnaGaView() {
           </div>
         </Card>
       )}
+
+      {/* Benchmark — por que é rápido de verdade */}
+      <Card title="⚡ Benchmark — por que treina rápido (e a versão ingênua não treinaria)" style={{ marginBottom: 16 }}>
+        <div style={{ padding: 12 }}>
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
+            O professor avisou que treinar tudo isso <b>demoraria muito</b> — e está certo: uma implementação
+            ingênua leva minutos. Este benchmark roda <b>o mesmo AG</b> (mesma seed, mesmas arquiteturas) sob 4
+            níveis de otimização e mede o tempo de cada. Como nenhuma técnica muda <i>o que</i> é computado, só
+            <i> quão rápido</i>, o <b>MSE final sai idêntico nos 4 modos</b> — a prova de que é o mesmo trabalho.
+          </div>
+          <button className="btn btn-primary" onClick={handleBenchmark} disabled={benchRunning || training}
+            style={{ marginBottom: 14 }}>
+            {benchRunning && <span className="spin" />}
+            {benchRunning ? 'MEDINDO… (modo ingênuo é lento de propósito)' : 'RODAR BENCHMARK (~20s)'}
+          </button>
+
+          {benchModos.length > 0 && (() => {
+            const maxMs = Math.max(...benchModos.map(m => m.ms), 1);
+            const ingenuo = benchModos.find(m => m.ordem === 0)?.ms ?? 0;
+            return (
+              <div style={{ marginBottom: 12 }}>
+                {benchModos.map(m => {
+                  const speedup = m.ordem === 0 || m.ms === 0 ? null : ingenuo / m.ms;
+                  return (
+                    <div key={m.ordem} style={{ marginBottom: 8, fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, color: 'var(--muted)' }}>
+                        <span><b style={{ color: BAR_COR[m.ordem] }}>{m.nome}</b> {m.workers > 1 ? `· ${m.workers} cores` : '· 1 core'}{m.cacheHits > 0 ? ` · ${m.cacheHits} cache hits` : ''}</span>
+                        <span style={{ color: '#fff' }}>{fmtMs(m.ms)} {speedup ? <span style={{ color: '#22c55e' }}>({speedup.toFixed(1)}× mais rápido)</span> : ''}</span>
+                      </div>
+                      <div style={{ height: 18, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ width: `${(m.ms / maxMs) * 100}%`, height: '100%', background: BAR_COR[m.ordem], transition: 'width .4s ease' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {benchResult && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center',
+              padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 6,
+              fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--muted)', marginBottom: 12,
+            }}>
+              <span>resultado: <b style={{ color: '#22c55e', fontSize: 18 }}>{benchResult.speedupTotal.toFixed(1)}×</b> mais rápido</span>
+              <span style={{ color: '#555' }}>|</span>
+              <span>MSE nos 4 modos: <b style={{ color: benchResult.mesmoMse ? '#22c55e' : '#ff3b3b' }}>
+                {benchResult.mesmoMse ? `idêntico (${benchResult.modos[0].melhorMse.toFixed(2)}) ✓` : 'divergiu ✗'}</b></span>
+              <span style={{ color: '#555' }}>|</span>
+              <span>{benchResult.numCpu} cores</span>
+            </div>
+          )}
+
+          {benchResult && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12, fontFamily: 'JetBrains Mono', padding: '8px 12px', background: 'rgba(255,59,59,0.06)', borderRadius: 6 }}>
+              <b>Extrapolando pro tamanho cheio (40×100 = {(40 * 100).toLocaleString()} treinos):</b> o modo
+              <b style={{ color: '#ff3b3b' }}> ingênuo</b> levaria <b style={{ color: '#ff3b3b' }}>≈ {fmtMs(benchResult.fullIngenuoMs)}</b>,
+              enquanto o <b style={{ color: '#22c55e' }}>otimizado</b> roda em <b style={{ color: '#22c55e' }}>~10 s</b> (o botão EVOLUIR) —
+              na prática ainda menos que a estimativa linear de {fmtMs(benchResult.fullOtimizadoMs)}, porque a
+              memoização rende mais a cada geração.
+            </div>
+          )}
+
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+            <b>As técnicas (cada barra liga uma):</b>
+            <ul style={{ marginLeft: 18, marginTop: 6 }}>
+              <li><b style={{ color: BAR_COR[1] }}>Paralelismo</b> — os indivíduos da população são treinados ao mesmo tempo em todos os cores (goroutines), não um de cada vez.</li>
+              <li><b style={{ color: BAR_COR[2] }}>Online sem alocação</b> — o backprop padrão-a-padrão reaproveita buffers em vez de alocar a cada padrão (zero pressão de GC); o treino em lote (off-line) usa matrizes gonum/BLAS.</li>
+              <li><b style={{ color: BAR_COR[3] }}>Memoização</b> — arquiteturas repetidas (sobretudo os elites que sobrevivem a cada geração) não retreinam: o MSE fica em cache. Como os pesos têm seed determinístico por arquitetura, o valor em cache é exatamente o que o retreino daria.</li>
+            </ul>
+            E os próprios modelos são <b>minúsculos</b> (≤15 neurônios × ≤5 camadas), então cada treino é barato — o que pesa é a <b>quantidade</b> de treinos.
+          </div>
+        </div>
+      </Card>
 
       {/* Educacional */}
       <Card title="Como funciona — AG procurando a arquitetura da RNA">

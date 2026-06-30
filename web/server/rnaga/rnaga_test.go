@@ -129,6 +129,27 @@ func TestNormalizacaoMelhoraMSE(t *testing.T) {
 	}
 }
 
+// O ponto central da honestidade do benchmark: as otimizações NÃO mudam o que é
+// computado, só a velocidade — então o MSE final é idêntico nos 4 modos.
+func TestBenchmarkModosMesmoMSE(t *testing.T) {
+	cfg := Config{PopSize: 10, MaxGeracoes: 5, ProbMutacao: 0.05, TetoEpocas: 60, Seed: 7}
+	res := RodarBenchmark(nil, cfg)
+	if len(res.Modos) != 4 {
+		t.Fatalf("esperado 4 modos, got %d", len(res.Modos))
+	}
+	for _, m := range res.Modos {
+		if math.Abs(m.MelhorMSE-res.Modos[0].MelhorMSE) > 1e-6 {
+			t.Errorf("modo %q: MSE difere (%g vs %g)", m.Nome, m.MelhorMSE, res.Modos[0].MelhorMSE)
+		}
+	}
+	if !res.MesmoMSE {
+		t.Error("MesmoMSE deveria ser true")
+	}
+	if res.Modos[3].CacheHits <= 0 {
+		t.Errorf("o modo com memoização deveria ter cache hits, got %d", res.Modos[3].CacheHits)
+	}
+}
+
 func TestTreinarReduzMelhorMSE(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.PopSize = 12

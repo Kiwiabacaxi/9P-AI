@@ -718,6 +718,26 @@ export interface RnaGaResult {
   cfg: RnaGaConfig;
 }
 
+export interface RnaGaBenchModo {
+  ordem: number;     // 0=ingênuo … 3=atual
+  nome: string;
+  ms: number;
+  melhorMse: number;
+  cacheHits: number;
+  workers: number;
+}
+
+export interface RnaGaBenchResult {
+  modos: RnaGaBenchModo[];
+  numCpu: number;
+  speedupTotal: number;
+  mesmoMse: boolean;
+  benchCfg: RnaGaConfig;
+  fullCfg: RnaGaConfig;
+  fullIngenuoMs: number;
+  fullOtimizadoMs: number;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'

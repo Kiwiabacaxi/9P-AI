@@ -156,6 +156,7 @@ var (
 	rnagaCfg      *rnaga.Config
 	rnagaRes      *rnaga.Result
 	rnagaTraining bool
+	rnagaBench    bool
 
 	// Caches de OSRM keyed by hash do conjunto de cidades / tour.
 	// Pra OSRM cacheamos as DUAS matrizes juntas (distância + duração).
@@ -2543,6 +2544,50 @@ func handleRnagaResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// handleRnagaBenchmark — mede o efeito de cada otimização (4 modos) e transmite
+// cada modo conforme termina; ao final manda o BenchResult completo.
+func handleRnagaBenchmark(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	if rnagaBench {
+		mu.Unlock()
+		errJSON(w, http.StatusConflict, "benchmark já em andamento")
+		return
+	}
+	rnagaBench = true
+	mu.Unlock()
+	defer func() { mu.Lock(); rnagaBench = false; mu.Unlock() }()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errJSON(w, http.StatusInternalServerError, "streaming não suportado")
+		return
+	}
+
+	progressCh := make(chan rnaga.BenchModo, 8)
+	var res rnaga.BenchResult
+	done := make(chan struct{})
+	go func() {
+		res = rnaga.RodarBenchmark(progressCh, rnaga.BenchConfig())
+		close(progressCh)
+		close(done)
+	}()
+
+	for m := range progressCh {
+		data, _ := json.Marshal(m)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+	<-done
+	data, _ := json.Marshal(res)
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+	flusher.Flush()
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2693,10 +2738,11 @@ func main() {
 	mux.HandleFunc("/api/agrastrigin/reset",  cors(handleRastReset))
 	mux.HandleFunc("/api/agrastrigin/result", cors(handleRastResult))
 
-	mux.HandleFunc("/api/rnaga/config", cors(handleRnagaConfig))
-	mux.HandleFunc("/api/rnaga/train",  cors(handleRnagaTrain))
-	mux.HandleFunc("/api/rnaga/reset",  cors(handleRnagaReset))
-	mux.HandleFunc("/api/rnaga/result", cors(handleRnagaResult))
+	mux.HandleFunc("/api/rnaga/config",    cors(handleRnagaConfig))
+	mux.HandleFunc("/api/rnaga/train",     cors(handleRnagaTrain))
+	mux.HandleFunc("/api/rnaga/reset",     cors(handleRnagaReset))
+	mux.HandleFunc("/api/rnaga/result",    cors(handleRnagaResult))
+	mux.HandleFunc("/api/rnaga/benchmark", cors(handleRnagaBenchmark))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

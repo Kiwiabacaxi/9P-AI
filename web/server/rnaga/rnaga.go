@@ -214,8 +214,32 @@ type Result struct {
 	Cfg              Config        `json:"cfg"`
 }
 
+// execOpts — toggles de otimização. Em produção tudo ligado; o benchmark liga
+// um de cada vez pra medir o efeito isolado de cada técnica.
+type execOpts struct {
+	workers       int  // 1 = sequencial; NumCPU = paralelo
+	usarMemo      bool // cache de fitness por arquitetura
+	onlineRealoca bool // true = caminho online ingênuo (realoca buffers por padrão)
+}
+
+func prodOpts() execOpts {
+	return execOpts{workers: runtime.NumCPU(), usarMemo: true, onlineRealoca: false}
+}
+
+// Treinar — roda o AG com as otimizações de produção (paralelo + memoização +
+// online sem alocação).
 func Treinar(progressCh chan<- Step, cfg Config) Result {
+	res, _ := treinarComOpts(progressCh, cfg, prodOpts())
+	return res
+}
+
+// treinarComOpts — núcleo do AG com toggles de otimização (usado pelo benchmark).
+// Devolve o Result e o nº de acertos de cache (memoização).
+func treinarComOpts(progressCh chan<- Step, cfg Config, opts execOpts) (Result, int) {
 	cfg = sanitizar(cfg)
+	if opts.workers < 1 {
+		opts.workers = 1
+	}
 	seed := cfg.Seed
 	if seed == 0 {
 		seed = rand.Int63()
@@ -226,26 +250,31 @@ func Treinar(progressCh chan<- Step, cfg Config) Result {
 	// memoização de fitness por arquitetura efetiva
 	memo := make(map[string]float64)
 	var memoMu sync.Mutex
+	cacheHits := 0
 	avalia := func(c Cromossomo) float64 {
-		chave := chaveCanonica(c, cfg.TetoEpocas)
-		memoMu.Lock()
-		if v, ok := memo[chave]; ok {
+		if opts.usarMemo {
+			chave := chaveCanonica(c, cfg.TetoEpocas)
+			memoMu.Lock()
+			if v, ok := memo[chave]; ok {
+				cacheHits++
+				memoMu.Unlock()
+				return v
+			}
+			memoMu.Unlock()
+			v := avaliarMSEOpts(c, ds, cfg.TetoEpocas, seed, opts.onlineRealoca)
+			memoMu.Lock()
+			memo[chave] = v
 			memoMu.Unlock()
 			return v
 		}
-		memoMu.Unlock()
-		v := AvaliarMSE(c, ds, cfg.TetoEpocas, seed)
-		memoMu.Lock()
-		memo[chave] = v
-		memoMu.Unlock()
-		return v
+		return avaliarMSEOpts(c, ds, cfg.TetoEpocas, seed, opts.onlineRealoca)
 	}
 
-	// avalia uma população inteira em paralelo (1 worker por CPU)
+	// avalia uma população inteira em paralelo (opts.workers em paralelo)
 	avaliarPop := func(pop []Cromossomo) []float64 {
 		mses := make([]float64, len(pop))
 		var wg sync.WaitGroup
-		sem := make(chan struct{}, runtime.NumCPU())
+		sem := make(chan struct{}, opts.workers)
 		for i := range pop {
 			wg.Add(1)
 			go func(i int) {
@@ -331,7 +360,7 @@ func Treinar(progressCh chan<- Step, cfg Config) Result {
 		HistMelhor:       histMelhor,
 		HistMedia:        histMedia,
 		Cfg:              cfg,
-	}
+	}, cacheHits
 }
 
 // proximaGeracao — substituição ELITISTA: a melhor metade sobrevive; a outra

@@ -135,13 +135,23 @@ func (r *rede) backward(acts []*mat.Dense, T *mat.Dense, lr float64) {
 // treinarOnline — backprop estocástico (atualiza pesos a cada padrão) operando
 // direto sobre os dados das matrizes gonum (RawMatrix), com buffers de ativação
 // e delta pré-alocados → zero alocação dentro do loop de épocas.
-func (r *rede) treinarOnline(X, T [][]float64, epocas int, lr float64, rng *rand.Rand) {
+//
+// realoca=true reproduz o jeito "ingênuo": realoca os buffers a CADA padrão (a
+// matemática é idêntica → mesmo resultado, mas a pressão de GC custa caro). É só
+// pro benchmark; em produção usamos realoca=false (buffers reaproveitados).
+func (r *rede) treinarOnline(X, T [][]float64, epocas int, lr float64, rng *rand.Rand, realoca bool) {
 	L := len(r.W)
-	a := make([][]float64, L+1)
-	delta := make([][]float64, L+1)
-	for l := range r.sizes {
-		a[l] = make([]float64, r.sizes[l])
-		delta[l] = make([]float64, r.sizes[l])
+	var a, delta [][]float64
+	alocar := func() {
+		a = make([][]float64, L+1)
+		delta = make([][]float64, L+1)
+		for l := range r.sizes {
+			a[l] = make([]float64, r.sizes[l])
+			delta[l] = make([]float64, r.sizes[l])
+		}
+	}
+	if !realoca {
+		alocar()
 	}
 	P := len(X)
 	ordem := make([]int, P)
@@ -151,6 +161,9 @@ func (r *rede) treinarOnline(X, T [][]float64, epocas int, lr float64, rng *rand
 	for e := 0; e < epocas; e++ {
 		rng.Shuffle(P, func(i, j int) { ordem[i], ordem[j] = ordem[j], ordem[i] })
 		for _, idx := range ordem {
+			if realoca {
+				alocar()
+			}
 			copy(a[0], X[idx])
 			// forward
 			for l := 0; l < L; l++ {
@@ -226,6 +239,11 @@ func chaveCanonica(c Cromossomo, teto int) string {
 // AvaliarMSE — treina a rede definida pelo cromossomo e devolve o MSE em unidades
 // reais (58–312). Determinístico para (chaveCanonica, seedRun).
 func AvaliarMSE(c Cromossomo, ds Dataset, teto int, seedRun int64) float64 {
+	return avaliarMSEOpts(c, ds, teto, seedRun, false)
+}
+
+// avaliarMSEOpts — como AvaliarMSE, mas com o toggle onlineRealoca (benchmark).
+func avaliarMSEOpts(c Cromossomo, ds Dataset, teto int, seedRun int64, onlineRealoca bool) float64 {
 	sizes := arquiteturaDe(c)
 	h := fnv.New64a()
 	h.Write([]byte(chaveCanonica(c, teto)))
@@ -271,7 +289,7 @@ func AvaliarMSE(c Cromossomo, ds Dataset, teto int, seedRun int64) float64 {
 			Xrows[i] = Xdata[i*numEntradas : (i+1)*numEntradas]
 			Trows[i] = Tdata[i*numSaidas : (i+1)*numSaidas]
 		}
-		r.treinarOnline(Xrows, Trows, epocas, lr, rng)
+		r.treinarOnline(Xrows, Trows, epocas, lr, rng, onlineRealoca)
 	} else {
 		for e := 0; e < epocas; e++ {
 			acts := r.forward(X)
