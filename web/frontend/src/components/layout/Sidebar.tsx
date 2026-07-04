@@ -119,6 +119,13 @@ export default function Sidebar({ active, onNavigate }: Props) {
         GA · Rastrigin 3D (reais)
       </div>
       <div
+        className={`nav-item${active === 'tsp-ranking' ? ' active' : ''}`}
+        onClick={() => onNavigate('tsp-ranking')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'🏆'}</span>
+        GA · TSP Ranking
+      </div>
+      <div
         className={`nav-item${active === 'rna-ga' ? ' active' : ''}`}
         onClick={() => onNavigate('rna-ga')}
       >

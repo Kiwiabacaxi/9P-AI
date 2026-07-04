@@ -753,13 +753,63 @@ export interface RnaGaBenchSaved {
   timestampUnix: number;
 }
 
+// AG com Ranking — TSP (Trabalho 14 / Aulas 13 + 16)
+export type TspRankSelecao = 'rankingLinear' | 'rankingExp' | 'torneio' | 'roleta';
+export type TspRankCruzamento = 'ox' | 'pmx';
+export type TspRankMutacao = 'swap' | 'inversao';
+
+export interface TspRankConfig {
+  popSize: number;
+  maxGeracoes: number;
+  probCruzamento: number;
+  probMutacao: number;
+  selecao: TspRankSelecao;
+  tamanhoTorneio: number;
+  etaMax: number;       // ranking linear: pressão máxima (η_min = 2 − η_max)
+  cExp: number;         // ranking exponencial: base c > 1
+  cruzamento: TspRankCruzamento;
+  mutacao: TspRankMutacao;
+  elitismo: number;
+  seed?: number;
+}
+
+// Resposta de /tspranking/cidades — cenário fixo do Triângulo Mineiro.
+export interface TspRankMapa {
+  cidades: TspCidade[];
+  matriz: number[][];
+  fonte: boolean[][];   // true = veio da tabela da Aula 13; false = preenchido (Haversine·fator)
+  fator: number;        // fator de calibração estrada/reta dos pares preenchidos
+}
+
+export interface TspRankStep {
+  geracao: number;
+  melhorTour: number[];
+  melhorDist: number;
+  mediaDist: number;
+  piorDist: number;
+  diversidade: number;
+  melhorGlobalTour: number[];
+  melhorGlobalDist: number;
+  popDist: number[];    // distâncias da população ordenadas asc (rank 1..N)
+}
+
+export interface TspRankResult {
+  geracoes: number;
+  melhorTour: number[];
+  melhorDist: number;
+  histMelhor: number[];
+  histMedia: number[];
+  histDiversidade: number[];
+  cfg: TspRankConfig;
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
   | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare' | 'tsp-multi'
-  | 'rastrigin' | 'rna-ga'
+  | 'rastrigin' | 'rna-ga' | 'tsp-ranking'
   | 'about';
 
 // Horário Escolar (Aula 12 — cromossomo matricial)

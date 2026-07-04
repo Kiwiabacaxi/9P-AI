@@ -23,6 +23,7 @@ import TspCompareView from './views/TspCompareView';
 import TspMultiView from './views/TspMultiView';
 import RastriginView from './views/RastriginView';
 import RnaGaView from './views/RnaGaView';
+import TspRankingView from './views/TspRankingView';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -48,6 +49,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   'tsp-multi': TspMultiView,
   rastrigin: RastriginView,
   'rna-ga': RnaGaView,
+  'tsp-ranking': TspRankingView,
   about: AboutView,
 };
 
