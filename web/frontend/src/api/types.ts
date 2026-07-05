@@ -803,13 +803,87 @@ export interface TspRankResult {
   cfg: TspRankConfig;
 }
 
+// Fuzzy — Qualidade da Água (Trabalho 16 / Aulas 17–19)
+export interface FuzzyTermo {
+  id: string;
+  nome: string;
+  trap: [number, number, number, number]; // trapézio (a, b, c, d)
+  cor: string;                            // cor sugerida pra UI
+}
+
+export interface FuzzyVariavel {
+  id: string;
+  nome: string;
+  unidade: string;
+  min: number;
+  max: number;
+  termos: FuzzyTermo[];
+}
+
+export interface FuzzyRegra {
+  aparencia: string;
+  ph: string;
+  turbidez: string;
+  saida: string;
+}
+
+// Resposta de /fuzzy/meta — a view desenha trapézios e tabelas a partir disto.
+export interface FuzzyMeta {
+  entradas: FuzzyVariavel[];  // [cor, ph, turbidez]
+  saida: FuzzyVariavel;
+  regras: FuzzyRegra[];       // as 45 regras achatadas
+  ordemPh: string[];          // ordem das linhas das tabelas
+  ordemTurb: string[];        // ordem das colunas das tabelas
+}
+
+export interface FuzzyEntrada {
+  cor: number;
+  ph: number;
+  turbidez: number;
+}
+
+export interface FuzzyRegraAtivada extends FuzzyRegra {
+  muAparencia: number;
+  muPh: number;
+  muTurbidez: number;
+  forca: number;              // min dos três antecedentes
+}
+
+export interface FuzzyPontoCurva {
+  x: number;
+  inadequada: number;         // termo recortado na força (implicação min)
+  adequada: number;
+  boa: number;
+  agregada: number;           // envelope max
+}
+
+export interface FuzzyResultado {
+  entrada: FuzzyEntrada;
+  pertinencias: Record<string, Record<string, number>>; // varID → termoID → μ
+  regras: FuzzyRegraAtivada[];
+  forcaSaida: Record<string, number>;
+  curva: FuzzyPontoCurva[];
+  centroide: number;
+  classe: string;
+  regrasAtivas: number;
+}
+
+export interface FuzzySuperficie {
+  eixoX: string;
+  eixoY: string;
+  fixa: FuzzyEntrada;
+  xs: number[];
+  ys: number[];
+  z: number[][];              // Z[i][j] = Q(xs[j], ys[i])
+}
+
 export type ViewId =
   | 'hebb' | 'perceptron' | 'madaline'
   | 'mlp' | 'letras' | 'mlpfunc' | 'mlport'
   | 'imgreg' | 'imgreg-goroutines' | 'imgreg-matrix' | 'imgreg-minibatch' | 'imgreg-bench'
   | 'cnn' | 'timeseries'
   | 'genetico' | 'genetico2' | 'horario' | 'tsp' | 'tsp-compare' | 'tsp-multi'
-  | 'rastrigin' | 'rna-ga' | 'tsp-ranking'
+  | 'rastrigin' | 'rna-ga' | 'tsp-ranking' | 'fuzzy'
   | 'about';
 
 // Horário Escolar (Aula 12 — cromossomo matricial)

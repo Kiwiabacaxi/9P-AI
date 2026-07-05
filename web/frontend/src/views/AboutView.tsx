@@ -31,7 +31,7 @@ const TRABALHOS: Trab[] = [
   { n: 13, nome: 'AG com cromossomos reais — Rastrigin', menu: 'GA · Rastrigin 3D (reais)', pkg: 'agrastrigin', aula: '15' },
   { n: 14, nome: 'AG com cromossomos Ranking — TSP', menu: 'GA · TSP Ranking', pkg: 'tspranking', aula: '13 + 16' },
   { n: 15, nome: 'AG que descobre a arquitetura de uma RNA', menu: 'GA · Arquitetura RNA', pkg: 'rnaga', aula: '20' },
-  { n: 16, nome: 'Qualidade da água — Fuzzy', menu: '—', pkg: '(a implementar)', aula: '17–19', pendente: true },
+  { n: 16, nome: 'Qualidade da água — Fuzzy', menu: 'Fuzzy · Água', pkg: 'fuzzy', aula: '17–19' },
 ];
 
 // Telas extras (bônus) que existem no menu mas não estão na lista numerada.
@@ -98,7 +98,8 @@ export default function AboutView() {
           </table>
         </div>
         <div style={{ padding: '10px 14px', color: COR.muted, fontSize: 12, lineHeight: 1.6 }}>
-          15 dos 16 trabalhos prontos. O <b style={{ color: '#e0a83c' }}>Trabalho 16 (Fuzzy)</b> ainda não foi implementado.
+          <b style={{ color: COR.menu }}>Todos os 16 trabalhos prontos</b> — o último a entrar foi o
+          Trabalho 16 (sistema fuzzy de qualidade da água, menu <b style={{ color: COR.menu }}>Fuzzy · Água</b>).
         </div>
       </Card>
 

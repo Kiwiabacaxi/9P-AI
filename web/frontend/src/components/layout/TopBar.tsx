@@ -39,6 +39,7 @@ const VIEW_INFO: Record<ViewId, ViewInfo> = {
   rastrigin: { label: 'GA · Rastrigin 3D' },
   'rna-ga': { label: 'GA · Arquitetura RNA' },
   'tsp-ranking': { label: 'GA · TSP Ranking' },
+  fuzzy: { label: 'Fuzzy · Água' },
   about: { label: 'Arquitetura' },
 };
 

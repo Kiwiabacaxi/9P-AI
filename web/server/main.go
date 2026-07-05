@@ -33,6 +33,7 @@ import (
 	"mlp-server/tspmulti"
 	"mlp-server/tspranking"
 	"mlp-server/agrastrigin"
+	"mlp-server/fuzzy"
 	"mlp-server/rnaga"
 	perceptronletras "mlp-server/perceptron_letras"
 	perceptronportas "mlp-server/perceptron_portas"
@@ -2768,6 +2769,44 @@ func handleTsprankCidades(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tspranking.ConstruirMapa())
 }
 
+// ===== Fuzzy — Qualidade da Água (Trabalho 16) =====
+// Sistema stateless: sem estado global, sem mutex, sem SSE — a inferência
+// Mamdani é instantânea, então cada request é avaliada na hora.
+
+func handleFuzzyMeta(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, fuzzy.GetMeta())
+}
+
+func handleFuzzyEvaluate(w http.ResponseWriter, r *http.Request) {
+	var e fuzzy.Entrada
+	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, fuzzy.Avaliar(e))
+}
+
+func handleFuzzySurface(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	parse := func(key string, def float64) float64 {
+		if v, err := strconv.ParseFloat(q.Get(key), 64); err == nil {
+			return v
+		}
+		return def
+	}
+	fixa := fuzzy.Entrada{
+		Cor:      parse("cor", 15),
+		PH:       parse("ph", 7),
+		Turbidez: parse("turbidez", 0),
+	}
+	s, err := fuzzy.GerarSuperficie(q.Get("eixoX"), q.Get("eixoY"), fixa)
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s)
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -2931,6 +2970,10 @@ func main() {
 	mux.HandleFunc("/api/tspranking/reset",   cors(handleTsprankReset))
 	mux.HandleFunc("/api/tspranking/result",  cors(handleTsprankResult))
 	mux.HandleFunc("/api/tspranking/cidades", cors(handleTsprankCidades))
+
+	mux.HandleFunc("/api/fuzzy/meta",     cors(handleFuzzyMeta))
+	mux.HandleFunc("/api/fuzzy/evaluate", cors(handleFuzzyEvaluate))
+	mux.HandleFunc("/api/fuzzy/surface",  cors(handleFuzzySurface))
 
 	addr := ":8080"
 	log.Printf("MLP Web Server rodando em http://localhost%s", addr)

@@ -1,10 +1,11 @@
-# Inteligência Artificial — RNA + Algoritmos Genéticos
+# Inteligência Artificial — RNA + Algoritmos Genéticos + Fuzzy
 
 Projeto da disciplina de **Inteligência Artificial** na faculdade: uma coleção de
 trabalhos que implementam, do zero, os algoritmos clássicos da área — de **redes
 neurais** (Hebb → Perceptron → MADALINE → MLP → CNN) a **algoritmos genéticos** e
 **otimização** (função matemática, caixeiro viajante, e até um AG que descobre a
-melhor arquitetura de uma rede neural).
+melhor arquitetura de uma rede neural), fechando com **lógica fuzzy** (inferência
+Mamdani para qualidade da água).
 
 A ideia é entender cada algoritmo **pela descoberta**: várias implementações são
 propositalmente "ingênuas" (com laços aninhados e tudo mais) porque o objetivo é
@@ -42,7 +43,12 @@ rede animados, etc.
 | 13 | AG com cromossomos reais — Rastrigin 3D | GA · Rastrigin 3D |
 | 14 | AG com seleção por Ranking — TSP | GA · TSP Ranking |
 | 15 | AG que descobre a arquitetura de uma RNA | GA · Arquitetura RNA |
-| 16 | Qualidade da água — Fuzzy | _(a implementar)_ |
+
+**Lógica Fuzzy**
+
+| # | Trabalho | Menu |
+|---|----------|------|
+| 16 | Qualidade da água — inferência Mamdani (SABESP) | Fuzzy · Água |
 
 Bônus (além dos 16): **MLP Funções**, **MLP Ortogonal**, **IMG_REGRESSION** (MLP
 que "pinta" uma imagem, com variações goroutines/matriz/mini-batch/benchmark) e
@@ -73,7 +79,7 @@ go run ./desafio-mlp-letras
 O deploy no GitHub Pages compila os algoritmos como **WebAssembly** e roda os
 **trabalhos clássicos de RNA** (Hebb, Perceptron, MADALINE, MLP, CNN, image
 regression) direto no navegador. Os trabalhos de **AG/otimização** (TSP,
-Rastrigin, Ranking, RNA+AG) usam streaming do backend Go, então a experiência
+Rastrigin, Ranking, RNA+AG) e o **Fuzzy** usam o backend Go, então a experiência
 completa é **local** com `make run`.
 
 ## Estrutura
@@ -85,6 +91,7 @@ web/
     hebb/ madaline/ mlp/ cnn/ timeseries/ …        (redes neurais)
     genetico/ genetico2/ horario/ tsp/ tspmulti/   (algoritmos genéticos)
     agrastrigin/ tspranking/ rnaga/                (AG reais, ranking, RNA+AG)
+    fuzzy/                                         (lógica fuzzy — qualidade da água)
     wasm/                Build WebAssembly (subconjunto p/ o navegador)
     cmd/rnabench/        CLI de benchmark do Trabalho 15
   frontend/              Frontend React + TypeScript (Vite)
