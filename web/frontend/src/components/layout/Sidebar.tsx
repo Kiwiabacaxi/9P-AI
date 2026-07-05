@@ -133,6 +133,15 @@ export default function Sidebar({ active, onNavigate }: Props) {
         GA · Arquitetura RNA
       </div>
       <div className="sidebar-divider" />
+      <div className="sidebar-label">Lógica Fuzzy</div>
+      <div
+        className={`nav-item${active === 'fuzzy' ? ' active' : ''}`}
+        onClick={() => onNavigate('fuzzy')}
+      >
+        <span className="nav-icon" style={{ textAlign: 'center', fontSize: '12px' }}>{'💧'}</span>
+        Fuzzy · Água
+      </div>
+      <div className="sidebar-divider" />
       <div className="sidebar-label">Deep Learning</div>
       <div
         className={`nav-item${active === 'cnn' ? ' active' : ''}`}

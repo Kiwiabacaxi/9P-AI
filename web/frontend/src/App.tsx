@@ -24,6 +24,7 @@ import TspMultiView from './views/TspMultiView';
 import RastriginView from './views/RastriginView';
 import RnaGaView from './views/RnaGaView';
 import TspRankingView from './views/TspRankingView';
+import FuzzyView from './views/FuzzyView';
 import AboutView from './views/AboutView';
 
 const viewComponents: Record<ViewId, React.ComponentType> = {
@@ -50,6 +51,7 @@ const viewComponents: Record<ViewId, React.ComponentType> = {
   rastrigin: RastriginView,
   'rna-ga': RnaGaView,
   'tsp-ranking': TspRankingView,
+  fuzzy: FuzzyView,
   about: AboutView,
 };
 
