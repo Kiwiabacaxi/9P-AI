@@ -1,65 +1,66 @@
-# Redes Neurais Artificiais
+# Inteligência Artificial — RNA + Algoritmos Genéticos
 
-Projeto da disciplina de **Inteligencia Artificial** na faculdade, focado em dar uma visualizacao bonita e interativa para os algoritmos classicos de redes neurais.
+Projeto da disciplina de **Inteligência Artificial** na faculdade: uma coleção de
+trabalhos que implementam, do zero, os algoritmos clássicos da área — de **redes
+neurais** (Hebb → Perceptron → MADALINE → MLP → CNN) a **algoritmos genéticos** e
+**otimização** (função matemática, caixeiro viajante, e até um AG que descobre a
+melhor arquitetura de uma rede neural).
 
-A ideia e acompanhar a historia da area: comecamos com modelos simples como Hebb (literalmente uma regra de uma linha), passamos pelo Perceptron, MADALINE, ate chegar no MLP com backpropagation. Algumas implementacoes sao propositalmente "ingenuas" — com 3 for aninhados e tudo mais — porque o objetivo e entender o algoritmo pela descoberta, nao otimizar performance.
+A ideia é entender cada algoritmo **pela descoberta**: várias implementações são
+propositalmente "ingênuas" (com laços aninhados e tudo mais) porque o objetivo é
+ver o algoritmo funcionando, não otimizar performance. Cada trabalho tem uma
+**visualização web interativa** — mapas, gráficos de convergência, diagramas de
+rede animados, etc.
 
-> **[Abrir no browser](https://kiwiabacaxi.github.io/9P-AI/)** — roda direto via WebAssembly, sem instalar nada.
+> Dentro da aplicação, a aba **"Arquitetura" → Mapa dos Trabalhos** lista onde
+> encontrar cada um dos 16 trabalhos (em qual item do menu clicar e qual pacote o
+> implementa).
 
-## Versao web vs local
+## Os trabalhos
 
-O projeto tem uma **versao web** que roda no browser e uma **versao local** com servidor Go.
+**Redes Neurais**
 
-A versao web funciona bem pra dar uma olhada rapida, mas rodar localmente tem vantagens: o backend em Go e mais rapido, suporta todos os backends de otimizacao (incluindo o matricial com BLAS), e o streaming de progresso via SSE e mais responsivo.
+| # | Trabalho | Menu |
+|---|----------|------|
+| 1 | Regra de Hebb | Hebb |
+| 2 | Perceptron (portas lógicas + letras A/B) | Perceptron |
+| 3 | MADALINE (letras A–M) | MADALINE |
+| 4 | MLP — reprodução do exemplo dos slides | MLP Desafio |
+| 5 | MLP — reconhecimento de letras A–Z | MLP Letras |
+| 6 | Rede Convolucional (EMNIST) | CNN EMNIST |
+| 7 | Investimentos — séries temporais | MLP Ações |
+
+**Algoritmos Genéticos & Otimização**
+
+| # | Trabalho | Menu |
+|---|----------|------|
+| 8 | AG com função matemática f(x) | GA · Aula 10 |
+| 9 | AG parametrizável (torneio, elitismo, 2 pontos) | GA · Aula 11 |
+| 10 | AG para grade de horários (cromossomo matricial) | GA · Horário (Aula 12) |
+| 11 | Caixeiro viajante — 10 cidades | GA · TSP |
+| 12 | Caixeiro viajante multipopulacional | GA · TSP Multi-ilhas |
+| 13 | AG com cromossomos reais — Rastrigin 3D | GA · Rastrigin 3D |
+| 14 | AG com seleção por Ranking — TSP | GA · TSP Ranking |
+| 15 | AG que descobre a arquitetura de uma RNA | GA · Arquitetura RNA |
+| 16 | Qualidade da água — Fuzzy | _(a implementar)_ |
+
+Bônus (além dos 16): **MLP Funções**, **MLP Ortogonal**, **IMG_REGRESSION** (MLP
+que "pinta" uma imagem, com variações goroutines/matriz/mini-batch/benchmark) e
+**GA · TSP Comparativo**.
+
+## Como rodar (recomendado — roda tudo)
+
+Backend em Go + frontend React, ligados por HTTP/SSE:
 
 ```bash
-# rodar local (recomendado)
 cd web
-make run
-
-# ou so abrir no browser
-# https://kiwiabacaxi.github.io/9P-AI/
+make run          # compila o frontend e sobe o servidor em http://localhost:8080
 ```
 
-Alem da versao web, cada algoritmo tambem tem uma **TUI interativa** no terminal com animacoes, slides explicativos e modos de teste — veja a [pasta cli](cli/README.md).
+Precisa de **Go 1.24+** e **Node 18+** (para o build do frontend).
 
-## O que tem aqui
+Também há uma **TUI no terminal** para alguns dos primeiros trabalhos:
 
-Seguindo a ordem das aulas:
-
-| Aula | Algoritmo | O que faz |
-|------|-----------|-----------|
-| 02 | **Hebb** | Portas logicas (AND, OR...) com a regra mais simples que existe |
-| 03 | **Perceptron** | Reconhecimento de letras A/B (7x7 pixels) e portas logicas |
-| 04 | **MADALINE** | Reconhecimento de letras A-M com 13 ADALINEs |
-| 05 | **MLP** | Backpropagation — exemplo numerico dos slides e reconhecimento A-Z |
-| 05 | **Image Regression** | Uma rede MLP aprendendo a "pintar" imagens pixel por pixel |
-
-## Estrutura
-
-```
-cli/                     TUIs interativas no terminal (Go + Charm)
-  trab01-hebb/           Regra de Hebb
-  trab02-perceptron-*/   Perceptron (letras e portas)
-  trab03-madaline/       MADALINE
-  desafio-mlp/           MLP 3->2->3
-  desafio-mlp-letras/    MLP A-Z
-
-web/                     Versao web (servidor Go + frontend)
-  server/                Backend com todos os algoritmos como packages
-  static/                Frontend (HTML/CSS/JS puro, sem frameworks)
-
-slides/                  PDFs das aulas
-```
-
-## Como rodar
-
-**Web (local):**
-```bash
-cd web && make run
-```
-
-**TUI no terminal:**
 ```bash
 cd cli
 go run ./trab01-hebb
@@ -67,12 +68,40 @@ go run ./desafio-mlp-letras
 # etc.
 ```
 
-**Web (online):** basta acessar https://kiwiabacaxi.github.io/9P-AI/
+## Versão online (subconjunto, via WebAssembly)
+
+O deploy no GitHub Pages compila os algoritmos como **WebAssembly** e roda os
+**trabalhos clássicos de RNA** (Hebb, Perceptron, MADALINE, MLP, CNN, image
+regression) direto no navegador. Os trabalhos de **AG/otimização** (TSP,
+Rastrigin, Ranking, RNA+AG) usam streaming do backend Go, então a experiência
+completa é **local** com `make run`.
+
+## Estrutura
+
+```
+web/
+  server/                Backend Go — um pacote por trabalho
+    main.go              Rotas HTTP + streaming SSE
+    hebb/ madaline/ mlp/ cnn/ timeseries/ …        (redes neurais)
+    genetico/ genetico2/ horario/ tsp/ tspmulti/   (algoritmos genéticos)
+    agrastrigin/ tspranking/ rnaga/                (AG reais, ranking, RNA+AG)
+    wasm/                Build WebAssembly (subconjunto p/ o navegador)
+    cmd/rnabench/        CLI de benchmark do Trabalho 15
+  frontend/              Frontend React + TypeScript (Vite)
+    src/views/           Uma tela por trabalho
+    src/components/       Componentes compartilhados (mapa, gráficos, layout)
+  static/                Saída do build (servida pelo servidor / Pages)
+
+cli/                     TUIs no terminal (Go + Charm) de alguns trabalhos
+slides/                  PDFs das aulas
+docs/                    Specs de design dos trabalhos
+```
 
 ## Tecnologias
 
-- **Go** — tudo: algoritmos, servidor HTTP, WebAssembly, TUI
-- **Charm** (Bubble Tea + Lipgloss) — interfaces de terminal interativas
-- **WebAssembly** — mesmos algoritmos Go rodando no browser
-- **HTML/CSS/JS** — frontend sem frameworks
-- **GitHub Actions** — deploy automatico no Pages
+- **Go** — algoritmos, servidor HTTP, WebAssembly, TUIs
+- **gonum** — multiplicação de matrizes (BLAS) nos trabalhos que precisam de velocidade
+- **React + TypeScript + Vite** — frontend
+- **Leaflet · Plotly · Recharts** — mapas e gráficos interativos
+- **Charm** (Bubble Tea + Lipgloss) — interfaces de terminal
+- **GitHub Actions** — build WASM + deploy no Pages
