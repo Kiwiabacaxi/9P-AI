@@ -245,7 +245,10 @@ export default function RnaGaView() {
       }
     }
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 420 }}>
+      // key = forma da rede → quando camadas/neurônios mudam o svg remonta e a
+      // animação rnaga-pop roda; melhora só de MSE (mesma forma) não pisca.
+      <svg key={sizes.join('x')} className="rnaga-diagrama" viewBox={`0 0 ${W} ${H}`}
+        style={{ width: '100%', height: 'auto', maxHeight: 420 }}>
         {edges}{nodes}{labels}
       </svg>
     );

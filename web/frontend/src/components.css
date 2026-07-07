@@ -193,3 +193,10 @@
 .tab { padding: 8px 16px; font-family: var(--font-mono); font-size: 11px; color: var(--on-surface); cursor: pointer; background: var(--surface); transition: all 100ms; user-select: none; }
 .tab:hover { color: var(--primary); }
 .tab.active { color: var(--primary-glow); background: var(--surface-high); }
+
+/* Diagrama da rede (RNA+AG) — pop suave quando a arquitetura muda de forma */
+@keyframes rnaga-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.rnaga-diagrama { animation: rnaga-pop 0.5s ease; transform-origin: 50% 50%; }
