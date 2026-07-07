@@ -213,13 +213,17 @@ export default function RnaGaView() {
     };
     const corCol = (i: number) => (i === 0 ? '#00ccff' : i === cols - 1 ? '#22c55e' : '#ff00aa');
 
+    // Arestas na cor da coluna de origem, com traço em px de tela
+    // (vectorEffect) — senão o reescalonamento do SVG some com as linhas.
     const edges: React.ReactNode[] = [];
     for (let i = 0; i < cols - 1; i++) {
+      const cor = i === 0 ? '#00ccff' : i === cols - 2 ? '#22c55e' : '#ff00aa';
       for (let a = 0; a < sizes[i]; a++) {
         for (let b = 0; b < sizes[i + 1]; b++) {
           edges.push(
             <line key={`e-${i}-${a}-${b}`} x1={colX(i)} y1={nodeY(sizes[i], a)}
-              x2={colX(i + 1)} y2={nodeY(sizes[i + 1], b)} stroke="#3a3a3a" strokeWidth={0.4} strokeOpacity={0.5} />,
+              x2={colX(i + 1)} y2={nodeY(sizes[i + 1], b)} stroke={cor} strokeWidth={0.7}
+              strokeOpacity={0.16} vectorEffect="non-scaling-stroke" />,
           );
         }
       }
